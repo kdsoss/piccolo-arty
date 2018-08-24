@@ -19,6 +19,7 @@ trueall: sim32 b32 sim64 b64 simV64 bV64 simD64 bD64
 
 # ----------------
 # Search path for bsc for .bsv files
+REPO = ..
 
 CORE_DIRS = $(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/BSV_Additional_Libs:$(REPO)/src_Verifier
 TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC:$(REPO)/src_Testbench/Fabrics/AXI4_Lite

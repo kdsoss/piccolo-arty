@@ -896,16 +896,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 		                rg_state      <= CACHE_ST_AMO_RSP;
 
 		                if (cfg_verbosity > 1) begin
-		                    $display ("        AMO: addr 0x%0h amo_f5 0x%0h f3 %0d rs2_val 0x%0h", 
-		                                        rg_addr, f5, rg_f3, w2);
-		                    $display ("          PA 0x%0h ", vm_xlate_result.pa);
-		                    $display ("          Cache word64 0x%0h, load-result 0x%0h", word64, w1);
-		                    $display ("          0x%0h  op  0x%0h -> 0x%0h", w1, w2, st_val);
-		                    $write   ("          New Word64_Set:");
-		                    fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
-		                    $display ("          To fabric: ", fshow (mem_req_wr_addr));
-		                    $display ("                     ", fshow (mem_req_wr_data));
-		                end
+		                    $display ("        Write-Hit/Miss: eaddr 0x%0h word64 0x%0h", 
+		                                    rg_addr, rg_st_amo_val);
+		                    $display ("            To fabric: ", fshow (mem_req_wr_addr));
+		                    $display ("                       ", fshow (mem_req_wr_data));
+		                    $display ("    => rl_write_response");
+                        end
 	                end
 	            end
 `endif

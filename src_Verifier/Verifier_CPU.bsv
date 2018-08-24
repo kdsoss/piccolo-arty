@@ -47,9 +47,9 @@ module mkVerifier_CPU #(parameter Bit#(64) pc_reset_value) (Verif_IFC);
     method ActionValue#(Info_CPU_to_Verifier) getPacket() = core.to_verifier.get;
     method Bool halted = core.halted;
 //`endif
-    method Action external_interrupt_req  = core.external_interrupt_req;
-    method Action timer_interrupt_req (b) = core.timer_interrupt_req(b);
-    method Action software_interrupt_req  = core.software_interrupt_req;
+    method Action external_interrupt_req (b) = core.external_interrupt_req(b);
+    method Action timer_interrupt_req    (b) = core.timer_interrupt_req(b);
+    method Action software_interrupt_req (b) = core.software_interrupt_req(b);
     
     interface Server hart0_server_reset = core.hart0_server_reset;
     

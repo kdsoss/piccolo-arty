@@ -21,11 +21,9 @@ interface Verif_IFC;
     
     interface Server #(Token, Token)  hart0_server_reset;
     
-    (* always_ready *)
-    method Action external_interrupt_req;
+    method Action external_interrupt_req (Bool set_not_clear);
     method Action timer_interrupt_req (Bool set_not_clear);
-    (* always_ready *)
-    method Action software_interrupt_req;
+    method Action software_interrupt_req (Bool set_not_clear);
     
 `ifdef INCLUDE_GDB_CONTROL
     
