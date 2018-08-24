@@ -35,7 +35,11 @@ import BRVF_Core_IFC  :: *;
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info        :: *;
 import TV_Extra       :: *;
+`elsif INCLUDE_WOLF_VERIF
+import Verifier_CPU   :: *;
+import Verif_IFC      :: *;
 `endif
+
 
 // ================================================================
 // The BRVF_Core module
@@ -43,7 +47,11 @@ import TV_Extra       :: *;
 (* synthesize *)
 module mkBRVF_Core #(parameter Bit #(64)  pc_reset_value)  (BRVF_Core_IFC);
    // The CPU itself
-   CPU_IFC  cpu <- mkCPU (pc_reset_value);
+   `ifdef INCLUDE_WOLF_VERIF
+   Verif_IFC  cpu <- mkVerifier_CPU (pc_reset_value);
+   `else
+   CPU_IFC cpu <- mkCPU (pc_reset_value);
+   `endif
 
    // CPU can be reset either by the Debug Module or by the SoC
    // This FIFO keeps track of who is the reset requestor.

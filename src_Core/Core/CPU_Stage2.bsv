@@ -46,7 +46,11 @@ import Cur_Cycle  :: *;
 import ISA_Decls     :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
+import Verifier  :: *;
 import TV_Info       :: *;
+`elsif INCLUDE_WOLF_VERIF
+import Verifier  :: *;
+import TV_Wolf_Info  :: *;
 `endif
 
 import CPU_Globals   :: *;
@@ -102,7 +106,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
    Reg #(Bool)                  rg_full   <- mkReg (False);
    Reg #(Data_Stage1_to_Stage2) rg_stage2 <- mkRegU;    // From Stage 1
-
+   Reg #(Bit#(5))               rg_f5     <- mkReg (0);
    // ----------------
    // Serial shifter box
 
@@ -125,10 +129,21 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
    // ----------------
-
+`ifdef INCLUDE_WOLF_VERIF
+   let wolf_s1 = rg_stage2.wolf_info_s1;
+`endif
+   
    let bypass_base = Bypass {bypass_state: BYPASS_RD_NONE,
 			     rd:           rg_stage2.rd,
 			     rd_val:       rg_stage2.val1 };
+
+`ifdef INCLUDE_WOLF_VERIF
+    let wolf_s2_base = Data_Wolf_Stage2 {
+                                    stage1:     wolf_s1,
+                                    mem_rmask:  0,
+                                    mem_wmask:  0
+                                };
+`endif
 
    let data_to_stage3_base = Data_Stage2_to_Stage3 {priv:      rg_stage2.priv,
 						    pc:        rg_stage2.pc,
@@ -138,7 +153,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 						    rd_val:    rg_stage2.val1,
 						    csr_valid: rg_stage2.csr_valid,
 						    csr:       truncate (rg_stage2.addr),
-						    csr_val:   rg_stage2.val2};
+						    csr_val:   rg_stage2.val2
+`ifdef INCLUDE_WOLF_VERIF
+						    ,wolf_info_s2: wolf_s2_base
+`endif
+						    };
 
    let  trap_info_dmem = Trap_Info {epc:      rg_stage2.pc,
 				    exc_code: dcache.exc_code,
@@ -151,14 +170,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
 `ifdef INCLUDE_TANDEM_VERIF
-   let  to_verifier_base = Info_CPU_to_Verifier {exc_taken: False,
-						 pc:        rg_stage2.pc,
-						 addr:      rg_stage2.addr,
-						 data1:     rg_stage2.val1,
-						 data2:     rg_stage2.val2,
-					         instr_valid: True,
-						 instr:     rg_stage2.instr
-						};
+   let  to_verifier_base = getVerifierInfo(False,rg_stage2.pc,rg_stage2.addr,rg_stage2.val1,
+						   rg_stage2.val2,True,rg_stage2.instr);
 `endif
 
    // ----------------------------------------------------------------
@@ -178,26 +191,24 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       Output_Stage2 output_stage2 = ?;
 
       // This stage is empty
-      if (! rg_full) begin
-	 output_stage2 = Output_Stage2 {ostatus:         OSTATUS_EMPTY,
-					trap_info:       ?,
-					data_to_stage3:  ?,
-					bypass:          no_bypass
+      if (!rg_full) begin
+	    output_stage2 = Output_Stage2 {ostatus:  OSTATUS_EMPTY,
+					                 trap_info:  ?,
+					            data_to_stage3:  ?,
+					                    bypass:  no_bypass
 `ifdef INCLUDE_TANDEM_VERIF
-					, to_verifier:     ?
+					             , to_verifier:     ?
 `endif
-					};
+					            };
       end
-
       // This stage is just relaying ALU results from previous stage to next stage
       else if (rg_stage2.op_stage2 == OP_Stage2_ALU) begin
-	 let data_to_stage3 = data_to_stage3_base;
-	 data_to_stage3.rd_valid = True;
+	    let data_to_stage3 = data_to_stage3_base;
+	    data_to_stage3.rd_valid = True;
 
-	 let bypass = bypass_base;
-	 bypass.bypass_state = BYPASS_RD_RDVAL;
-
-	 output_stage2 = Output_Stage2 {ostatus:         OSTATUS_PIPE,
+	    let bypass = bypass_base;
+	    bypass.bypass_state = BYPASS_RD_RDVAL;
+	    output_stage2 = Output_Stage2 {ostatus:         OSTATUS_PIPE,
 					trap_info:       ?,
 					data_to_stage3:  data_to_stage3,
 					bypass:          bypass
@@ -208,7 +219,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       end
 
       // This stage is doing a LOAD or AMO
-      else if (   (rg_stage2.op_stage2 == OP_Stage2_LD)
+     else if (   (rg_stage2.op_stage2 == OP_Stage2_LD)
 `ifdef ISA_A
 	       || (rg_stage2.op_stage2 == OP_Stage2_AMO)
 `endif
@@ -219,7 +230,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			   : (  dcache.exc
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
-
 	    WordXL result = truncate (dcache.word64);
 
 	    let data_to_stage3 = data_to_stage3_base;
@@ -234,6 +244,29 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    let to_verifier   = to_verifier_base;
 	    to_verifier.data1 = result;
 	    to_verifier.data2 = truncate (dcache.st_amo_val);
+`elsif INCLUDE_WOLF_VERIF
+	    let wolf_s2 = wolf_s2_base;
+        // If we're doing a load or AMO other than SC, we need to set the read mask.
+        if((rg_stage2.op_stage2 == OP_Stage2_LD)
+        `ifdef ISA_A
+            ||((rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 != f5_AMO_SC))
+        `endif
+        ) begin
+            wolf_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+        end
+        `ifdef ISA_A
+        // If we're doing an AMO that's not an LR, we need to set the write mask as well.
+        if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 != f5_AMO_LR) begin 
+            // For most AMOs we can just go ahead and do it
+            if (rg_f5 != f5_AMO_SC) begin
+                wolf_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+            // For SC however we do need to check that it was successful, otherwise we've not written.
+            end else begin
+                wolf_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr) : 0);
+            end
+        end
+        `endif
+        data_to_stage3.wolf_info_s2 = wolf_s2;
 `endif
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
@@ -247,19 +280,25 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 end
 
       // This stage is doing a STORE
-      else if (rg_stage2.op_stage2 == OP_Stage2_ST) begin
-	 let ostatus = (  (! dcache.valid)
+     else if (rg_stage2.op_stage2 == OP_Stage2_ST) begin
+	    let ostatus = (  (! dcache.valid)
 			     ? OSTATUS_BUSY
 			     : (  dcache.exc
 				? OSTATUS_NONPIPE
 				: OSTATUS_PIPE));
 
-	 let data_to_stage3 = data_to_stage3_base;
-	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd       = 0;
-	 data_to_stage3.rd_val   = ?;
-
-	 output_stage2 = Output_Stage2 {ostatus:        ostatus,
+	    let data_to_stage3 = data_to_stage3_base;
+	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    data_to_stage3.rd       = 0;
+`ifdef INCLUDE_WOLF_VERIF
+	    data_to_stage3.rd_val   = 0;
+	    let wolf_s2 = wolf_s2_base;
+        wolf_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+        data_to_stage3.wolf_info_s2 = wolf_s2;
+`else
+	    data_to_stage3.rd_val   = ?;
+`endif
+	    output_stage2 = Output_Stage2 {ostatus:        ostatus,
 					trap_info:      trap_info_dmem,
 					data_to_stage3: data_to_stage3,
 					bypass:         no_bypass
@@ -272,24 +311,27 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef SHIFT_SERIAL
       // This stage is doing a serial shift
       else if (rg_stage2.op_stage2 == OP_Stage2_SH) begin
-	 let ostatus = ((! shifter_box.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
+	    let ostatus = ((! shifter_box.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
 
-	 let result = shifter_box.word;
+	    let result = shifter_box.word;
 
-	 let data_to_stage3 = data_to_stage3_base;
-	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd_val   = result;
+	    let data_to_stage3 = data_to_stage3_base;
+	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    data_to_stage3.rd_val   = result;
 
-	 let bypass = bypass_base;
-	 bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-	 bypass.rd_val       = result;
-
+	    let bypass = bypass_base;
+	    bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+	    bypass.rd_val       = result;
 `ifdef INCLUDE_TANDEM_VERIF
-	 let to_verifier = to_verifier_base;
-	 to_verifier.data1 = result;
+	    let to_verifier = to_verifier_base;
+	    to_verifier.data1 = result;
+`elsif INCLUDE_WOLF_VERIF
+        // No memory op, so very simple.
+        let wolf_s2 = wolf_s2_base;
+        data_to_stage3.wolf_info_s2 = wolf_s2;
 `endif
 
-	 output_stage2 = Output_Stage2 {ostatus:         ostatus,
+	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					trap_info:       ?,
 					data_to_stage3:  data_to_stage3,
 					bypass:          bypass,
@@ -303,24 +345,28 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_M
       // This stage is doing an integer multiply/divide
       else if (rg_stage2.op_stage2 == OP_Stage2_M) begin
-	 let ostatus = ((! mbox.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
+	    let ostatus = ((! mbox.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
 
-	 let result = mbox.word;
+	    let result = mbox.word;
 
-	 let data_to_stage3 = data_to_stage3_base;
-	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd_val   = result;
+	    let data_to_stage3 = data_to_stage3_base;
+	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    data_to_stage3.rd_val   = result;
 
-	 let bypass = bypass_base;
-	 bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-	 bypass.rd_val       = result;
+	    let bypass = bypass_base;
+	    bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+	    bypass.rd_val       = result;
 
 `ifdef INCLUDE_TANDEM_VERIF
-	 let to_verifier = to_verifier_base;
-	 to_verifier.data1 = result;
+	    let to_verifier = to_verifier_base;
+	    to_verifier.data1 = result;
+`elsif INCLUDE_WOLF_VERIF
+        // No memory op, so very simple.
+        let wolf_s2 = wolf_s2_base;
+        data_to_stage3.wolf_info_s2 = wolf_s2;
 `endif
 
-	 output_stage2 = Output_Stage2 {ostatus:         ostatus,
+	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					trap_info:       ?,
 					data_to_stage3:  data_to_stage3,
 					bypass:          bypass
@@ -334,28 +380,31 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_FD
       // This stage is doing a floating point op
       else if (rg_stage2.op_stage2 == OP_Stage2_FD) begin
-	 let ostatus = (  (! fbox.valid)
+	    let ostatus = (  (! fbox.valid)
 			? OSTATUS_BUSY
 			: (  fbox.exc
 			   ? OSTATUS_NONPIPE
 			   : OSTATUS_PIPE));
 
-	 let result = fbox.word;
+	    let result = fbox.word;
 
-	 let data_to_stage3 = data_to_stage3_base;
-	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd_val   = result;
+	    let data_to_stage3 = data_to_stage3_base;
+	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
+	    data_to_stage3.rd_val   = result;
 
-	 let bypass = bypass_base;
-	 bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-	 bypass.rd_val       = result;
+	    let bypass = bypass_base;
+	    bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+	    bypass.rd_val       = result;
 
 `ifdef INCLUDE_TANDEM_VERIF
-	 let to_verifier = to_verifier_base;
-	 to_verifier.data1 = result;
+	    let to_verifier = to_verifier_base;
+	    to_verifier.data1 = result;
+`elsif INCLUDE_WOLF_VERIF
+        // No memory op, so very simple.
+        let wolf_s2 = wolf_s2_base;
+        data_to_stage3.wolf_info_s2 = wolf_s2;
 `endif
-
-	 output_stage2 = Output_Stage2 {ostatus:         ostatus,
+	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					trap_info:       trap_info_fbox,
 					data_to_stage3:  data_to_stage3,
 					bypass:          bypass
@@ -365,7 +414,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 					};
       end
 `endif
-
       return output_stage2;
    endfunction
 
@@ -382,6 +430,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_A
 	 Bool op_stage2_amo = (x.op_stage2 == OP_Stage2_AMO);
 	 Bit #(7) amo_funct7 = x.val1 [6:0];
+	 rg_f5 <= amo_funct7[6:2];
 `else
 	 Bool op_stage2_amo = False;
 	 Bit #(7) amo_funct7 = 0;

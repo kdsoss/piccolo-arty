@@ -23,6 +23,8 @@ import ISA_Decls :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info   :: *;
+`elsif INCLUDE_WOLF_VERIF
+import TV_Wolf_Info :: *;
 `endif
 
 // ================================================================
@@ -137,7 +139,7 @@ typedef struct {
    Trap_Info              trap_info;
 
    // feedback
-   Addr                   next_pc;
+   WordXL                   next_pc;
 
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
@@ -215,8 +217,41 @@ typedef struct {
    Word       val2;     // OP_Stage2_ALU: csr_val
                         // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
+`ifdef INCLUDE_WOLF_VERIF
+   Data_Wolf_Stage1 wolf_info_s1;
+`endif
+
    } Data_Stage1_to_Stage2
 deriving (Bits);
+
+`ifdef INCLUDE_WOLF_VERIF
+  
+typedef struct {
+    Bit#(ILEN)  instr;
+    // From decode
+    Bit#(5)     rs1_addr;
+    Bit#(5)     rs2_addr;
+    Bit#(XLEN)  rs1_data;
+    Bit#(XLEN)  rs2_data;
+    Bit#(XLEN)  pc_rdata;
+    // TODO: Exceptions?
+    Bit#(XLEN)  pc_wdata;
+    // TODO: Needs 0'ing when unused?
+    Bit#(XLEN)  mem_wdata;
+
+    // From ALU:
+    Bit#(5)     rd_addr;
+    // Might be killed by memory OPs.
+    Bool        rd_alu;
+    Bit#(XLEN)  rd_wdata_alu;
+    
+    Bit#(XLEN)  mem_addr;
+    
+} Data_Wolf_Stage1 deriving (Bits, Eq);
+
+  
+`endif
+
 
 instance FShow #(Data_Stage1_to_Stage2);
    function Fmt fshow (Data_Stage1_to_Stage2 x);
@@ -239,10 +274,12 @@ typedef struct {
 
    // feedforward data
    Data_Stage2_to_Stage3  data_to_stage3;
-
+   
+   // Verifier info
 `ifdef INCLUDE_TANDEM_VERIF
    Info_CPU_to_Verifier   to_verifier;
 `endif
+
    } Output_Stage2
 deriving (Bits);
 
@@ -278,8 +315,27 @@ typedef struct {
    Bool      csr_valid;
    CSR_Addr  csr;
    Word      csr_val;
+   
+`ifdef INCLUDE_WOLF_VERIF
+   Data_Wolf_Stage2 wolf_info_s2;
+`endif
+   
    } Data_Stage2_to_Stage3
 deriving (Bits);
+
+`ifdef INCLUDE_WOLF_VERIF
+    
+typedef struct {
+    Data_Wolf_Stage1    stage1;
+    // Hard to know what was written as SC pretends to write "0" on failure
+    // instead of actual untouched value. So, indicate wmask = 0 perhaps?
+    
+    Bit#(MASKLEN)       mem_rmask;
+    Bit#(MASKLEN)       mem_wmask;
+    
+}   Data_Wolf_Stage2 deriving (Bits);
+    
+`endif
 
 instance FShow #(Data_Stage2_to_Stage3);
    function Fmt fshow (Data_Stage2_to_Stage3 x);

@@ -15,7 +15,13 @@ import ClientServer :: *;
 import ISA_Decls       :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
+import Verifier  :: *;
 import TV_Info         :: *;
+import ISA_Decls       :: *;
+`elsif INCLUDE_WOLF_VERIF
+import Verifier  :: *;
+import TV_Wolf_Info    :: *;
+import ISA_Decls       :: *;
 `endif
 
 import Fabric_Defs     :: *;
@@ -54,7 +60,15 @@ interface CPU_IFC;
    // Optional interface to Tandem Verifier
 
 `ifdef INCLUDE_TANDEM_VERIF
+
    interface Get #(Info_CPU_to_Verifier)  to_verifier;
+   
+`elsif INCLUDE_WOLF_VERIF  
+
+   interface Get #(Info_CPU_to_Verifier)  to_verifier;
+   (*always_ready, always_enabled *)
+   method Bool halted;
+   
 `endif
 
    // ----------------

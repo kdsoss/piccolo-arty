@@ -57,7 +57,7 @@ typedef struct {
    RegName    rd;
    Bool       csr_valid;
    Addr       addr;     // Branch, jump: newPC
-		        // Mem ops and AMOs: mem addr
+		                // Mem ops and AMOs: mem addr
                         // CSRRx: csr addr
 
    WordXL     val1;     // OP_Stage2_ALU: result for Rd (ALU ops: result, JAL/JALR: return PC,
@@ -66,15 +66,17 @@ typedef struct {
                         // OP_Stage2_AMO: funct7
 
    WordXL     val2;     // Branch: branch target (for Tandem Verification)
-		        // OP_Stage2_ST: store-val
+		                // OP_Stage2_ST: store-val
                         // OP_Stage2_M, OP_Stage2_FD: arg2
-		        // CSSRx: new csr value
+		                // CSSRx: new csr value
    } ALU_Outputs
 deriving (Bits, FShow);
 
 ALU_Outputs alu_outputs_base = ALU_Outputs {control:   CONTROL_STRAIGHT,
 					    exc_code:  exc_code_ILLEGAL_INSTRUCTION,
 					    op_stage2: ?,
+					    // Wolf's verification model requires rd to be 0 for non-updating
+					    // At the moment we check this later in the sequence.
 					    rd:        ?,
 					    csr_valid: False,
 					    addr:      ?,
@@ -169,6 +171,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
    else if (funct3 == f3_BGE)  branch_taken = (s_rs1_val >= s_rs2_val);
    else if (funct3 == f3_BLTU) branch_taken = (rs1_val  <  rs2_val);
    else if (funct3 == f3_BGEU) branch_taken = (rs1_val  >= rs2_val);
+    // XXX: This should throw an invalid instruction exception, not a misalignment.
    else                        trap = True;
 
    trap = (trap ||
@@ -180,6 +183,10 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = 0;
    alu_outputs.addr      = (branch_taken ? branch_target : (inputs.pc + 4));
+   // Gives a defined value when in verification mode.
+   `ifdef INCLUDE_WOLF_VERIF
+   alu_outputs.val1      = 0;
+   `endif
    alu_outputs.val2      = branch_target;    // For tandem verifier only
 
    return alu_outputs;
@@ -254,7 +261,6 @@ function ALU_Outputs fv_OP_and_OP_IMM_shifts (ALU_Inputs inputs);
    Bit #(TLog #(XLEN)) shamt = (  (inputs.decoded_instr.opcode == op_OP_IMM)
 				? truncate (inputs.decoded_instr.imm12_I)
 				: truncate (rs2_val));
-
    WordXL   rd_val    = ?;
    let      funct3    = inputs.decoded_instr.funct3;
    Bit #(1) instr_b30 = inputs.instr [30];

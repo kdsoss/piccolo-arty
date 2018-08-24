@@ -29,14 +29,17 @@ import BuildVector  :: *;
 // ================================================================
 
 typedef 3 NO_OF_PRIVMODES;
+typedef 32 ILEN;
 
 `ifdef RV32
 
 typedef 32 XLEN;
+typedef 4  MASKLEN;
 
-`elsif RV64
+`else
 
 typedef 64 XLEN;
+typedef 8  MASKLEN;
 
 `endif
 
@@ -101,9 +104,7 @@ endfunction
 Bool hasFpu32 = True;
 Bool hasFpu64 = True;
 
-typedef  64  FLEN;                          // For RV{32,64}D
-
-typedef  Bit #(FLEN) FP_Value;
+typedef  64  FLEN;
 
 // ================================================================
 // Tokens are used for signalling/synchronization, and have no payload
@@ -121,9 +122,10 @@ Integer  numRegs = valueOf (NumRegs);
 
 function  Opcode     instr_opcode   (Instr x); return x [6:0]; endfunction
 
+
 function  Bit #(3)   instr_funct3   (Instr x); return x [14:12]; endfunction
 function  Bit #(5)   instr_funct5   (Instr x); return x [31:27]; endfunction
-function  Bit#(7)    instr_funct7   (Instr x); return x [31:25]; endfunction
+function  Bit #(7)   instr_funct7   (Instr x); return x [31:25]; endfunction
 function  Bit #(10)  instr_funct10  (Instr x); return { x [31:25], x [14:12] }; endfunction
 
 function  RegName    instr_rd       (Instr x); return x [11:7]; endfunction
@@ -197,7 +199,6 @@ function Decoded_Instr fv_decode (Instr instr);
 			 rs2:       instr_rs2      (instr),
 			 rs3:       instr_rs3      (instr),
 			 csr:       instr_csr      (instr),
-
 			 funct3:    instr_funct3   (instr),
 			 funct5:    instr_funct5   (instr),
 			 funct7:    instr_funct7   (instr),

@@ -77,7 +77,7 @@ Integer bytes_per_TCM = kB_per_TCM * 'h400;
 // ----------------
 // Memory
 
-Integer mB_per_mem0    = 'h100;                      // 256 MB
+Integer mB_per_mem0    = 'hf00;                      // 256 MB // was 'h10000
 Integer kB_per_mem0    = mB_per_mem0 * 'h400;
 Integer bytes_per_mem0 = kB_per_mem0 * 'h400;
 
@@ -162,7 +162,7 @@ module mkSoC_Map (SoC_Map_IFC);
    // ----------------------------------------------------------------
    // Main Mem Controller 0
 
-   Fabric_Addr mem0_controller_addr_size = fromInteger (bytes_per_mem0);
+   Fabric_Addr mem0_controller_addr_size = 'h_1000_0000;//fromInteger (bytes_per_mem0);
    Fabric_Addr mem0_controller_addr_base = 'h_8000_0000;
    Fabric_Addr mem0_controller_addr_lim  = mem0_controller_addr_base + mem0_controller_addr_size;
 

@@ -70,16 +70,14 @@ module mkRISCV_MBox (RISCV_MBox_IFC);
    Reg #(Bool)    dw_valid  <- mkDWire (False);
    Reg #(WordXL)  dw_result <- mkDWire (?);
 
-   // ----------------------------------------------------------------
-   // MUL family
+   // MUL family: SYNTH implementation
 
    // Relies on the fav_MUL/MULH/MULHU/MULHSU/MULW functions later in
    // this package which do multiplication directly with Verilog's '*'
    // and rely on Verilog synthesis to implement the multiplier.
    // (DSPs on FPGAa).
 
-   // Can be recoded to use the alternative iterative multiplier
-   // provided by the imported 'IntMulDiv' package.
+
 
    rule rl_mul (rg_state == STATE_MUL1);
       if (cfg_verbosity > 1)
@@ -120,8 +118,8 @@ module mkRISCV_MBox (RISCV_MBox_IFC);
       WordXL result = ((rg_f3 [1] == 1'b0) ? q : r ); 
 
 `ifdef RV64
-      if (! rg_is_OP_not_OP_32)
-	 result = signExtend (result [31:0]);
+    if (! rg_is_OP_not_OP_32)
+    result = signExtend (result [31:0]);
 `endif
 
       dw_valid  <= True;
@@ -150,15 +148,15 @@ module mkRISCV_MBox (RISCV_MBox_IFC);
 
 `ifdef RV64
       if (! is_OP_not_OP_32) begin
-	 // RV64 ops MULW/DIVW/DIVUW/REMW/REMUW)
-	 if (is_signed) begin
-	    v1 = signExtend (v1 [31:0]);
-	    v2 = signExtend (v2 [31:0]);
-	 end
-	 else begin
-	    v1 = zeroExtend (v1 [31:0]);
-	    v2 = zeroExtend (v2 [31:0]);
-	 end
+	    // RV64 ops MULW/DIVW/DIVUW/REMW/REMUW)
+	    if (is_signed) begin
+	        v1 = signExtend (v1 [31:0]);
+	        v2 = signExtend (v2 [31:0]);
+	    end
+	    else begin
+	        v1 = zeroExtend (v1 [31:0]);
+	        v2 = zeroExtend (v2 [31:0]);
+	    end
       end
 `endif
 
@@ -169,12 +167,11 @@ module mkRISCV_MBox (RISCV_MBox_IFC);
 
       // MUL, MULH, MULHU, MULHSU
       if (f3 [2] == 1'b0)
-	 rg_state <= STATE_MUL1;
-
+	    rg_state <= STATE_MUL1;
       // DIV, DIVU, REM, REMU
       else begin
-	 rg_state <= STATE_DIV_REM;
-	 intDiv.start (is_signed, is_signed);
+	    rg_state <= STATE_DIV_REM;
+	    intDiv.start (is_signed, is_signed);
       end
    endmethod
 

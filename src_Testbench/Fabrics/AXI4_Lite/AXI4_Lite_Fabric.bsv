@@ -93,7 +93,7 @@ module mkAXI4_Lite_Fabric #(function Tuple2 #(Bool, Bit #(TLog #(num_slaves)))
 
    function Bool wr_illegal_sj (Integer mi);
       let addr = xactors_from_masters [mi].o_wr_addr.first.awaddr;
-      match { .legal, ._ } = fn_addr_to_slave_num (addr);
+      match { .legal, .unused } = fn_addr_to_slave_num (addr);
       return (! legal);
    endfunction
 
@@ -105,7 +105,7 @@ module mkAXI4_Lite_Fabric #(function Tuple2 #(Bool, Bit #(TLog #(num_slaves)))
 
    function Bool rd_illegal_sj (Integer mi);
       let addr = xactors_from_masters [mi].o_rd_addr.first.araddr;
-      match { .legal, ._ } = fn_addr_to_slave_num (addr);
+      match { .legal, .unused } = fn_addr_to_slave_num (addr);
       return (! legal);
    endfunction
 

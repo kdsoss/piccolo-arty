@@ -109,7 +109,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       let decoded_instr = fv_decode (instr);
       let funct3        = decoded_instr.funct3;
       let csr           = decoded_instr.csr;
-   
+
       // Register rs1 read and bypass
       let rs1 = decoded_instr.rs1;
       let rs1_val = gpr_regfile.read_rs1 (rs1);
@@ -160,15 +160,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // CSR reads
       // Note: csr should not be read for CSRRW[I] if Rd=0 (i.e., don't cause its side-effects).
       // But currently csr_reads are pure (no side effects), so we omit this check.
-      let m_csr_val = csr_regfile.read_csr (csr);
-      let csr_valid = (   isValid (m_csr_val)
+        let m_csr_val = csr_regfile.read_csr (csr);
+        let csr_valid = (   isValid (m_csr_val)
 		       && (! csr_priv_fault)
 		       && (!csr_write_fault));
 
-      let csr_val   = fromMaybe (?, m_csr_val);
+        let csr_val   = fromMaybe (?, m_csr_val);
 
       // ALU function
-      let alu_inputs = ALU_Inputs {cur_priv:       cur_priv,
+        let alu_inputs = ALU_Inputs {cur_priv:       cur_priv,
 				   pc:             pc,
 				   instr:          instr,
 				   decoded_instr:  decoded_instr,
@@ -177,64 +177,79 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				   csr_valid:      csr_valid,
 				   csr_val:        csr_val,
 				   mstatus:        csr_regfile.read_mstatus};
-      let alu_outputs = fv_ALU (alu_inputs);
-
-      Output_Stage1 output_stage1 = ?;
+        let alu_outputs = fv_ALU (alu_inputs);
+        
+        Output_Stage1 output_stage1 = ?;
 
       // This stage is empty
       if (! rg_full) begin
-	 output_stage1.ostatus = OSTATUS_EMPTY;
+	    output_stage1.ostatus = OSTATUS_EMPTY;
       end
 
       // Stall if ICache not ready
       else if (! icache.valid) begin
-	 output_stage1.ostatus = OSTATUS_BUSY;
+	    output_stage1.ostatus = OSTATUS_BUSY;
       end
 
       // Stall if bypass pending for rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
-	 output_stage1.ostatus = OSTATUS_BUSY;
+	    output_stage1.ostatus = OSTATUS_BUSY;
       end
 
       // Trap on ICache exception
       else if (icache.exc) begin
-	 output_stage1.ostatus   = OSTATUS_NONPIPE;
-	 output_stage1.control   = CONTROL_TRAP;
-	 output_stage1.trap_info = Trap_Info {epc:      pc,
+	    output_stage1.ostatus   = OSTATUS_NONPIPE;
+	    output_stage1.control   = CONTROL_TRAP;
+	    output_stage1.trap_info = Trap_Info {epc:      pc,
 					      exc_code: icache.exc_code,
 					      badaddr:  pc};    // TODO: '?', perhaps?
       end
 
       // Trap on CSR access fault
-      else if (csr_priv_fault || csr_write_fault)
-	 begin
+      else if (csr_priv_fault || csr_write_fault) begin
+      
 	    output_stage1.ostatus   = OSTATUS_NONPIPE;
 	    output_stage1.control   = CONTROL_TRAP;
 	    output_stage1.trap_info = Trap_Info {epc:      pc,
 						 exc_code: exc_code_ILLEGAL_INSTRUCTION,
 						 badaddr:  zeroExtend(instr)}; // v1.10 - mtval
-	 end
+	  end
 
       // ALU outputs: normal, trap, and non-pipe instrs (CSR, MRET, FENCE.I, FENCE, WPI)
       else begin
-	 let ostatus = (  (   (alu_outputs.control == CONTROL_STRAIGHT)
+	    let ostatus = (  (   (alu_outputs.control == CONTROL_STRAIGHT)
 			   || (alu_outputs.control == CONTROL_BRANCH))
 			? OSTATUS_PIPE
 			: OSTATUS_NONPIPE);
 
 	 // TODO: change name 'badaddr' to 'tval'
-	 let badaddr = 0;
-	 if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
-	    badaddr = zeroExtend (instr);
-	 else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
-	    badaddr = alu_outputs.addr;    // branch target pc
-	 let trap_info = Trap_Info {epc:      pc,
+	    let badaddr = 0;
+	    if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
+	        badaddr = zeroExtend (instr);
+	    else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
+	        badaddr = alu_outputs.addr;    // branch target pc
+	    let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
 				    badaddr:  badaddr};  // v1.10 - mtval
 
-	 let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
-
-	 let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
+	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
+`ifdef INCLUDE_WOLF_VERIF
+	    let wolf_info = Data_Wolf_Stage1 {
+	                        instr:          instr,
+	                        rs1_addr:       rs1,
+	                        rs2_addr:       rs2,
+	                        rs1_data:       rs1_val,
+	                        rs2_data:       rs2_val,
+	                        pc_rdata:       pc,
+	                        pc_wdata:       next_pc,
+	                        mem_wdata:      alu_outputs.val2,
+	                        rd_addr:        alu_outputs.rd,
+	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
+	                        rd_wdata_alu:   alu_outputs.val1,
+	                        mem_addr:       alu_outputs.addr
+	                    };
+`endif
+	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:        pc,
 						     instr:     instr,
 						     op_stage2: alu_outputs.op_stage2,
@@ -242,13 +257,17 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 						     csr_valid: alu_outputs.csr_valid,
 						     addr:      alu_outputs.addr,
 						     val1:      alu_outputs.val1,
-						     val2:      alu_outputs.val2 };
+						     val2:      alu_outputs.val2 
+`ifdef INCLUDE_WOLF_VERIF
+                            ,wolf_info_s1: wolf_info
+`endif
+						     };
 
-	 output_stage1.ostatus        = ostatus;
-	 output_stage1.trap_info      = trap_info;
-	 output_stage1.control        = alu_outputs.control;
-	 output_stage1.next_pc        = next_pc;
-	 output_stage1.data_to_stage2 = data_to_stage2;
+	    output_stage1.ostatus        = ostatus;
+	    output_stage1.trap_info      = trap_info;
+	    output_stage1.control        = alu_outputs.control;
+	    output_stage1.next_pc        = next_pc;
+	    output_stage1.data_to_stage2 = data_to_stage2;
       end
 
       return output_stage1;

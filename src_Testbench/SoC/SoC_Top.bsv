@@ -73,10 +73,13 @@ import Debug_Module     :: *;
 
 // Entry point for Boot ROM used in Spike/Rocket
 // (boot code jumps later to 'h_8000_0000)
-Bit #(64)  pc_reset_value    = 'h_0000_1000;
+// Bit #(64)  pc_reset_value    = 'h_0000_1000;
 
 // Entry point for code generated for Spike/Rocket
-// Bit #(64)  pc_reset_value    = 'h_8000_0000;
+ Bit #(64)  pc_reset_value    = 'h_8000_0000;
+ 
+// Custom entry point for common sense usage.
+// Bit #(64)  pc_reset_value    = 'h_0000_0000;
 
 // ================================================================
 // Local types and constants

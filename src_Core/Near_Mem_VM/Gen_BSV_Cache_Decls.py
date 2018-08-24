@@ -68,8 +68,8 @@ def process_program_args ():
     sys.stdout.write ("Use  --help  for help\n")
 
     # ---- defaults
-    default_yaml_file      = 'RV32_Sv32_args.yaml'
-    bsv_package_name       = 'Cache_Decls_RV32'
+    default_yaml_file      = 'RV64_Sv39_args.yaml'
+    bsv_package_name       = 'Cache_Decls_RV64'
     item_Bits_per_PA       = 34
     item_KB_per_Cache      = 4
     item_Word64s_per_CLine = 4
@@ -202,15 +202,15 @@ def compute_derived_values (items):
                    "CSets_per_Cache * Word64s_per_CLine"))
 
     items.append (("Bits_per_Word64_in_CLine",
-                   int (math.log2 (sel (items, "Word64s_per_CLine"))),
+                   int (math.log (sel (items, "Word64s_per_CLine"),2)),
                    "log2 (Word64s_per_CLine)"))
 
     items.append (("Bits_per_Byte_in_CLine",
-                   int (math.log2 (sel (items, "Bytes_per_CLine"))),
+                   int (math.log (sel (items, "Bytes_per_CLine"),2)),
                    "log2 (Bytes_per_CLine)"))
 
     items.append (("Bits_per_CSet_in_Cache",
-                   int (math.log2 (sel (items, "CSets_per_Cache"))),
+                   int (math.log (sel (items, "CSets_per_Cache"),2)),
                    "log2 (CSets_per_Cache)"))
 
     items.append (("Bits_per_Word64_Set_in_Cache",
@@ -223,7 +223,7 @@ def compute_derived_values (items):
                    "Bits_per_PA - (Bits_per_CSet_in_Cache + Bits_per_Byte_in_CLine)"))
 
     items.append (("Bits_per_Way_in_CSet",
-                   int (math.log2 (sel (items, "Ways_per_CSet"))),
+                   int (math.log (sel (items, "Ways_per_CSet"),2)),
                    "log2 (Ways_per_CSet)"))
 
     items.append (("addr_lo_word64_in_cline",

@@ -38,7 +38,11 @@ import AXI4_Lite_Types :: *;
 import ISA_Decls :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
+import Verifier  :: *;
 import TV_Info   :: *;
+`elsif INCLUDE_WOLF_VERIF
+import Verifier  :: *;
+import TV_Wolf_Info :: *;
 `endif
 
 import GPR_RegFile :: *;
@@ -192,7 +196,13 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Tandem Verification
 
 `ifdef INCLUDE_TANDEM_VERIF
-   FIFOF #(Info_CPU_to_Verifier)  f_to_verifier <- mkFIFOF;
+    FIFOF #(Info_CPU_to_Verifier)  f_to_verifier <- mkFIFOF;
+`elsif INCLUDE_WOLF_VERIF
+
+    FIFOF #(Info_CPU_to_Verifier)  f_to_verifier <- mkFIFOF;
+    Reg   #(Bool)                  rg_handler    <- mkReg (False);
+    Reg   #(Bool)                  rg_donehalt       <- mkReg (False);
+    
 `endif
 
    // ================================================================
@@ -340,7 +350,10 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Reset
 
    rule rl_reset_start (rg_state == CPU_RESET1);
-      let req <- pop (f_reset_reqs);
+   
+      // Guessing this reset is automatically queued in the testbench/by bluesim.
+      // Either way, it might be what's blocking the program from running
+      // let req <- pop (f_reset_reqs);
 
 `ifdef INCLUDE_GDB_CONTROL
       rg_stop_req <= False;
@@ -374,12 +387,17 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	 $display ("%0d: CPU.rl_reset_start", cur_cycle);
 
 `ifdef INCLUDE_TANDEM_VERIF
-      Info_CPU_to_Verifier to_verifier = ?;
-      to_verifier.pc = fromInteger(pc_tv_cmd);
-      to_verifier.instr = fromInteger(tv_cmd_reset);
-      f_to_verifier.enq (to_verifier);
+      let verif = getVerifierInfo(True, fromInteger(pc_tv_cmd), 0, 0, 0, True, fromInteger(tv_cmd_reset));
+      f_to_verifier.enq (verif);
+
 `endif
    endrule
+
+      /* TODO: Not quite sure how to handle the reset, so we'll leave it for now.
+`elsif INCLUDE_ TODO _VERIF
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,False);
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;*/
 
    rule rl_reset_complete (rg_state == CPU_RESET2);
       let ack0 <- gpr_regfile.server_reset.response.get;
@@ -390,11 +408,12 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let ack5 <- stage3.server_reset.response.get;
 
       f_reset_rsps.enq (?);
-
+      
+`ifdef CPU_VERBOSITY_1
+        // XXX: Not sure if this is right, but it's better than having no 'if' at all
       if (cur_verbosity != 0)
 	 $display ("%0d: CPU.reset_complete", cur_cycle);
 
-`ifdef INCLUDE_GDB_CONTROL
       csr_regfile.write_dcsr_cause (DCSR_CAUSE_HALTREQ);
       rg_state <= CPU_DEBUG_MODE;
 
@@ -436,6 +455,18 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    Bool stage1_is_csrrx = ((stage1.out.ostatus == OSTATUS_PIPE)
 			   && fn_instr_is_csrrx (stage1.out.data_to_stage2.instr));
+    
+    
+`ifdef INCLUDE_WOLF_VERIF
+   // ================================================================
+   // WOLF VERIFICATION RULES
+   
+   //rule rl_wolf_disable (rg_state != CPU_RUNNING)
+   //    rg_rvfi_valid <= True;
+   //endrule
+   
+`endif
+    
 
    // ================================================================
    // PIPELINE BEHAVIOR (excluding nonpipe special instructions and exceptions)
@@ -446,6 +477,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // is stalled until downstream stages are empty. Then, we delay for
    // a cycle before fetching the next instr, since the fetch may need
    // the just-written CSR value.
+
+    
 
    (* fire_when_enabled *)
    rule rl_pipe (   (rg_state == CPU_RUNNING)
@@ -474,6 +507,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 `ifdef INCLUDE_TANDEM_VERIF
 	 // To Verifier
 	 f_to_verifier.enq (stage2.out.to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+	 let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, False, 0, rg_handler,rg_donehalt);
+	 rg_donehalt <= outpacket.rvfi_halt;
+	 f_to_verifier.enq(outpacket);
+	 rg_handler <= False;
 `endif
 
 	 // Accounting
@@ -567,22 +605,21 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       stage1.set_full (True);
       stage2.set_full (False);
 
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send trapping instr info to Tandem Verifier
+      let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("Stage 2 trap - EPC: 0x%0h, Mcause: 0x%0h", epc, mcause);
+      let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, True, exc_code, rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= True;
+`endif
+
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send trapping instr info to Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken: True,
-					      pc:        epc,
-					      addr:      next_pc,
-					      data1:     new_mstatus,
-					      data2:     mcause,
-					      instr_valid: True,
-					      instr:     instr
-					     };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       fa_emit_instr_trace (rg_inum, epc, instr, rg_cur_priv);
 
@@ -614,23 +651,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // Redirect PC
       fa_start_ifetch (next_pc, new_priv);
       stage1.set_full (True);
+      let exc_code = stage1.out.trap_info.exc_code;
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info Tandem Verifier
+      let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
+                        next_pc,new_mstatus,0,True,stage1.out.data_to_stage2.instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("MRET EXC_CODE: 0x%4h", exc_code);
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;
+`endif
 
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken:   False,
-					      pc:          stage1.out.data_to_stage2.pc,
-					      addr:        next_pc,
-					      data1:       new_mstatus,
-					      data2:       0,
-					      instr_valid: True,
-					      instr:       stage1.out.data_to_stage2.instr
-					     };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       // Debug
       fa_emit_instr_trace (rg_inum, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
@@ -665,23 +702,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // stage1.enq (stage1.out.data_to_stage2.pc);  stage1.set_full (True);
       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
       stage1.set_full (True);
+      let exc_code = stage1.out.trap_info.exc_code;
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info Tandem Verifier
+      let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
+                        0,0,0,True,stage1.out.data_to_stage2.instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("FENCE.I EXC_CODE: 0x%4h", exc_code);
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;
+`endif
 
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken: False,
-					      pc:        stage1.out.data_to_stage2.pc,
-					      addr:      0,
-					      data1:     0,
-					      data2:     0,
-					      instr_valid: True,
-					      instr:     stage1.out.data_to_stage2.instr
-                                             };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       // Debug
       fa_emit_instr_trace (rg_inum, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
@@ -718,23 +755,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // stage1.enq (stage1.out.data_to_stage2.pc);  stage1.set_full (True);
       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
       stage1.set_full (True);
+      let exc_code = stage1.out.trap_info.exc_code;
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info Tandem Verifier
+      let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
+                        0,0,0,True,stage1.out.data_to_stage2.instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("FENCE EXC_CODE: 0x%4h", exc_code);
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;
+`endif
 
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken: False,
-					      pc:        stage1.out.data_to_stage2.pc,
-					      addr:      0,
-					      data1:     0,
-					      data2:     0,
-					      instr_valid: True,
-					      instr:     stage1.out.data_to_stage2.instr
-                                             };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       // Debug
       fa_emit_instr_trace (rg_inum, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
@@ -744,6 +781,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    // ================================================================
    // Stage1: nonpipe special: SFENCE.VMA
+
+    // XXX: Does this instruction even exist? It's not in spec 2.2!
 
    rule rl_stage1_SFENCE_VMA (   (rg_state== CPU_RUNNING)
 			      && (! rg_halt)
@@ -764,23 +803,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_state <= CPU_RUNNING;
       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
       stage1.set_full (True);
+      let exc_code = stage1.out.trap_info.exc_code;
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info Tandem Verifier
+      let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
+                        0,0,0,True,stage1.out.data_to_stage2.instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("SFENCE EXC_CODE: 0x%4h", exc_code);
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;
+`endif
 
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken:   False,
-					      pc:          stage1.out.data_to_stage2.pc,
-					      addr:        0,
-					      data1:       0,
-					      data2:       0,
-					      instr_valid: True,
-					      instr:       stage1.out.data_to_stage2.instr
-                                             };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       // Debug
       fa_emit_instr_trace (rg_inum, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
@@ -817,23 +856,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_state <= CPU_RUNNING;
       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
       stage1.set_full (True);
+      let exc_code = stage1.out.trap_info.exc_code;
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info Tandem Verifier
+      let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
+					    0,0,0,True,stage1.out.data_to_stage2.instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= False;
+`endif
 
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
 
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken:   False,
-					      pc:          stage1.out.data_to_stage2.pc,
-					      addr:        0,
-					      data1:       0,
-					      data2:       0,
-					      instr_valid: True,
-					      instr:       stage1.out.data_to_stage2.instr
-                                             };
-      f_to_verifier.enq (to_verifier);
-`endif
    endrule: rl_WFI_resume
 
    // ----------------
@@ -881,22 +920,22 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       fa_start_ifetch (next_pc, new_priv);
       stage1.set_full (True);
 
+`ifdef INCLUDE_TANDEM_VERIF
+      // Send info on trapping instr Tandem Verifier
+      let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,
+					    mcause,True,instr);
+      f_to_verifier.enq (to_verifier);
+`elsif INCLUDE_WOLF_VERIF
+      //$display("EPC: 0x%0h, Mcause: 0x%0h", epc, mcause);
+      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,True,exc_code,rg_handler,rg_donehalt);
+	  rg_donehalt <= outpacket.rvfi_halt;
+	  f_to_verifier.enq(outpacket);
+	  rg_handler <= True;
+`endif
+
       // Accounting
       csr_regfile.csr_minstret_incr;
       rg_inum <= rg_inum + 1;
-
-`ifdef INCLUDE_TANDEM_VERIF
-      // Send info on trapping instr Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken: True,
-					      pc:        epc,
-					      addr:      next_pc,
-					      data1:     new_mstatus,
-					      data2:     mcause,
-					      instr_valid: True,
-					      instr:     instr
-                                             };
-      f_to_verifier.enq (to_verifier);
-`endif
 
       // Simulation heuristic: finish if trap back to this instr
 `ifndef INCLUDE_GDB_CONTROL
@@ -1003,14 +1042,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
 `ifdef INCLUDE_TANDEM_VERIF
       // Send info on trapping instr Tandem Verifier
-      let to_verifier = Info_CPU_to_Verifier {exc_taken: True,
-					      pc:        epc,
-					      addr:      next_pc,
-					      data1:     new_mstatus,
-					      data2:     mcause,
-					      instr_valid: True,
-					      instr:     instr
-                                             };
+      let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,
+					    mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `endif
 
@@ -1182,7 +1215,14 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Optional interface to Tandem Verifier
 
 `ifdef INCLUDE_TANDEM_VERIF
-   interface Get  to_verifier = toGet (f_to_verifier);
+
+   interface Get to_verifier = toGet (f_to_verifier);
+   
+`elsif INCLUDE_WOLF_VERIF
+   
+   interface Get to_verifier = toGet (f_to_verifier);
+   method Bool halted = rg_donehalt;
+   
 `endif
 
    // ----------------

@@ -451,17 +451,17 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
    function Action fa_req_ram_B (Addr addr);
       action
-	 // Request tag RAM
-	 let cset_in_cache = fn_Addr_to_CSet_in_Cache (addr);
-	 ram_state_and_ctag_cset.b.put (bram_cmd_read, cset_in_cache,    ?);
+	    // Request tag RAM
+	    let cset_in_cache = fn_Addr_to_CSet_in_Cache (addr);
+	    ram_state_and_ctag_cset.b.put (bram_cmd_read, cset_in_cache,    ?);
 
-	 // Request data RAM
-	 let word64_set_in_cache = fn_Addr_to_Word64_Set_in_Cache (addr);
-	 ram_word64_set.b.put          (bram_cmd_read, word64_set_in_cache, ?);
+	    // Request data RAM
+	    let word64_set_in_cache = fn_Addr_to_Word64_Set_in_Cache (addr);
+	    ram_word64_set.b.put          (bram_cmd_read, word64_set_in_cache, ?);
 
-	 if (cfg_verbosity > 1)
-	    $display ("    fa_req_ram_B tagCSet [0x%0x] word64_set [0x%0d]",
-		      cset_in_cache, word64_set_in_cache);
+	    if (cfg_verbosity > 1)
+	        $display ("    fa_req_ram_B tagCSet [0x%0x] word64_set [0x%0d]",
+                cset_in_cache, word64_set_in_cache);
       endaction
    endfunction
 
@@ -480,14 +480,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	 Bit #(64)    word64  = 0;
 
 	 for (Integer way = 0; way < ways_per_cset; way = way + 1) begin
-	    let hit_at_way  = (   (state_and_ctag_cset [way].state != CTAG_EMPTY)
-			       && (state_and_ctag_cset [way].ctag  == pa_ctag));
+	    let hit_at_way  = ((state_and_ctag_cset [way].state != CTAG_EMPTY) && (state_and_ctag_cset [way].ctag  == pa_ctag));
 	    let word64_at_way = word64_set [way];
 
 	    // Assertion: cannot have > 1 hit in a set
 	    if (hit && hit_at_way)
-	       $display ("        ASSERTION ERROR: fn_test_cache_hit_or_miss: multiple hits in set at [%0d] and [%0d]",
-			 way, way_hit);
+	       $display ("        ASSERTION ERROR: fn_test_cache_hit_or_miss: multiple hits in set at [%0d] and [%0d]", way, way_hit);
 
 	    hit     = hit || hit_at_way;
 	    way_hit = fromInteger (way);
@@ -519,17 +517,17 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // Functions to drive read-responses (outputs)
 
    // Memory-read responses
-   function Action fa_drive_mem_rsp (Bit #(3) f3, Addr addr, Bit #(64) ld_val, Bit #(64) st_amo_val);
-      action
-	 dw_valid             <= True;
-	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
-	 dw_output_ld_val     <= fn_extract_and_extend_bytes (f3, addr, ld_val);
-	 // Value stored into mem (STORE, SC, AMO final value stored)
-	 dw_output_st_amo_val <= st_amo_val;
-	 if (cfg_verbosity > 1)
-	    $display ("%0d: %s.drive_mem_rsp: addr 0x%0h ld_val 0x%0h st_amo_val 0x%0h",
-		      cur_cycle, d_or_i, addr, ld_val, st_amo_val);
-      endaction
+    function Action fa_drive_mem_rsp (Bit #(3) f3, Addr addr, Bit #(64) ld_val, Bit #(64) st_amo_val);
+        action
+            dw_valid <= True;
+	        // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
+	        dw_output_ld_val <= fn_extract_and_extend_bytes (f3, addr, ld_val);
+	        // Value stored into mem (STORE, SC, AMO final value stored)
+	        dw_output_st_amo_val <= st_amo_val;
+	        if (cfg_verbosity > 1)
+	            $display ("%0d: %s.drive_mem_rsp: addr 0x%0h ld_val 0x%0h st_amo_val 0x%0h",
+		            cur_cycle, d_or_i, addr, ld_val, st_amo_val);
+        endaction
    endfunction
 
    // IO-read responses
@@ -601,33 +599,33 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // Otherwise, moves to other states that handle TLB misses, cache
    // misses, 1-cycle delayed responses for ST and AMO, I/O requests, etc.
 
-   rule rl_probe_and_immed_rsp (rg_state == MODULE_RUNNING);
-      // Print some initial information for debugging
-      if (cfg_verbosity > 1) begin
-	 $display ("%0d: %s: rl_probe_and_immed_rsp; eaddr %0h", cur_cycle, d_or_i, rg_addr);
+    rule rl_probe_and_immed_rsp (rg_state == MODULE_RUNNING);
+        // Print some initial information for debugging
+        if (cfg_verbosity > 1) begin
+	        $display ("%0d: %s: rl_probe_and_immed_rsp; eaddr %0h", cur_cycle, d_or_i, rg_addr);
 `ifdef RV32
-	 if (vm_mode != satp_mode_RV32_bare)
-	    $display ("        Priv:%0d  SATP:{mode %0d asid %0h pa %0h}  VA:%0h.%0h.%0h",
-		      rg_priv, vm_mode, asid, satp_pa, vpn_1, vpn_0, offset);
+	        if (vm_mode != satp_mode_RV32_bare)
+	            $display ("        Priv:%0d  SATP:{mode %0d asid %0h pa %0h}  VA:%0h.%0h.%0h",
+		        rg_priv, vm_mode, asid, satp_pa, vpn_1, vpn_0, offset);
 `elsif SV39
-	 if (vm_mode != satp_mode_RV64_bare)
-	    $display ("        Priv:%0d  SATP:{mode %0d asid %0h pa %0h}  VA:%0h.%0h.%0h",
-		      rg_priv, vm_mode, asid, satp_pa, vpn_1, vpn_0, offset);
+	        if (vm_mode != satp_mode_RV64_bare)
+	            $display ("        Priv:%0d  SATP:{mode %0d asid %0h pa %0h}  VA:%0h.%0h.%0h",
+		            rg_priv, vm_mode, asid, satp_pa, vpn_1, vpn_0, offset);
 `endif
-	 $display ("        eaddr = {CTag 0x%0h  CSet 0x%0h  Word64 0x%0h  Byte 0x%0h}",
-		   fn_PA_to_CTag (fn_WordXL_to_PA (rg_addr)),
-		   cset_in_cache,
-		   word64_in_cline,
-		   byte_in_word64);
-	 fa_display_state_and_ctag_cset (cset_in_cache, state_and_ctag_cset);
-	 fa_display_word64_set (cset_in_cache, word64_in_cline, word64_set);
-      end
+	        $display ("        eaddr = {CTag 0x%0h  CSet 0x%0h  Word64 0x%0h  Byte 0x%0h}",
+		        fn_PA_to_CTag (fn_WordXL_to_PA (rg_addr)),
+		        cset_in_cache,
+		        word64_in_cline,
+		        byte_in_word64);
+	        fa_display_state_and_ctag_cset (cset_in_cache, state_and_ctag_cset);
+	        fa_display_word64_set (cset_in_cache, word64_in_cline, word64_set);
+        end
 
       // ----------------
       // Virtual Memory translation
 
 `ifdef ISA_PRIV_S
-      VM_Xlate_Result vm_xlate_result <- fav_vm_xlate (rg_addr,
+        VM_Xlate_Result vm_xlate_result <- fav_vm_xlate (rg_addr,
 						       rg_satp,
 						       tlb_result,
 						       dmem_not_imem,
@@ -637,258 +635,257 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 						       rg_mstatus_MXR);
 `else
 `ifdef RV32
-      PA   pa    = zeroExtend (rg_addr);    // TODO: or should this be signExtend?
+        PA   pa    = zeroExtend (rg_addr);    // TODO: or should this be signExtend?
 `elsif RV64
-      PA   pa    = truncate (rg_addr);
+        PA   pa    = truncate (rg_addr);
 `endif
-      VM_Xlate_Result vm_xlate_result = VM_Xlate_Result {outcome:      VM_XLATE_OK,
-							 pa:           pa,
-							 exc_code:     ?};
+        VM_Xlate_Result vm_xlate_result = VM_Xlate_Result {outcome: VM_XLATE_OK,
+							                                    pa: pa,
+							                              exc_code: ?};
 `endif
 
-      if (cfg_verbosity > 1)
-	 $display ("    TLB result: ", fshow (vm_xlate_result));
+        if (cfg_verbosity > 1)
+            $display ("    TLB result: ", fshow (vm_xlate_result));
 
       // ---- TLB miss
-      if (vm_xlate_result.outcome == VM_XLATE_TLB_MISS) begin
-	 rg_state <= PTW_START;
-      end
+        if (vm_xlate_result.outcome == VM_XLATE_TLB_MISS) begin
+	        rg_state <= PTW_START;
+        end
       // ---- TLB translation excepion
-      else if (vm_xlate_result.outcome == VM_XLATE_EXCEPTION) begin
-	 rg_state <= MODULE_EXCEPTION_RSP;
-	 rg_exc_code <= vm_xlate_result.exc_code;
-      end
+        else if (vm_xlate_result.outcome == VM_XLATE_EXCEPTION) begin
+	        rg_state <= MODULE_EXCEPTION_RSP;
+	        rg_exc_code <= vm_xlate_result.exc_code;
+        end
       // ---- TLB translation ok
-      else begin
+        else begin
 	 // (vm_xlate_result.outcome == VM_XLATE_OK)
-	 rg_pa <= vm_xlate_result.pa;
+	        rg_pa <= vm_xlate_result.pa;
 
 	 // IO requests
-	 if (soc_map.m_is_IO_addr (fn_PA_to_Fabric_Addr (vm_xlate_result.pa))) begin
-	    rg_state <= IO_REQ;
+        if (soc_map.m_is_IO_addr (fn_PA_to_Fabric_Addr (vm_xlate_result.pa))) begin
+	        rg_state <= IO_REQ;
 	    // TODO: mark the pte A and D bits, writeback PTE if changed
-	    if (cfg_verbosity > 1)
-	       $display ("    => IO_REQ");
-	 end
+	        if (cfg_verbosity > 1)
+	            $display ("    => IO_REQ");
+	    end
 	 // Memory requests
-	 else begin
-	    // Compute cache hit/miss. If hit, also compute Way_in_CSet and Word64
-	    let pa_ctag = fn_PA_to_CTag (vm_xlate_result.pa);
-	    match { .hit, .way_hit, .word64 } <- fn_test_cache_hit_or_miss (pa_ctag);
+	    else begin
+	        // Compute cache hit/miss. If hit, also compute Way_in_CSet and Word64
+	        let pa_ctag = fn_PA_to_CTag (vm_xlate_result.pa);
+	        match { .hit, .way_hit, .word64 } <- fn_test_cache_hit_or_miss (pa_ctag);
 
 	    // ----------------
 	    // Memory LD and AMO_LR
-	    if ((rg_op == CACHE_LD) || is_AMO_LR) begin
-	       if (hit) begin
-		  // Cache hit; drive response
-		  fa_drive_mem_rsp (rg_f3, rg_addr, word64, 0);
-
+            if ((rg_op == CACHE_LD) || is_AMO_LR) begin
+                if (hit) begin
+		            // Cache hit; drive response
+		            fa_drive_mem_rsp (rg_f3, rg_addr, word64, 0);
 `ifdef ISA_A
-		  if (is_AMO_LR) begin
-		     rg_lrsc_valid <= True;
-		     rg_lrsc_pa    <= vm_xlate_result.pa;
-		     if (cfg_verbosity > 1)
-			$display ("        AMO LR: reserving PA 0x%0h", vm_xlate_result.pa);
-		  end
+		            if (is_AMO_LR) begin
+		                rg_lrsc_valid <= True;
+		                rg_lrsc_pa    <= vm_xlate_result.pa;
+		                if (cfg_verbosity > 1)
+			                $display ("        AMO LR: reserving PA 0x%0h", vm_xlate_result.pa);
+		            end
 `endif
-
 		  // TODO: mark the pte A bit, writeback PTE if changed
-
-		  if (cfg_verbosity > 1) begin
-		     $display ("        Read-hit: addr 0x%0h word64 0x%0h", rg_addr, word64);
-		  end
-	       end
-	       else begin
-		  // Cache miss; start cache-line refill
-		  rg_state <= CACHE_START_REFILL;
-		  if (cfg_verbosity > 1)
-		     $display ("        Read Miss: -> CACHE_START_REFILL.");
+		            if (cfg_verbosity > 1) begin
+		                $display ("        Read-hit: addr 0x%0h word64 0x%0h", rg_addr, word64);
+		            end
+                end
+	            else begin
+		            // Cache miss; start cache-line refill
+		            rg_state <= CACHE_START_REFILL;
+		            if (cfg_verbosity > 1)
+		                $display ("        Read Miss: -> CACHE_START_REFILL.");
 `ifdef ISA_A
 		  // TODO: this is pessimistic; unnecessary in a single-hart system?
-		  if (is_AMO_LR && (vm_xlate_result.pa == rg_lrsc_pa)) begin
-		     rg_lrsc_valid <= False;
-		     if (cfg_verbosity > 1)
-			$display ("        AMO LR: cache refill: cancelling LR/SC reservation for PA 0x%0h", rg_lrsc_pa);
-		  end
+		            if (is_AMO_LR && (vm_xlate_result.pa == rg_lrsc_pa)) begin
+		                rg_lrsc_valid <= False;
+		                if (cfg_verbosity > 1)
+			                $display ("        AMO LR: cache refill: cancelling LR/SC reservation for PA 0x%0h", rg_lrsc_pa);
+		            end
 `endif
-	       end
-	    end
+	            end
+	        end
 
 	    // ----------------
 	    // Memory ST and AMO SC
-	    else if ((rg_op == CACHE_ST) || is_AMO_SC) begin
-	       Bool do_write = True;    // Always True for ST; success/fail for AMO_SC
+	        else if ((rg_op == CACHE_ST) || is_AMO_SC) begin
+	            Bool do_write = True;    // Always True for ST; success/fail for AMO_SC
 `ifdef ISA_A
 	       // ST: if to an LR/SC reserved address, invalidate the reservation
-	       if ((rg_op == CACHE_ST) && (vm_xlate_result.pa == rg_lrsc_pa)) begin
-		  rg_lrsc_valid <= False;
-		  if (cfg_verbosity > 1)
-		     $display ("        ST: cancelling LR/SC reservation for PA", vm_xlate_result.pa);
-	       end
+	            if ((rg_op == CACHE_ST) && (vm_xlate_result.pa == rg_lrsc_pa)) begin
+		            rg_lrsc_valid <= False;
+		            if (cfg_verbosity > 1)
+		                $display ("        ST: cancelling LR/SC reservation for PA", vm_xlate_result.pa);
+	            end
 
 	       // AMO_SC
-	       else if (is_AMO_SC) begin
+	            else if (is_AMO_SC) begin
 		  // Fail if reservation is not valid, or if not to the reserved addr
-		  if (! rg_lrsc_valid) begin
-		     do_write = False;
-		     if (cfg_verbosity > 1)
-			$display ("        AMO SC: fail due to invalid LR/SC reservation");
-		  end
-		  else if (rg_lrsc_pa != vm_xlate_result.pa) begin
-		     do_write = False;
-		     if (cfg_verbosity > 1)
-			$display ("        AMO SC: fail: reserved addr 0x%0h, this address 0x%0h",
-				  rg_lrsc_pa, vm_xlate_result.pa);
-		  end
+		            if (! rg_lrsc_valid) begin
+		                do_write = False;
+		                if (cfg_verbosity > 1)
+			                $display ("        AMO SC: fail due to invalid LR/SC reservation");
+		            end
+		            else if (rg_lrsc_pa != vm_xlate_result.pa) begin
+		                do_write = False;
+		                if (cfg_verbosity > 1)
+			                $display ("        AMO SC: fail: reserved addr 0x%0h, this address 0x%0h",
+				                rg_lrsc_pa, vm_xlate_result.pa);
+		            end
 
-		  Bit #(1) lrsc_result = (do_write ? 1'b0 : 1'b1);
-
-		  rg_ld_val     <= zeroExtend (lrsc_result);
-		  rg_lrsc_valid <= False;
-		  if (cfg_verbosity > 1)
-		     $display ("        AMO SC result = %0d", lrsc_result);
-	       end
+		            Bit #(1) lrsc_result = (do_write ? 1'b0 : 1'b1);
+		            rg_ld_val     <= zeroExtend (lrsc_result);
+		            rg_lrsc_valid <= False;
+		            if (cfg_verbosity > 1)
+		                $display ("        AMO SC result = %0d", lrsc_result);
+	            end
 `endif
-	       if (do_write) begin
+	            if (do_write) begin
 		  // ST, or successful SC
-		  if (hit) begin
+		            if (hit) begin
 		     // Update cache line in cache
-		     let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, rg_st_amo_val);
-		     ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
+		                let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, rg_st_amo_val);
+		                ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
 
-		     if (cfg_verbosity > 1) begin
-			$display ("        Write-Cache-Hit: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
-			$write   ("        New Word64_Set:");
-			fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
-		     end
-		  end
-		  else begin
-		     if (cfg_verbosity > 1)
-			$display ("        Write-Cache-Miss: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
-		  end
+		                if (cfg_verbosity > 1) begin
+			                $display ("        Write-Cache-Hit: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+			                $write   ("        New Word64_Set:");
+			                fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
+		                end
+		            end
+		            else begin
+		                if (cfg_verbosity > 1)
+			                $display ("        Write-Cache-Miss: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+		            end
 
 		  // For write-hits and write-misses, writeback data to memory (so cache remains clean)
-		  match {.fabric_addr,
-			 .fabric_data,
-			 .fabric_strb } = fn_to_fabric_addr_data_strobe (rg_f3, vm_xlate_result.pa, rg_st_amo_val);
-		  let mem_req_wr_addr = AXI4_Lite_Wr_Addr {awaddr: fabric_addr, awprot: 0, awuser: dummy_user};
-		  let mem_req_wr_data = AXI4_Lite_Wr_Data {wdata:  fabric_data, wstrb: fabric_strb};
-
-		  master_xactor.i_wr_addr.enq (mem_req_wr_addr);
-		  master_xactor.i_wr_data.enq (mem_req_wr_data);
-		  ctr_wr_rsps_pending.incr;            // Expect a fabric response
+		            match {.fabric_addr,
+			            .fabric_data,
+			            .fabric_strb } = fn_to_fabric_addr_data_strobe (rg_f3, vm_xlate_result.pa, rg_st_amo_val);
+		            let mem_req_wr_addr = AXI4_Lite_Wr_Addr {awaddr: fabric_addr, awprot: 0, awuser: dummy_user};
+		            let mem_req_wr_data = AXI4_Lite_Wr_Data {wdata:  fabric_data, wstrb: fabric_strb};
+                    if(cfg_verbosity > 0) begin
+                        $display("    Sending write address to main memory: 0x%0h",fabric_addr);
+		            end
+		            master_xactor.i_wr_addr.enq (mem_req_wr_addr);
+		            master_xactor.i_wr_data.enq (mem_req_wr_data);
+		            ctr_wr_rsps_pending.incr;            // Expect a fabric response
 
 		  // TODO: mark the pte A and D bits, writeback PTE if changed
 
 		  // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
 		  // in case the next incoming request tries to read from the same SRAM address.
-		  rg_state <= CACHE_ST_AMO_RSP;
+		            rg_state <= CACHE_ST_AMO_RSP;
 
-		  if (cfg_verbosity > 1) begin
-		     $display ("        Write-Hit/Miss: eaddr 0x%0h word64 0x%0h", rg_addr, rg_st_amo_val);
-		     $display ("            To fabric: ", fshow (mem_req_wr_addr));
-		     $display ("                       ", fshow (mem_req_wr_data));
-		     $display ("    => rl_write_response");
-		  end
-
-	       end
-	       else begin // do_write == False
+		            if (cfg_verbosity > 1) begin
+		                $display ("        Write-Hit/Miss: eaddr 0x%0h word64 0x%0h", rg_addr, rg_st_amo_val);
+		                $display ("            To fabric: ", fshow (mem_req_wr_addr));
+		                $display ("                       ", fshow (mem_req_wr_data));
+		                $display ("    => rl_write_response");
+		            end
+    
+	            end
+	            else begin // do_write == False
 		  // SC fail
-		  fa_drive_mem_rsp (rg_f3, rg_addr, 1, 0);
-		  if (cfg_verbosity > 1)
-		     $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
-	       end
-	    end
+		            fa_drive_mem_rsp (rg_f3, rg_addr, 1, 0);
+		            if (cfg_verbosity > 1)
+		                $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
+	            end
+	        end
 
 `ifdef ISA_A
 	    // ----------------
 	    // Remaining AMOs
-	    else begin
-	       if (! hit) begin
-		  // Cache miss; AMOs are only done in the cache, so first refill the cache-line
-		  rg_state <= CACHE_START_REFILL;
-		  if (cfg_verbosity > 1)
-		     $display ("        AMO Miss: -> CACHE_START_REFILL.");
-	       end
-	       else begin
+	        else begin
+	            if (! hit) begin
+		        // Cache miss; AMOs are only done in the cache, so first refill the cache-line
+		            rg_state <= CACHE_START_REFILL;
+		            if (cfg_verbosity > 1)
+		                $display ("        AMO Miss: -> CACHE_START_REFILL.");
+	            end
+	            else begin
 		  // w1 (from word64) is the (old) value loaded from mem, destined for reg Rd
 		  // w2 is the value that was in reg Rs2
 		  // st_val is new value to be stored back to mem (w1 op w2)
-		  Bit #(64) st_val = ?;
-		  Bit #(5)  f5     = rg_amo_funct7 [6:2];
-		  Bit #(64) w1     = fn_extract_and_extend_bytes (rg_f3, rg_addr, word64);
-		  Bit #(64) w2     = rg_st_amo_val;
-		  Int #(64) i1     = unpack (w1);
-		  Int #(64) i2     = unpack (w2);
-		  if (rg_f3 == f3_AMO_W) begin
-		     w1 = zeroExtend (w1 [31:0]);
-		     w2 = zeroExtend (w2 [31:0]);
-		     i1 = unpack (signExtend (w1 [31:0]));
-		     i2 = unpack (signExtend (w2 [31:0]));
-		  end
-		  case (f5)
-		     f5_AMO_SWAP: st_val = w2;
-		     f5_AMO_ADD:  st_val = pack (i1 + i2);
-		     f5_AMO_XOR:  st_val = w1 ^ w2;
-		     f5_AMO_AND:  st_val = w1 & w2;
-		     f5_AMO_OR:   st_val = w1 | w2;
-		     f5_AMO_MINU: st_val = ((w1 < w2) ? w1 : w2);
-		     f5_AMO_MAXU: st_val = ((w1 > w2) ? w1 : w2);
-		     f5_AMO_MIN:  st_val = ((i1 < i2) ? w1 : w2);
-		     f5_AMO_MAX:  st_val = ((i1 > i2) ? w1 : w2);
-		  endcase
+		            Bit #(64) st_val = ?;
+		            Bit #(5)  f5     = rg_amo_funct7 [6:2];
+		            Bit #(64) w1     = fn_extract_and_extend_bytes (rg_f3, rg_addr, word64);
+		            Bit #(64) w2     = rg_st_amo_val;
+		            Int #(64) i1     = unpack (w1);
+		            Int #(64) i2     = unpack (w2);
+		            if (rg_f3 == f3_AMO_W) begin
+		                w1 = zeroExtend (w1 [31:0]);
+		                w2 = zeroExtend (w2 [31:0]);
+		                i1 = unpack (signExtend (w1 [31:0]));
+		                i2 = unpack (signExtend (w2 [31:0]));
+		            end
+		            case (f5)
+		                f5_AMO_SWAP: st_val = w2;
+		                f5_AMO_ADD:  st_val = pack (i1 + i2);
+		                f5_AMO_XOR:  st_val = w1 ^ w2;
+		                f5_AMO_AND:  st_val = w1 & w2;
+		                f5_AMO_OR:   st_val = w1 | w2;
+		                f5_AMO_MINU: st_val = ((w1 < w2) ? w1 : w2);
+		                f5_AMO_MAXU: st_val = ((w1 > w2) ? w1 : w2);
+		                f5_AMO_MIN:  st_val = ((i1 < i2) ? w1 : w2);
+		                f5_AMO_MAX:  st_val = ((i1 > i2) ? w1 : w2);
+		            endcase
 
-		  if (rg_f3 == f3_AMO_W)
-		     st_val = zeroExtend (st_val [31:0]);
+		                if (rg_f3 == f3_AMO_W)
+		                    st_val = zeroExtend (st_val [31:0]);
 
 		  // Update cache line in cache
-		  let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, st_val);
-		  ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
+		                let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, st_val);
+		                ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
 
 		  // Writeback data to memory (so cache remains clean)
-		  match {.fabric_addr,
-			 .fabric_data,
-			 .fabric_strb } = fn_to_fabric_addr_data_strobe (rg_f3, vm_xlate_result.pa, st_val);
-		  let mem_req_wr_addr = AXI4_Lite_Wr_Addr {awaddr: fabric_addr, awprot: 0, awuser: dummy_user};
-		  let mem_req_wr_data = AXI4_Lite_Wr_Data {wdata:  fabric_data, wstrb: fabric_strb};
-		  master_xactor.i_wr_addr.enq (mem_req_wr_addr);
-		  master_xactor.i_wr_data.enq (mem_req_wr_data);
-		  ctr_wr_rsps_pending.incr;            // Expect a fabric response
+		                match {.fabric_addr,
+			                .fabric_data,
+			                .fabric_strb } = fn_to_fabric_addr_data_strobe (rg_f3, vm_xlate_result.pa, st_val);
+		                let mem_req_wr_addr = AXI4_Lite_Wr_Addr {awaddr: fabric_addr, awprot: 0, awuser: dummy_user};
+		                let mem_req_wr_data = AXI4_Lite_Wr_Data {wdata:  fabric_data, wstrb: fabric_strb};
+			                $display("    Sending AMO address to main memory: 0x%0h",mem_req_wr_addr);
+		                master_xactor.i_wr_addr.enq (mem_req_wr_addr);
+		                master_xactor.i_wr_data.enq (mem_req_wr_data);
+		                ctr_wr_rsps_pending.incr;            // Expect a fabric response
 
-		  // If this is to the LR/SC reserved address, invalidate the reservation
-		  // TODO: should we invalidate even if to a different
-		  // addr, since LR/SC pairs are not supposed to have
-		  // other mem ops between them?
-		  if (vm_xlate_result.pa == rg_lrsc_pa) begin
-		     rg_lrsc_valid <= False;
-		     if (cfg_verbosity > 1)
-			$display ("        AMO_op: cancelling LR/SC reservation for PA", vm_xlate_result.pa);
-		  end
+		                // If this is to the LR/SC reserved address, invalidate the reservation
+		                // TODO: should we invalidate even if to a different
+		                // addr, since LR/SC pairs are not supposed to have
+		                // other mem ops between them?
+		                if (vm_xlate_result.pa == rg_lrsc_pa) begin
+		                    rg_lrsc_valid <= False;
+		                    if (cfg_verbosity > 1)
+			                    $display ("        AMO_op: cancelling LR/SC reservation for PA", vm_xlate_result.pa);
+		                end
 
-		  // TODO: mark the pte A and D bits, writeback PTE if changed
+		                // TODO: mark the pte A and D bits, writeback PTE if changed
 
-		  // Provide amo response after 1-cycle delay (thus locking the cset for 1 cycle),
-		  // in case the next incoming request tries to read from the same address.
-		  rg_ld_val     <= truncate (pack (i1));
-		  rg_st_amo_val <= st_val;
-		  rg_state  <= CACHE_ST_AMO_RSP;
+		                // Provide amo response after 1-cycle delay (thus locking the cset for 1 cycle),
+		                // in case the next incoming request tries to read from the same address.
+		                rg_ld_val     <= truncate (pack (i1));
+		                rg_st_amo_val <= st_val;
+		                rg_state  <= CACHE_ST_AMO_RSP;
 
-		  if (cfg_verbosity > 1) begin
-		     $display ("        AMO: addr 0x%0h amo_f5 0x%0h f3 %0d rs2_val 0x%0h", rg_addr, f5, rg_f3, w2);
-		     $display ("          PA 0x%0h ", vm_xlate_result.pa);
-		     $display ("          Cache word64 0x%0h, load-result 0x%0h", word64, w1);
-		     $display ("          0x%0h  op  0x%0h -> 0x%0h", w1, w2, st_val);
-		     $write   ("          New Word64_Set:");
-		     fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
-		     $display ("          To fabric: ", fshow (mem_req_wr_addr));
-		     $display ("                     ", fshow (mem_req_wr_data));
-		  end
-	       end
-	    end
+		                if (cfg_verbosity > 1) begin
+		                    $display ("        AMO: addr 0x%0h amo_f5 0x%0h f3 %0d rs2_val 0x%0h", rg_addr, f5, rg_f3, w2);
+		                    $display ("          PA 0x%0h ", vm_xlate_result.pa);
+		                    $display ("          Cache word64 0x%0h, load-result 0x%0h", word64, w1);
+		                    $display ("          0x%0h  op  0x%0h -> 0x%0h", w1, w2, st_val);
+		                    $write   ("          New Word64_Set:");
+		                    fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
+		                    $display ("          To fabric: ", fshow (mem_req_wr_addr));
+		                    $display ("                     ", fshow (mem_req_wr_data));
+		                end
+	                end
+	            end
 `endif
-	 end
-      end
-   endrule: rl_probe_and_immed_rsp
+	        end
+        end
+    endrule: rl_probe_and_immed_rsp
 
    // ****************************************************************
    // TLB REFILLS (Page Table Walks)
@@ -1209,6 +1206,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       Fabric_Addr    cline_fabric_addr = fn_PA_to_Fabric_Addr (cline_addr);
 
       let mem_req = AXI4_Lite_Rd_Addr {araddr: cline_fabric_addr, arprot: 0, aruser: dummy_user};
+      if(cfg_verbosity > 0) begin
+          $display("    Sending line read request to main memory: 0x%0h", cline_fabric_addr);
+      end
       master_xactor.i_rd_addr.enq (mem_req);
 
       rg_requesting_cline  <= True;
@@ -1255,6 +1255,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       PA          cline_addr        = fn_align_Addr_to_CLine (rg_pa);
       Fabric_Addr cline_fabric_addr = (fn_PA_to_Fabric_Addr (cline_addr) | rg_req_byte_in_cline);
       let mem_req = AXI4_Lite_Rd_Addr {araddr: cline_fabric_addr, arprot: 0, aruser: dummy_user};
+      if(cfg_verbosity > 0) begin
+          $display("    Sending line refill request to main memory:0x%0h",cline_fabric_addr);
+      end
       master_xactor.i_rd_addr.enq (mem_req);
 
       // Check if end of refill loop (req_byte_in_cline is last one)
