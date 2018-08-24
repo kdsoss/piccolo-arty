@@ -65,6 +65,8 @@ import External_Control :: *;    // Control requests/responses from HSFE
 import Debug_Module     :: *;
 `endif
 
+import Axi4LRegFile ::*;
+
 // ================================================================
 // PC reset value
 
@@ -189,18 +191,21 @@ module mkSoC_Top (SoC_Top_IFC);
    mkConnection (fabric.v_to_slaves [accel0_slave_num],          accel_aes0.slave);
 `endif
 
+`ifdef HTIF_MEMORY
+   AXI4_Lite_Slave_IFC#(Wd_Addr, Wd_Data, Wd_User) htif <- mkAxi4LRegFile(bytes_per_htif);
+
+   mkConnection (fabric.v_to_slaves [htif_slave_num], htif);
+`endif
+
    // ----------------
    // Connect interrupt sources for CPU interrupt request inputs.
 
    // External interrupts. TODO: connect to external interrupt controller
    rule rl_connect_external_interrupt_request (False);
-      brvf_core.cpu_external_interrupt_req;
-   endrule
-
-   // Software interrupt
-   rule rl_connect_software_interrupt_request;
-      let x <- timer0.get_sw_interrupt_req.get;
-      brvf_core.cpu_software_interrupt_req;
+      Bool req = ?;
+      brvf_core.cpu_external_interrupt_req (req);
+      if (verbosity > 1)
+	 $display ("%0d: SoC_Top.rl_connect_external_interrupt_request: ", cur_cycle, fshow (req));
    endrule
 
    // Timer interrupt
@@ -209,6 +214,14 @@ module mkSoC_Top (SoC_Top_IFC);
       brvf_core.cpu_timer_interrupt_req (req);
       if (verbosity > 1)
 	 $display ("%0d: SoC_Top.rl_connect_timer_interrupt_request: ", cur_cycle, fshow (req));
+   endrule
+
+   // Software interrupt
+   rule rl_connect_software_interrupt_request;
+      let req <- timer0.get_sw_interrupt_req.get;
+      brvf_core.cpu_software_interrupt_req (req);
+      if (verbosity > 1)
+	 $display ("%0d: SoC_Top.rl_connect_software_interrupt_request: ", cur_cycle, fshow (req));
    endrule
 
    // ================================================================

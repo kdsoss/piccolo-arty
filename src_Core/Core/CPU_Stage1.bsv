@@ -66,9 +66,6 @@ interface CPU_Stage1_IFC;
 
    (* always_ready *)
    method Action set_full (Bool full);
-
-   // Debugging
-   method Action show_state;
 endinterface
 
 // ================================================================
@@ -76,6 +73,9 @@ endinterface
 
 module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		      GPR_RegFile_IFC  gpr_regfile,
+`ifdef ISA_F
+		      FPR_RegFile_IFC  fpr_regfile,
+`endif
 		      CSR_RegFile_IFC  csr_regfile,
 		      IMem_IFC         icache,
 		      Bypass           bypass_from_stage2,
@@ -126,44 +126,29 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       Bool rs2_busy = (busy2a || busy2b);
       Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
 
+      // ----------------
       // CSR address-based protection checks
-      Bool is_csrrx          = (   (decoded_instr.opcode == op_SYSTEM)
-                                && f3_is_CSRR_any (funct3));
-      Bool csr_priv_fault    = (is_csrrx && (cur_priv < csr [9:8]));        // wrong privilege
+      Bool is_csrrx = ((decoded_instr.opcode == op_SYSTEM) && f3_is_CSRR_any (funct3));
 
-      // When accessing the performance counters, the MCounteren register bits
-      // should be factored in before declaring a CSR privilege fault
-      let mc = csr_regfile.read_csr_mcounteren;
-      Bool csr_ctr_fault     = (   csr_priv_fault
-                                && (   (csr == csr_mcycle) && (mc.cy == 1'b0)
-				    || (csr == csr_minstret) && (mc.ir == 1'b0)
-`ifdef RV32
-				    || (csr == csr_mcycleh) && (mc.cy == 1'b0)
-				    || (csr == csr_minstreth) && (mc.ir == 1'b0)
-`endif
-				   ));
-      Bool csr_ctr_access    = (   is_csrrx
-                                && (   (csr == csr_mcycle)
-				    || (csr == csr_minstret)
-`ifdef RV32
-				    || (csr == csr_minstreth)
-				    || (csr == csr_mcycleh)
-`endif
-				   ));
+      // CSR accessible at this privilege?
+      Bool csr_priv_fault = (cur_priv < csr [9:8]);
 
-      csr_priv_fault = csr_ctr_access ? csr_ctr_fault : csr_priv_fault;
+      // CSR hpm counter read allowed?
+      Bool csr_ctr_fault = csr_regfile.csr_counter_read_fault (cur_priv, csr);
 
-      Bool csr_write_fault   = (   is_csrrx
-				&& (f3_is_CSRR_W (funct3) || (rs1 != 0))    // attempting write
-				&& (csr [11:10] == 2'b11));                 // read-only csr
+      // CSR writing a read-only CSR?
+      Bool csr_write_fault = (   (f3_is_CSRR_W (funct3) || (rs1 != 0))    // attempting write
+			      && (csr [11:10] == 2'b11));                 // read-only csr
 
       // CSR reads
       // Note: csr should not be read for CSRRW[I] if Rd=0 (i.e., don't cause its side-effects).
       // But currently csr_reads are pure (no side effects), so we omit this check.
-        let m_csr_val = csr_regfile.read_csr (csr);
-        let csr_valid = (   isValid (m_csr_val)
+
+      let m_csr_val = csr_regfile.read_csr (csr);
+      let csr_valid = (is_csrrx && isValid (m_csr_val)
 		       && (! csr_priv_fault)
-		       && (!csr_write_fault));
+		       && (! csr_ctr_fault)
+		       && (! csr_write_fault));
 
         let csr_val   = fromMaybe (?, m_csr_val);
 
@@ -176,10 +161,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				   rs2_val:        rs2_val_bypassed,
 				   csr_valid:      csr_valid,
 				   csr_val:        csr_val,
-				   mstatus:        csr_regfile.read_mstatus};
-        let alu_outputs = fv_ALU (alu_inputs);
-        
-        Output_Stage1 output_stage1 = ?;
+
+				   mstatus:        csr_regfile.read_mstatus,
+				   misa:           csr_regfile.read_misa};
+
+      let alu_outputs = fv_ALU (alu_inputs);
+
+      Output_Stage1 output_stage1 = ?;
 
       // This stage is empty
       if (! rg_full) begin
@@ -206,8 +194,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       end
 
       // Trap on CSR access fault
-      else if (csr_priv_fault || csr_write_fault) begin
-      
+
+      else if (is_csrrx && ((! isValid (m_csr_val)) || csr_priv_fault || csr_ctr_fault || csr_write_fault))
+	 begin
 	    output_stage1.ostatus   = OSTATUS_NONPIPE;
 	    output_stage1.control   = CONTROL_TRAP;
 	    output_stage1.trap_info = Trap_Info {epc:      pc,
@@ -288,6 +277,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // Writeback CSR if valid
       let data_to_stage2 = fv_out.data_to_stage2;
 
+      // TODO: do we suppress MINSTRET increment if we write minstret here?
       Bool wrote_csr_minstret = False;
       if (data_to_stage2.csr_valid) begin
 	 CSR_Addr csr_addr = truncate (data_to_stage2.addr);
@@ -309,13 +299,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    method Action set_full (Bool full);
       rg_full <= full;
-   endmethod
-
-   method Action show_state;
-      if (rg_full)
-	 $display ("    S1: pc ", fshow (icache.pc));
-      else
-	 $display ("    S1: empty");
    endmethod
 endmodule
 

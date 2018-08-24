@@ -20,19 +20,22 @@ trueall: sim32 b32 sim64 b64 simV64 bV64 simD64 bD64
 # ----------------
 # Search path for bsc for .bsv files
 
-CORE_DIRS = ../src_Core/ISA:../src_Core/RegFiles:../src_Core/Core:../src_Core/Near_Mem_VM:../src_Core/BSV_Additional_Libs:../src_Verifier
-TESTBENCH_DIRS  = ../src_Testbench/Top:../src_Testbench/SoC:../src_Testbench/Fabrics/AXI4_Lite
+CORE_DIRS = $(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/BSV_Additional_Libs:$(REPO)/src_Verifier
+TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC:$(REPO)/src_Testbench/Fabrics/AXI4_Lite
 BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):+
 USEFUL_FLAGS = #-remove-unused-modules -remove-empty-rules -remove-starved-rules -remove-false-rules
 
 # ----------------
 # Top-level file and module
 
-TOPFILE   = ../src_Testbench/Top/Top_HW_Side.bsv
+TOPFILE   = $(REPO)/src_Testbench/Top/Top_HW_Side.bsv
 TOPMODULE = mkTop_HW_Side
 
 #----------------
 # bsc flags
+
+# Implementation choice: SHIFT_BARREL, SHIFT_SERIAL, SHIFT_MULT, SHIFT_NONE
+# Implementation choice: MULT_SYNTH, MULT_SERIAL
 
 BSC_FLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-suppress-warnings G0020 \
@@ -100,8 +103,7 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D ISA_M \
 		-D INCLUDE_GDB_CONTROL\
 		-D Near_Mem_Caches \
-		-D SHIFT_BARREL \
-		-D CSR_REGFILE_UM \
+		-D FABRIC64 \
 		+RTS -K64M -RTS  -show-range-conflict
 
 # ================================================================
@@ -217,14 +219,13 @@ BSC_C_FLAGS += \
 	-Xc -O3 -Xc++ -O3 \
 
 # ================================================================
-# Test: run the iverilog executable on the standard 'add' RISCV ISA test
+# Test: run the executable on the standard 'add' RISCV ISA test
 
 .PHONY: test
 test:
 	make -C  ../Tests/elf_to_hex
 	../Tests/elf_to_hex/elf_to_hex  ../Tests/isa/rv32ui-p-sub  Mem.hex
 	./$(BSIM_EXE_FILE)  -m 2500  +v1  +tohost
-	
 
 # ================================================================
 
@@ -245,6 +246,6 @@ vclean:
 
 .PHONY: full_clean
 full_clean: clean
-	rm -r -f  *~  $(BSIM_EXE_FILE)*  *.log  *.vcd  *.hex
+	rm -r -f  *~  $(SIM_EXE_FILE)*  *.log  *.vcd  *.hex
 
 # ================================================================

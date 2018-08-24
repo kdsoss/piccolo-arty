@@ -94,6 +94,31 @@ function Info_CPU_to_Verifier getWolfInfoS1 (
     };
 endfunction : getWolfInfoS1
 
+`elsif INCLUDE_TANDEM_VERIF
+/*
+typedef struct {
+   Bool       exc_taken;
+   Bit #(64)  pc;
+   Bit #(64)  addr;
+   Bit #(64)  data1;
+   Bit #(64)  data2;
+   Bool       instr_valid;
+   Bit #(32)  instr;
+} Info_CPU_to_Verifier deriving (Bits, FShow);*/
+
+function Info_CPU_to_Verifier getVerifierInfo(Bool exc, Bit#(64) pc, Bit#(64) addr,
+                                    Bit#(64) data1, Bit#(64) data2, Bool valid, Bit#(32) instr) ;
+    return Info_CPU_to_Verifier {
+        exc_taken:   exc,
+        pc:          pc,
+        addr:        addr,
+        data1:       data1,
+        data2:       data2,
+        instr_valid: valid,
+        instr:       instr
+    };
+endfunction
+
 `endif
 
 

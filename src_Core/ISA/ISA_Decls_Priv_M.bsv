@@ -156,9 +156,6 @@ CSR_Addr   csr_addr_dpc       = 12'h7B1;    // Debug PC
 CSR_Addr   csr_addr_dscratch0 = 12'h7B2;    // Debug scratch0
 CSR_Addr   csr_addr_dscratch1 = 12'h7B3;    // Debug scratch1
 
-CSR_Addr   csr_addr_watch_n     = 12'hBC0;    // When a watchpoint is hit, this reg holds the watchpoint number that was hit (1..)
-CSR_Addr   csr_addr_watchpoint1 = 12'hBC1;    // Watchpoint 1 (contains an address being watched)
-
 // ================================================================
 // Logical view of csr_misa register
 
@@ -265,7 +262,7 @@ Integer mstatus_uie_bitpos     =  0;
 // Logical view
 
 typedef struct {
-   Bit #(1)   sd;     // Some dirty in XS or FS
+   // SD is a read-only bit computed from FS and XS
 `ifdef RV64
    Bit #(2)   sxl;    // XLEN in S Priv
    Bit #(2)   uxl;    // XLEN in U Priv
@@ -285,17 +282,23 @@ typedef struct {
    } MStatus
 deriving (Bits);
 
-// Valus for FS and XS
+// Values for FS and XS
 
 Bit #(2) fs_xs_off      = 2'h0;
 Bit #(2) fs_xs_initial  = 2'h1;
 Bit #(2) fs_xs_clean    = 2'h2;
 Bit #(2) fs_xs_dirty    = 2'h3;
 
+// Virtual field SD is computed from FS and XS
+
+function Bit #(1) fn_mstatus_sd (MStatus  mstatus);
+   return pack ((mstatus.xs == fs_xs_dirty) || (mstatus.fs == fs_xs_dirty));
+endfunction
+
 instance FShow #(MStatus);
    function Fmt fshow (MStatus ms);
       return (  $format ("MStatus{")
-	      + $format ("sd:%0d", ms.sd)
+	      + $format ("sd:%0d", fn_mstatus_sd (ms))
 `ifdef RV64
 	      + $format (" sxl:%0d", ms.sxl)
 	      + $format (" uxl:%0d", ms.uxl)
@@ -351,7 +354,7 @@ endfunction
 // Conversion from logical view of mstatus to/from bit-representation
 
 function WordXL mstatus_to_word (MStatus ms);
-   return {ms.sd,
+   return {fn_mstatus_sd (ms),
 `ifdef RV64
 	   0,        // WPRI field, expands appropriately for RV64
 	   ms.sxl,
@@ -385,36 +388,30 @@ function WordXL mstatus_to_word (MStatus ms);
 endfunction
 
 // TODO: this should take current privilege mode and misa into account (see Cissr code, e.g.)
-function MStatus word_to_mstatus (WordXL x);
-   return MStatus {sd: msb (x),
+function MStatus word_to_mstatus (MISA misa, WordXL x);
+   return MStatus {
 `ifdef RV64
-`ifdef ISA_PRIV_S
-                   sxl: 2'b10,                   // sxl: x [35:34],
-`else
-                   sxl: 0,
-`endif
-`ifdef ISA_PRIV_U
-                   uxl: 2'b10,                   // uxl: x [33:32],
-`else
-                   uxl: 0,
-`endif
+		   sxl: ((misa.s == 1) ? misa.mxl : 0),    // WARL field
+		   uxl: ((misa.u == 1) ? misa.mxl : 0),    // WARL field
 `endif
 		   tsr:  x [22],
-		   tw:  x [21],
+		   tw:   x [21],
 		   tvm:  x [20],
 		   mxr:  x [19],
 		   sum:  x [18],
 		   mprv: x [17],
 		   xs:   x [16:15],
-`ifdef ISA_FD
 		   fs:   x [14:13],
-`else
-		   fs:   0,
-`endif
-		   mpp: x [12:11],
-		   spp: (x[8] == 0) ? u_Priv_Mode : s_Priv_Mode,
-		   pies: unpack ({ x[7], 1'b0, x[5], x[4] }),
-		   ies:  unpack ({ x[3], 1'b0, x[1], x[0] })
+		   mpp:  x [12:11],
+		   spp:  (x[8] == 0) ? u_Priv_Mode : s_Priv_Mode,
+		   pies: unpack ({x[7],
+				  1'b0,
+				  ((misa.s == 0) ? 0 : x[5]),
+				  ((misa.n == 0) ? 0 : x[4]) }),
+		   ies:  unpack ({x[3],
+				  1'b0,
+				  ((misa.s == 0) ? 0 : x[1]),
+				  ((misa.n == 0) ? 0 : x[0]) })
 		};
 endfunction
 
@@ -456,11 +453,10 @@ function WordXL fn_read_sstatus (MStatus x);
    return sstatus_w;
 endfunction
 
-function MStatus fn_write_sstatus (MStatus mstatus, WordXL x);
+function MStatus fn_write_sstatus (MISA misa,  MStatus mstatus,  WordXL x);
   MStatus res = mstatus;
-  MStatus mx = word_to_mstatus (x);
+  MStatus mx = word_to_mstatus (misa, x);
   // Update the fields which are not WPRI
-  res.sd   = mx.sd;
 `ifdef RV64
   res.uxl  = mx.uxl;
 `endif
@@ -666,12 +662,16 @@ function WordXL mip_to_word (MIP mip);
    return extend (pack (mip));
 endfunction
 
-function MIP word_to_mip (WordXL x);
-   return MIP {
-      eips: unpack ( {x[11], 1'b0, x[9], x[8]} ),
-      tips: unpack ( {x[7] , 1'b0, x[5], x[4]} ),
-      sips: unpack ( {x[3] , 1'b0, x[1], x[0]} )
-   };
+function MIP word_to_mip (WordXL x, MIP mip);
+   // MEIP, MTIP, and MSIP are externally controlled
+   Bit #(12) mask = 'h333;
+   Bit #(12) unchanged_bits = pack (mip) & (~ mask);
+   Bit #(12) changed_bits = truncate (x) & mask;
+   return unpack (unchanged_bits | changed_bits);
+endfunction
+
+function MIP mip_reset_value;
+   return unpack (0);
 endfunction
 
 function WordXL mie_to_word (MIE mie);
@@ -684,6 +684,10 @@ function MIE word_to_mie (WordXL x);
       ties: unpack ( {x[7] , 1'b0, x[5], x[4]} ),
       sies: unpack ( {x[3] , 1'b0, x[1], x[0]} )
    };
+endfunction
+
+function MIE mie_reset_value;
+   return unpack (0);
 endfunction
 
 Integer mip_usip_bitpos =  0;
@@ -816,60 +820,88 @@ function Fmt fshow_trap_Exc_Code (Exc_Code exc_code);
 endfunction
 
 // ================================================================
-// Function from mstatus, mip, mie and current privilege to:
+// Function from various CSRs and current privilege to:
 //     whether or not an interrupt is pending,
 // and if so, corresponding exception code
 
-function Maybe #(Exc_Code) fn_interrupt_pending (WordXL mstatus, WordXL mip, WordXL mie, Priv_Mode cur_priv);
-    // From mie and mip, find which interrupts are pending
-   WordXL mi_p_and_e = (mip & mie);
-   Bool meip = (mi_p_and_e [mip_meip_bitpos] == 1);
-   Bool seip = (mi_p_and_e [mip_seip_bitpos] == 1);
-   Bool ueip = (mi_p_and_e [mip_ueip_bitpos] == 1);
+function Maybe #(Exc_Code) fn_interrupt_pending (MISA       misa,
+						 WordXL     mstatus,
+						 WordXL     mip,
+						 WordXL     mie,
+						 Bit #(12)  mideleg,
+						 Bit #(12)  sideleg,
+						 Priv_Mode  cur_priv);
 
-   Bool mtip = (mi_p_and_e [mip_mtip_bitpos] == 1);
-   Bool stip = (mi_p_and_e [mip_stip_bitpos] == 1);
-   Bool utip = (mi_p_and_e [mip_utip_bitpos] == 1);
+   function Maybe #(Exc_Code) fn_interrupt_i_pending (Exc_Code i);
+      Bool intr_pending = ((mip [i] == 1) && (mie [i] == 1));
+      Priv_Mode handler_priv;
+      if (mideleg [i] == 1)
+	 if (misa.u == 1)
+	    if (misa.s == 1)
+	       // System with M, S, U
+	       if (sideleg [i] == 1)
+		  if (misa.n == 1)
+		     // M->S->U delegation
+		     handler_priv = u_Priv_Mode;
+		  else
+		     // Error: SIDELEG [i] should not be 1 if MISA.N is 0
+		     handler_priv = m_Priv_Mode;
+	       else
+                  // M->S delegation
+		  handler_priv = s_Priv_Mode;
+	    else
+	       // System with M, U
+	       if (misa.n == 1)
+		  // M->U delegation
+		  handler_priv = u_Priv_Mode;
+	       else
+		  // Error: MIDELEG [i] should not be 1 if MISA.N is 0
+		  handler_priv = m_Priv_Mode;
+	 else
+	    // Error: System with M only; MIDELEG [i] should not be 1
+	    handler_priv = m_Priv_Mode;
+      else
+	 // no delegation
+	 handler_priv = m_Priv_Mode;
 
-   Bool msip = (mi_p_and_e [mip_msip_bitpos] == 1);
-   Bool ssip = (mi_p_and_e [mip_ssip_bitpos] == 1);
-   Bool usip = (mi_p_and_e [mip_usip_bitpos] == 1);
+      Bool xie;
+      if (cur_priv == u_Priv_Mode)
+         xie = (mstatus [mstatus_uie_bitpos] == 1);
+      else if (cur_priv == s_Priv_Mode)
+         xie = (mstatus [mstatus_sie_bitpos] == 1);
+      else if (cur_priv == m_Priv_Mode)
+         xie = (mstatus [mstatus_mie_bitpos] == 1);
+      else
+         // Error: unexpected mode
+	 xie = False;
 
-    // Priotitize 'external' > 'software' > 'timer'
-   Exc_Code  exc_code_m = (meip ? exc_code_MACHINE_EXTERNAL_INTERRUPT
-			   : (msip ? exc_code_MACHINE_SW_INTERRUPT
-			      : /* mtip */ exc_code_MACHINE_TIMER_INTERRUPT));
+      Bool glob_enabled = (   (cur_priv < handler_priv)
+			   || ((cur_priv == handler_priv) && xie));
 
-   Exc_Code  exc_code_s = (seip ? exc_code_SUPERVISOR_EXTERNAL_INTERRUPT
-			   : (ssip ? exc_code_SUPERVISOR_SW_INTERRUPT
-			      : /* stip */ exc_code_SUPERVISOR_TIMER_INTERRUPT));
+      return ((intr_pending && glob_enabled) ? (tagged Valid i) : (tagged Invalid));
+   endfunction
 
-   Exc_Code  exc_code_u = (ueip ? exc_code_USER_EXTERNAL_INTERRUPT
-			   : (usip ? exc_code_USER_SW_INTERRUPT
-			      : /* utip */ exc_code_USER_TIMER_INTERRUPT));
+   // Check all interrupts in the following decreasing priority order
+   Maybe #(Exc_Code) m_ec;
+   m_ec = fn_interrupt_i_pending (exc_code_MACHINE_EXTERNAL_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_MACHINE_SW_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_MACHINE_TIMER_INTERRUPT);
 
-   Bool mstatus_mie = (mstatus [mstatus_mie_bitpos] == 1);
-   Bool mstatus_sie = (mstatus [mstatus_sie_bitpos] == 1);
-   Bool mstatus_uie = (mstatus [mstatus_uie_bitpos] == 1);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_SUPERVISOR_EXTERNAL_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_SUPERVISOR_SW_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_SUPERVISOR_TIMER_INTERRUPT);
 
-   Maybe #(Exc_Code) m_ec = tagged Invalid;
-
-   if ((cur_priv == m_Priv_Mode) && mstatus_mie && (meip || mtip || msip))
-      m_ec = tagged Valid exc_code_m;
-   else if ((cur_priv == m_Priv_Mode) && mstatus_mie && (seip || stip || ssip))
-      m_ec = tagged Valid exc_code_s;
-   else if ((cur_priv == m_Priv_Mode) && mstatus_mie && (ueip || utip || usip))
-      m_ec = tagged Valid exc_code_u;
-
-   // TODO: the following should use 'sstatus', not 'mstatus'?
-   else if ((cur_priv == s_Priv_Mode) && mstatus_sie && (seip || stip || ssip))
-      m_ec = tagged Valid exc_code_s;
-   else if ((cur_priv == s_Priv_Mode) && mstatus_sie && (ueip || utip || usip))
-      m_ec = tagged Valid exc_code_u;
-
-   // TODO: the following should use 'ustatus', not 'mstatus'?
-   else if ((cur_priv == u_Priv_Mode) && mstatus_uie && (ueip || utip || usip))
-      m_ec = tagged Valid exc_code_u;
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_USER_EXTERNAL_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_USER_SW_INTERRUPT);
+   if (m_ec matches tagged Invalid)
+      m_ec = fn_interrupt_i_pending (exc_code_USER_TIMER_INTERRUPT);
 
    return m_ec;
 endfunction

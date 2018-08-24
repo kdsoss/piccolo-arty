@@ -24,7 +24,6 @@ import ClientServer :: *;
 
 // BSV additional libs
 
-import Cur_Cycle  :: *;
 import GetPut_Aux :: *;
 
 // ================================================================
@@ -56,9 +55,9 @@ interface CSR_RegFile_IFC;
    (* always_ready *)
    method Action write_csr (CSR_Addr csr_addr, Word word);
 
-   // Read SATP
+   // Read MISA
    (* always_ready *)
-   method WordXL read_satp;
+   method MISA read_misa;
 
    // Read MSTATUS
    (* always_ready *)
@@ -67,6 +66,10 @@ interface CSR_RegFile_IFC;
    // Read SSTATUS
    (* always_ready *)
    method WordXL read_sstatus;
+
+   // Read SATP
+   (* always_ready *)
+   method WordXL read_satp;
 
    // CSR trap actions
    method ActionValue #(Tuple4 #(Addr, Word, Word, Priv_Mode))
@@ -95,18 +98,18 @@ interface CSR_RegFile_IFC;
    (* always_ready *)
    method Bit #(64) read_csr_mtime;
 
-   // Read MCOUNTEREN
+   // Fault on reading counters?
    (* always_ready *)
-   method MCounteren read_csr_mcounteren;
+   method Bool csr_counter_read_fault (Priv_Mode  priv, CSR_Addr  csr_addr);
+
+   // Read MIP
+   (* always_ready *)
+   method MIP read_csr_mip;
 
    // Interrupts
-   (* always_ready *)
-   method Action external_interrupt_req;
-
-   method Action timer_interrupt_req (Bool set_not_clear);
-
-   (* always_ready *)
-   method Action software_interrupt_req;
+   method Action external_interrupt_req (Bool set_not_clear);
+   method Action timer_interrupt_req    (Bool set_not_clear);
+   method Action software_interrupt_req (Bool set_not_clear);
 
    (* always_ready *)
    method Maybe #(Exc_Code) interrupt_pending (Priv_Mode cur_priv);
@@ -135,11 +138,6 @@ interface CSR_RegFile_IFC;
    (* always_ready *)
    method Action write_dcsr_cause (DCSR_Cause cause);
 
-   (* always_ready *)
-   method WordXL watchpoint_hit (WordXL addr);
-
-   (* always_ready *)
-   method Action set_watch_n (WordXL n);
 `endif
 
 endinterface
@@ -204,7 +202,7 @@ endfunction
 // ================================================================
 // mtvec reset value    TODO: still relevant? No longer part of the spec?
 
-Word mtvec_reset_value = 'h0100;    // TODO: this is no longer standard?
+Word mtvec_reset_value = 'h1000;    // TODO: this is no longer standard?
 
 // ================================================================
 // Major states of mkCSR_RegFile module
@@ -220,12 +218,19 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
    Reg #(RF_State) rg_state      <- mkReg (RF_RESET_START);
 
-   Reg #(Bool) rg_ei_requested <- mkRegU;    // External interrupt requested
-   FIFOF #(Bool) f_ti_reqs     <- mkFIFOF;   // Timer    interrupt requests
-   Reg #(Bool) rg_si_requested <- mkRegU;    // Software interrupt requested
+   FIFOF #(Bool) f_ei_reqs   <- mkFIFOF;   // External interrupt requested
+   FIFOF #(Bool) f_ti_reqs   <- mkFIFOF;   // Timer    interrupt requests
+   FIFOF #(Bool) f_si_reqs   <- mkFIFOF;   // Software interrupt requested
 
    // Reset
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
+
+   // CSRs
+   // User-mode CSRs
+`ifdef ISA_FD
+   Reg #(Bit #(5)) rg_fflags <- mkRegU;    // floating point flags
+   Reg #(Bit #(3)) rg_frm    <- mkRegU;    // floating point rounding mode
+`endif
 
    // Supervisor-mode CSRs
    Bit #(16)  sedeleg = 0;    // hardwired to 0
@@ -253,7 +258,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    Bit #(12)         rg_mideleg   = 0;
 `endif
 
-   // CSRs
    // Machine-mode CSRs
    Word mvendorid   = 0;    // Not implemented
    Word marchid     = 0;    // Not implemented
@@ -275,12 +279,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    // RegFile #(Bit #(2), WordXL)  rf_pmpcfg   <- mkRegFileFull;
    // Vector #(16, Reg #(WordXL))  vrg_pmpaddr <- replicateM (mkRegU);
 
-   // mcycle is needed even for user-mode instructions
+   // mcycle is needed even for user-mode RDCYCLE instruction
    // It can be updated by a CSR instruction (in Priv_M), and by the clock
    Reg #(Bit #(64))   rg_mcycle <- mkReg (0);
    RWire #(Bit #(64)) rw_mcycle <- mkRWire;    // Driven on CSRRx write to mcycle
 
-   // minstret is needed even for user-mode instructions
+   // minstret is needed even for user-mode RDINSTRET instructions
    // It can be updated by a CSR instruction (in Priv_M), and by retirement of any other instruction
    Reg #(Bit #(64))   rg_minstret      <- mkReg (0);    // Needed even for user-mode instrs
    RWire #(Bit #(64)) rw_minstret      <- mkRWire;      // Driven on CSRRx write to minstret
@@ -294,32 +298,26 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    // Debug
    Reg #(Bit #(32)) rg_dcsr      <- mkRegU;    // Is 32b even in RV64
-   Reg #(WordXL)    rg_dpc       <- mkRegU;
+   Reg #(WordXL)    rg_dpc       <- mkReg(mtvec_reset_value);
    Reg #(WordXL)    rg_dscratch0 <- mkRegU;
    Reg #(WordXL)    rg_dscratch1 <- mkRegU;
-
-   // ----------------
-   // Non-standard 'watchpoint' CSRs
-   // rg_watchpoint1, 2, ..  contain mem addrs to be watched for accesses
-   // On a watchpoint hit, rg_watch_n holds the watchpoint reg number (1..) that matched
-   // rg_watch_n is a read-only register, and resets to 0
-
-   // TODO: Each watchpoint should have a status of disarmed/armed
-   // (for now, '1 is just an 'unlikely' watchpoint, so is disarmed)
-   Reg #(WordXL)  rg_watch_n     <- mkReg (0);
-
-   Reg #(WordXL)  rg_watchpoint1 <- mkReg ('1);
-   // Reg #(WordXL)  rg_watchpoint1 <- mkReg ('hC000_0000);   // UART tx, for testing
 
    // ----------------------------------------------------------------
    // Reset.
    // Initialize some CSRs.
 
    rule rl_reset_start (rg_state == RF_RESET_START);
-      rg_ei_requested <= False;
+      f_ei_reqs.clear;
       f_ti_reqs.clear;
-      rg_si_requested <= False;
+      f_si_reqs.clear;
 
+      // User-level CSRs
+`ifdef ISA_FD
+      rg_fflags <= 0;
+      rg_frm    <= 0;
+`endif
+
+      // Supervisor-level CSRs
 `ifdef ISA_PRIV_S
       rg_stvec    <= word_to_mtvec (mtvec_reset_value);
       rg_scause   <= word_to_mcause (0);    // Supposed to be the cause of the reset.
@@ -327,11 +325,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       //rg_scounteren <= mcounteren_reset_value;
 `endif
 
+      // Machine-level CSRs
       rg_mstatus    <= mstatus_reset_value;
-      rg_mie        <= word_to_mie (0);
+      rg_mie        <= mie_reset_value;
       rg_mtvec      <= word_to_mtvec (mtvec_reset_value);
       rg_mcause     <= word_to_mcause (0);    // Supposed to be the cause of the reset.
-      rg_mip        <= word_to_mip (0);
+      rg_mip        <= mip_reset_value;
 `ifdef ISA_PRIV_S
       rg_medeleg    <= 0;
       rg_mideleg    <= 0;
@@ -358,8 +357,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 			     );
 `endif
 
-      rg_watch_n <= 0;
-
       rg_state <= RF_RUNNING;
    endrule
 
@@ -368,7 +365,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    (* no_implicit_conditions, fire_when_enabled *)
    rule rl_mcycle_incr;
-      // Update due to CSRRx
+      // Update due to CSRRx    TODO: fix this
       if (rw_mcycle.wget matches tagged Valid .v)
 	 rg_mcycle <= rg_mcycle + 1;
 
@@ -383,13 +380,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    (* descending_urgency = "rl_reset_start, rl_upd_minstret_csrrx" *)
    rule rl_upd_minstret_csrrx (rw_minstret.wget matches tagged Valid .v);
       rg_minstret <= v;
-      // $display ("%0d: CSR_RegFile_UM.rl_upd_minstret_csrrx: new value is %0d", cur_cycle, v);
+      // $display ("%0d: CSR_RegFile_UM.rl_upd_minstret_csrrx: new value is %0d", rg_mcycle, v);
    endrule
 
    (* no_implicit_conditions, fire_when_enabled *)
    rule rl_upd_minstret_incr ((! isValid (rw_minstret.wget)) && pw_minstret_incr);
       rg_minstret <= rg_minstret + 1;
-      // $display ("%0d: CSR_RegFile_UM.rl_upd_minstret_incr: new value is %0d", cur_cycle, rg_minstret + 1);
+      // $display ("%0d: CSR_RegFile_UM.rl_upd_minstret_incr: new value is %0d", rg_mcycle, rg_minstret + 1);
    endrule
 
    // ----------------------------------------------------------------
@@ -402,112 +399,134 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    function Maybe #(Word) fv_csr_read (CSR_Addr csr_addr);
       Maybe #(Word)  m_csr_value = tagged Invalid;
 
-      case (csr_addr)
-	 // User mode csrs
-`ifdef ISA_FD
-	 // TODO: fixup when we implement FD
-	 csr_fflags:    m_csr_value = tagged Valid 0;
-	 csr_frm:       m_csr_value = tagged Valid 0;
-	 csr_fcsr:      m_csr_value = tagged Valid 0;
-`endif
-
-	 csr_cycle:     m_csr_value = tagged Valid (truncate (rg_mcycle));
-	 csr_time:      m_csr_value = tagged Valid (truncate (rg_mcycle)); // S
-	 csr_instret:   m_csr_value = tagged Valid (truncate (rg_minstret));
+      if ((csr_hpmcounter3 <= csr_addr) && (csr_addr <= csr_hpmcounter31))
+	 m_csr_value = tagged Valid 0;
 `ifdef RV32
-	 csr_cycleh:    m_csr_value = tagged Valid (rg_mcycle   [63:32]);
-	 csr_timeh:     m_csr_value = tagged Valid (rg_mcycle   [63:32]);
-	 csr_instreth:  m_csr_value = tagged Valid (rg_minstret [63:32]);
+      else if ((csr_hpmcounter3h <= csr_addr) && (csr_addr <= csr_hpmcounter31h))
+	 m_csr_value = tagged Valid 0;
+`endif
+      else if ((csr_mhpmcounter3 <= csr_addr) && (csr_addr <= csr_mhpmcounter31))
+	 m_csr_value = tagged Valid 0;
+`ifdef RV32
+      else if ((csr_mhpmcounter3h <= csr_addr) && (csr_addr <= csr_mhpmcounter31h))
+	 m_csr_value = tagged Valid 0;
+`endif
+      else if ((csr_mhpmevent3 <= csr_addr) && (csr_addr <= csr_mhpmevent31))
+	 m_csr_value = tagged Valid 0;
+
+      else begin
+	 case (csr_addr)
+	    // User mode csrs
+`ifdef ISA_FD
+	    csr_fflags:    m_csr_value = tagged Valid ({ 0, rg_fflags });
+	    csr_frm:       m_csr_value = tagged Valid ({ 0, rg_frm });
+	    csr_fcsr:      m_csr_value = tagged Valid ({ 0, rg_frm, rg_fflags });
+`endif
+	    csr_cycle:     m_csr_value = tagged Valid (truncate (rg_mcycle));
+
+	    /*
+	    // NOTE: CSR_TIME should be a 'shadow copy' of the MTIME
+	    // mem-mapped location; but since both increment at the
+	    // same rate, and MTIME is never written, this is ok.
+
+	    csr_time:      m_csr_value = tagged Valid (truncate (rg_mcycle));
+	    */
+
+	    csr_instret:   m_csr_value = tagged Valid (truncate (rg_minstret));
+`ifdef RV32
+	    csr_cycleh:    m_csr_value = tagged Valid (rg_mcycle   [63:32]);
+	    csr_timeh:     m_csr_value = tagged Invalid;
+	    csr_instreth:  m_csr_value = tagged Valid (rg_minstret [63:32]);
 `endif
 
 `ifdef ISA_PRIV_S
-	 csr_sstatus:   m_csr_value = tagged Valid (fn_read_sstatus (rg_mstatus));
-	 csr_sedeleg:   m_csr_value = tagged Valid zeroExtend (sedeleg);
-	 csr_sideleg:   m_csr_value = tagged Valid zeroExtend (sideleg);
-	 csr_sie:       m_csr_value = tagged Valid (sie_to_word (rg_mie));
-	 csr_stvec:     m_csr_value = tagged Valid (mtvec_to_word (rg_stvec));
-	 csr_scounteren:m_csr_value = tagged Valid 0;
+	    // Supervisor mode csrs
+	    csr_sstatus:   m_csr_value = tagged Valid (fn_read_sstatus (rg_mstatus));
+	    csr_sedeleg:   m_csr_value = tagged Valid zeroExtend (sedeleg);
+	    csr_sideleg:   m_csr_value = tagged Valid zeroExtend (sideleg);
+	    csr_sie:       m_csr_value = tagged Valid (sie_to_word (rg_mie, rg_mideleg));
+	    csr_stvec:     m_csr_value = tagged Valid (mtvec_to_word (rg_stvec));
+	    csr_scounteren:m_csr_value = tagged Valid 0;
 
-	 csr_sscratch:  m_csr_value = tagged Valid rg_sscratch;
-	 csr_sepc:      m_csr_value = tagged Valid rg_sepc;
-	 csr_scause:    m_csr_value = tagged Valid (mcause_to_word (rg_scause));
-	 csr_stval:     m_csr_value = tagged Valid rg_stval;
-	 csr_sip:       m_csr_value = tagged Valid (sip_to_word (rg_mip));
+	    csr_sscratch:  m_csr_value = tagged Valid rg_sscratch;
+	    csr_sepc:      m_csr_value = tagged Valid rg_sepc;
+	    csr_scause:    m_csr_value = tagged Valid (mcause_to_word (rg_scause));
+	    csr_stval:     m_csr_value = tagged Valid rg_stval;
+	    csr_sip:       m_csr_value = tagged Valid (sip_to_word (rg_mip, rg_mideleg));
 
-	 csr_satp:      m_csr_value = tagged Valid rg_satp;
+	    csr_satp:      m_csr_value = tagged Valid rg_satp;
 
-	 csr_medeleg:   m_csr_value = tagged Valid zeroExtend (rg_medeleg);
-	 csr_mideleg:   m_csr_value = tagged Valid zeroExtend (rg_mideleg);
+	    csr_medeleg:   m_csr_value = tagged Valid zeroExtend (rg_medeleg);
+	    csr_mideleg:   m_csr_value = tagged Valid zeroExtend (rg_mideleg);
 `endif
 
-	 // Machine mode csrs
-	 csr_mvendorid: m_csr_value = tagged Valid mvendorid;
-	 csr_marchid:   m_csr_value = tagged Valid marchid;
-	 csr_mimpid:    m_csr_value = tagged Valid mimpid;
-	 csr_mhartid:   m_csr_value = tagged Valid mhartid;
+	    // Machine mode csrs
+	    csr_mvendorid: m_csr_value = tagged Valid mvendorid;
+	    csr_marchid:   m_csr_value = tagged Valid marchid;
+	    csr_mimpid:    m_csr_value = tagged Valid mimpid;
+	    csr_mhartid:   m_csr_value = tagged Valid mhartid;
 
-	 csr_mstatus:   m_csr_value = tagged Valid (mstatus_to_word (rg_mstatus));
-	 csr_misa:      m_csr_value = tagged Valid (misa_to_word (misa));
-	 csr_mie:       m_csr_value = tagged Valid (mie_to_word (rg_mie));
-	 csr_mtvec:     m_csr_value = tagged Valid (mtvec_to_word (rg_mtvec));
-	 csr_mcounteren:m_csr_value = tagged Valid (mcounteren_to_word (rg_mcounteren));
+	    csr_mstatus:   m_csr_value = tagged Valid (mstatus_to_word (rg_mstatus));
+	    csr_misa:      m_csr_value = tagged Valid (misa_to_word (misa));
+	    csr_mie:       m_csr_value = tagged Valid (mie_to_word (rg_mie));
+	    csr_mtvec:     m_csr_value = tagged Valid (mtvec_to_word (rg_mtvec));
+	    csr_mcounteren:m_csr_value = tagged Valid (mcounteren_to_word (rg_mcounteren));
 
-	 csr_mscratch:  m_csr_value = tagged Valid rg_mscratch;
-	 csr_mepc:      m_csr_value = tagged Valid rg_mepc;
-	 csr_mcause:    m_csr_value = tagged Valid (mcause_to_word (rg_mcause));
-	 csr_mtval:     m_csr_value = tagged Valid rg_mtval;
-	 csr_mip:       m_csr_value = tagged Valid (mip_to_word (rg_mip));
+	    csr_mscratch:  m_csr_value = tagged Valid rg_mscratch;
+	    csr_mepc:      m_csr_value = tagged Valid rg_mepc;
+	    csr_mcause:    m_csr_value = tagged Valid (mcause_to_word (rg_mcause));
+	    csr_mtval:     m_csr_value = tagged Valid rg_mtval;
+	    csr_mip:       m_csr_value = tagged Valid (mip_to_word (rg_mip));
 
-	 // TODO: Phys Mem Protection regs
-	 // csr_pmpcfg0:   m_csr_value = tagged Valid rf_pmpcfg.sub (0);
-	 // csr_pmpcfg1:   m_csr_value = tagged Valid rf_pmpcfg.sub (1);
-	 // csr_pmpcfg2:   m_csr_value = tagged Valid rf_pmpcfg.sub (2);
-	 // csr_pmpcfg3:   m_csr_value = tagged Valid rf_pmpcfg.sub (3);
+	    // TODO: Phys Mem Protection regs
+	    // csr_pmpcfg0:   m_csr_value = tagged Valid rf_pmpcfg.sub (0);
+	    // csr_pmpcfg1:   m_csr_value = tagged Valid rf_pmpcfg.sub (1);
+	    // csr_pmpcfg2:   m_csr_value = tagged Valid rf_pmpcfg.sub (2);
+	    // csr_pmpcfg3:   m_csr_value = tagged Valid rf_pmpcfg.sub (3);
 
-	 // csr_pmpaddr0:   m_csr_value = tagged Valid vrg_pmpaddr [0];
-	 // csr_pmpaddr1:   m_csr_value = tagged Valid vrg_pmpaddr [1];
-	 // csr_pmpaddr2:   m_csr_value = tagged Valid vrg_pmpaddr [2];
-	 // csr_pmpaddr3:   m_csr_value = tagged Valid vrg_pmpaddr [3];
-	 // csr_pmpaddr4:   m_csr_value = tagged Valid vrg_pmpaddr [4];
-	 // csr_pmpaddr5:   m_csr_value = tagged Valid vrg_pmpaddr [5];
-	 // csr_pmpaddr6:   m_csr_value = tagged Valid vrg_pmpaddr [6];
-	 // csr_pmpaddr7:   m_csr_value = tagged Valid vrg_pmpaddr [7];
-	 // csr_pmpaddr8:   m_csr_value = tagged Valid vrg_pmpaddr [8];
-	 // csr_pmpaddr9:   m_csr_value = tagged Valid vrg_pmpaddr [9];
-	 // csr_pmpaddr10:  m_csr_value = tagged Valid vrg_pmpaddr [10];
-	 // csr_pmpaddr11:  m_csr_value = tagged Valid vrg_pmpaddr [11];
-	 // csr_pmpaddr12:  m_csr_value = tagged Valid vrg_pmpaddr [12];
-	 // csr_pmpaddr13:  m_csr_value = tagged Valid vrg_pmpaddr [13];
-	 // csr_pmpaddr14:  m_csr_value = tagged Valid vrg_pmpaddr [14];
-	 // csr_pmpaddr15:  m_csr_value = tagged Valid vrg_pmpaddr [15];
+	    // csr_pmpaddr0:   m_csr_value = tagged Valid vrg_pmpaddr [0];
+	    // csr_pmpaddr1:   m_csr_value = tagged Valid vrg_pmpaddr [1];
+	    // csr_pmpaddr2:   m_csr_value = tagged Valid vrg_pmpaddr [2];
+	    // csr_pmpaddr3:   m_csr_value = tagged Valid vrg_pmpaddr [3];
+	    // csr_pmpaddr4:   m_csr_value = tagged Valid vrg_pmpaddr [4];
+	    // csr_pmpaddr5:   m_csr_value = tagged Valid vrg_pmpaddr [5];
+	    // csr_pmpaddr6:   m_csr_value = tagged Valid vrg_pmpaddr [6];
+	    // csr_pmpaddr7:   m_csr_value = tagged Valid vrg_pmpaddr [7];
+	    // csr_pmpaddr8:   m_csr_value = tagged Valid vrg_pmpaddr [8];
+	    // csr_pmpaddr9:   m_csr_value = tagged Valid vrg_pmpaddr [9];
+	    // csr_pmpaddr10:  m_csr_value = tagged Valid vrg_pmpaddr [10];
+	    // csr_pmpaddr11:  m_csr_value = tagged Valid vrg_pmpaddr [11];
+	    // csr_pmpaddr12:  m_csr_value = tagged Valid vrg_pmpaddr [12];
+	    // csr_pmpaddr13:  m_csr_value = tagged Valid vrg_pmpaddr [13];
+	    // csr_pmpaddr14:  m_csr_value = tagged Valid vrg_pmpaddr [14];
+	    // csr_pmpaddr15:  m_csr_value = tagged Valid vrg_pmpaddr [15];
 
-	 csr_mcycle:    m_csr_value = tagged Valid (truncate (rg_mcycle));
-	 csr_minstret:  m_csr_value = tagged Valid (truncate (rg_minstret));
+	    csr_mcycle:        m_csr_value = tagged Valid (truncate (rg_mcycle));
+	    csr_minstret:      m_csr_value = tagged Valid (truncate (rg_minstret));
 `ifdef RV32
-	 csr_mcycleh:   m_csr_value = tagged Valid (rg_mcycle [63:32]);
-	 csr_minstreth: m_csr_value = tagged Valid (rg_minstret [63:32]);
+	    csr_mcycleh:        m_csr_value = tagged Valid (rg_mcycle [63:32]);
+	    csr_minstreth:      m_csr_value = tagged Valid (rg_minstret [63:32]);
 `endif
 
-	 csr_addr_tselect:  m_csr_value = tagged Valid rg_tselect;
-	 csr_addr_tdata1:   m_csr_value = tagged Valid rg_tdata1;
-	 csr_addr_tdata2:   m_csr_value = tagged Valid rg_tdata2;
-	 csr_addr_tdata3:   m_csr_value = tagged Valid rg_tdata3;
+	    csr_addr_tselect:  m_csr_value = tagged Valid rg_tselect;
+	    csr_addr_tdata1:   m_csr_value = tagged Valid rg_tdata1;
+	    csr_addr_tdata2:   m_csr_value = tagged Valid rg_tdata2;
+	    csr_addr_tdata3:   m_csr_value = tagged Valid rg_tdata3;
 
 `ifdef INCLUDE_GDB_CONTROL
-	 csr_addr_dcsr:       m_csr_value = tagged Valid zeroExtend (rg_dcsr);
-	 csr_addr_dpc:        m_csr_value = tagged Valid rg_dpc;
-	 csr_addr_dscratch0:  m_csr_value = tagged Valid rg_dscratch0;
-	 csr_addr_dscratch1:  m_csr_value = tagged Valid rg_dscratch1;
+	    csr_addr_dcsr:       m_csr_value = tagged Valid zeroExtend (rg_dcsr);
+	    csr_addr_dpc:        m_csr_value = tagged Valid rg_dpc;
+	    csr_addr_dscratch0:  m_csr_value = tagged Valid rg_dscratch0;
+	    csr_addr_dscratch1:  m_csr_value = tagged Valid rg_dscratch1;
 `endif
 
-	 csr_addr_watch_n:     m_csr_value = tagged Valid rg_watch_n;
-	 csr_addr_watchpoint1: m_csr_value = tagged Valid rg_watchpoint1;
+	    default: m_csr_value = tagged Invalid;
+	 endcase
+      end
 
-	 default: m_csr_value = tagged Invalid;
-      endcase
       return m_csr_value;
    endfunction
-   
+
    // ----------------
    // CSR writes
    // Returns True if successful
@@ -516,108 +535,122 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    function Action fav_write_csr (CSR_Addr csr_addr, Word word);
       action
 	 Bool success = True;
-	 case (csr_addr)
-	    // User mode csrs
+	 if ((csr_mhpmcounter3 <= csr_addr) && (csr_addr <= csr_mhpmcounter31))
+	    noAction;
+`ifdef RV32
+	 else if ((csr_mhpmcounter3h <= csr_addr) && (csr_addr <= csr_mhpmcounter31h))
+	    noAction;
+`endif
+	 else if ((csr_mhpmevent3 <= csr_addr) && (csr_addr <= csr_mhpmevent31))
+	    noAction;
+	 else
+	    case (csr_addr)
+	       // User mode csrs
 `ifdef ISA_FD
-	    // TODO: fixup when we implemen FD
-	    csr_fflags:    noAction;
-	    csr_frm:       noAction;
-	    csr_fcsr:      noAction;
+	       csr_fflags:     rg_fflags <= word [4:0];
+	       csr_frm:        rg_frm    <= word [7:5];
+	       csr_fcsr:       begin
+				  rg_fflags <= word [4:0];
+				  rg_frm    <= word [7:5];
+			       end
 `endif
 
 `ifdef ISA_PRIV_S
-	    csr_sstatus:    rg_mstatus    <= fn_write_sstatus (rg_mstatus, word);
-	    csr_sedeleg:    noAction;               // Hardwired to 0 (no delegation)
-	    csr_sideleg:    noAction;               // Hardwired to 0 (no delegation)
-	    csr_sie:        rg_mie        <= word_to_sie (word, rg_mie);
-	    csr_stvec:      rg_stvec      <= word_to_mtvec (word);
-	    csr_scounteren: noAction;
+	       csr_sstatus:    rg_mstatus    <= fn_write_sstatus (misa, rg_mstatus, word);
+	       csr_sedeleg:    noAction;               // Hardwired to 0 (no delegation)
+	       csr_sideleg:    noAction;               // Hardwired to 0 (no delegation)
+	       csr_sie:        rg_mie        <= word_to_sie (word, rg_mie, rg_mideleg);
+	       csr_stvec:      rg_stvec      <= word_to_mtvec (word);
+	       csr_scounteren: noAction;
 
-	    csr_sscratch:   rg_sscratch <= word;
-	    csr_sepc:       rg_sepc     <= word;
-	    csr_scause:     rg_scause   <= word_to_mcause (word);
-	    csr_stval:      rg_stval    <= word;
-	    csr_sip:        rg_mip      <= word_to_sip (word, rg_mip);
+	       csr_sscratch:   rg_sscratch <= word;
+	       csr_sepc:       rg_sepc     <= word;
+	       csr_scause:     rg_scause   <= word_to_mcause (word);
+	       csr_stval:      rg_stval    <= word;
+	       csr_sip:        rg_mip      <= word_to_sip (word, rg_mip, rg_mideleg);
 
-	    csr_satp:       rg_satp <= word;
+	       csr_satp:       rg_satp <= word;
 
-	    csr_medeleg:    rg_medeleg <= (truncate (word) & 'h_B3FF);  // 16 bits relevant and some are 0
-	    csr_mideleg:    rg_mideleg <= (truncate (word) & 'h_0FFF);  // 12 bits relevant
+	       csr_medeleg:    rg_medeleg <= (truncate (word) & 'h_B3FF);  // 16 bits relevant and some are 0
+	       csr_mideleg:    rg_mideleg <= (truncate (word) & 'h_0FFF);  // 12 bits relevant
 `endif
 
-	    // Machine mode
-	    csr_mvendorid: noAction;
-	    csr_marchid:   noAction;
-	    csr_mimpid:    noAction;
-	    csr_mhartid:   noAction;
+	       // Machine mode
+	       csr_mvendorid: noAction;
+	       csr_marchid:   noAction;
+	       csr_mimpid:    noAction;
+	       csr_mhartid:   noAction;
 
-	    csr_mstatus:   rg_mstatus    <= word_to_mstatus (word);
-	    csr_misa:      noAction;
-	    csr_mie:       rg_mie        <= word_to_mie (word);
-	    csr_mtvec:     rg_mtvec      <= word_to_mtvec (word);
-	    csr_mcounteren:rg_mcounteren <= word_to_mcounteren(word);
+	       csr_mstatus:   rg_mstatus    <= word_to_mstatus (misa, word);
+	       csr_misa:      noAction;
+	       csr_mie:       rg_mie        <= word_to_mie (word);
+	       csr_mtvec:     rg_mtvec      <= word_to_mtvec (word);
+	       csr_mcounteren:rg_mcounteren <= word_to_mcounteren(word);
 
-	    csr_mscratch:  rg_mscratch <= word;
-	    csr_mepc:      rg_mepc <= word;
-	    csr_mcause:    rg_mcause <= word_to_mcause (word);
-	    csr_mtval:     rg_mtval <= word;
-	    csr_mip:       rg_mip <= word_to_mip (word);
+	       csr_mscratch:  rg_mscratch <= word;
+	       csr_mepc:      rg_mepc     <= word;
+	       csr_mcause:    rg_mcause   <= word_to_mcause (word);
+	       csr_mtval:     rg_mtval    <= word;
+	       csr_mip:       rg_mip      <= word_to_mip (word, rg_mip);
 
-	    // csr_pmpcfg0:   rf_pmpcfg.upd (0, word);
-	    // csr_pmpcfg1:   rf_pmpcfg.upd (1, word);
-	    // csr_pmpcfg2:   rf_pmpcfg.upd (2, word);
-	    // csr_pmpcfg3:   rf_pmpcfg.upd (3, word);
+	       // TODO: PMPs
+	       // csr_pmpcfg0:   rf_pmpcfg.upd (0, word);
+	       // csr_pmpcfg1:   rf_pmpcfg.upd (1, word);
+	       // csr_pmpcfg2:   rf_pmpcfg.upd (2, word);
+	       // csr_pmpcfg3:   rf_pmpcfg.upd (3, word);
 
-	    // csr_pmpaddr0:  vrg_pmpaddr [0] <= word;
-	    // csr_pmpaddr1:  vrg_pmpaddr [1] <= word;
-	    // csr_pmpaddr2:  vrg_pmpaddr [2] <= word;
-	    // csr_pmpaddr3:  vrg_pmpaddr [3] <= word;
-	    // csr_pmpaddr4:  vrg_pmpaddr [4] <= word;
-	    // csr_pmpaddr5:  vrg_pmpaddr [5] <= word;
-	    // csr_pmpaddr6:  vrg_pmpaddr [6] <= word;
-	    // csr_pmpaddr7:  vrg_pmpaddr [7] <= word;
-	    // csr_pmpaddr8:  vrg_pmpaddr [8] <= word;
-	    // csr_pmpaddr9:  vrg_pmpaddr [9] <= word;
-	    // csr_pmpaddr10: vrg_pmpaddr [10] <= word;
-	    // csr_pmpaddr11: vrg_pmpaddr [11] <= word;
-	    // csr_pmpaddr12: vrg_pmpaddr [12] <= word;
-	    // csr_pmpaddr13: vrg_pmpaddr [13] <= word;
-	    // csr_pmpaddr14: vrg_pmpaddr [14] <= word;
-	    // csr_pmpaddr15: vrg_pmpaddr [15] <= word;
+	       // csr_pmpaddr0:  vrg_pmpaddr [0] <= word;
+	       // csr_pmpaddr1:  vrg_pmpaddr [1] <= word;
+	       // csr_pmpaddr2:  vrg_pmpaddr [2] <= word;
+	       // csr_pmpaddr3:  vrg_pmpaddr [3] <= word;
+	       // csr_pmpaddr4:  vrg_pmpaddr [4] <= word;
+	       // csr_pmpaddr5:  vrg_pmpaddr [5] <= word;
+	       // csr_pmpaddr6:  vrg_pmpaddr [6] <= word;
+	       // csr_pmpaddr7:  vrg_pmpaddr [7] <= word;
+	       // csr_pmpaddr8:  vrg_pmpaddr [8] <= word;
+	       // csr_pmpaddr9:  vrg_pmpaddr [9] <= word;
+	       // csr_pmpaddr10: vrg_pmpaddr [10] <= word;
+	       // csr_pmpaddr11: vrg_pmpaddr [11] <= word;
+	       // csr_pmpaddr12: vrg_pmpaddr [12] <= word;
+	       // csr_pmpaddr13: vrg_pmpaddr [13] <= word;
+	       // csr_pmpaddr14: vrg_pmpaddr [14] <= word;
+	       // csr_pmpaddr15: vrg_pmpaddr [15] <= word;
 
 `ifdef RV32
-	    csr_mcycle:    rw_mcycle.wset   ({ rg_mcycle   [63:32], word });
-	    csr_minstret:  rw_minstret.wset ({ rg_minstret [63:32], word });
-	    csr_mcycleh:   rw_mcycle.wset   ({ word, rg_mcycle   [31:0] });
-	    csr_minstreth: rw_minstret.wset ({ word, rg_minstret [31:0] });
+	       csr_mcycle:    rw_mcycle.wset   ({ rg_mcycle   [63:32], word });
+	       csr_minstret:  rw_minstret.wset ({ rg_minstret [63:32], word });
+	       csr_mcycleh:   rw_mcycle.wset   ({ word, rg_mcycle   [31:0] });
+	       csr_minstreth: rw_minstret.wset ({ word, rg_minstret [31:0] });
 `else
-	    csr_mcycle:    rw_mcycle.wset   (word);
-	    csr_minstret:  rw_minstret.wset (word);
+	       csr_mcycle:    rw_mcycle.wset   (word);
+	       csr_minstret:  rw_minstret.wset (word);
 `endif
 
-	    csr_addr_tselect:  rg_tselect <= word;
-	    csr_addr_tdata1:   rg_tdata1  <= word;
-	    csr_addr_tdata2:   rg_tdata2  <= word;
-	    csr_addr_tdata3:   rg_tdata3  <= word;
+	       csr_addr_tselect:  rg_tselect <= word;
+	       csr_addr_tdata1:   rg_tdata1  <= word;
+	       csr_addr_tdata2:   rg_tdata2  <= word;
+	       csr_addr_tdata3:   rg_tdata3  <= word;
 
 `ifdef INCLUDE_GDB_CONTROL
-	    csr_addr_dcsr:       rg_dcsr <= zeroExtend ({rg_dcsr [31:28],    // xdebugver: read-only
-							 word [27:9],        // ebreakm/s/u, stepie, stopcount, stoptime
-							 rg_dcsr [8:6],      // cause: read-only
-							 word [5:0]}         // step, prv
-							);
-	    csr_addr_dpc:        rg_dpc  <= word;
-	    csr_addr_dscratch0:  rg_dscratch0  <= word;
-	    csr_addr_dscratch1:  rg_dscratch1  <= word;
+	       csr_addr_dcsr:       rg_dcsr <= zeroExtend ({// xdebugver: read-only
+							    rg_dcsr [31:28],
+							    // ebreakm/s/u, stepie, stopcount, stoptime
+							    word [27:9],
+							    // cause: read-only
+							    rg_dcsr [8:6],
+							    // step, prv
+							    word [5:0]}
+							   );
+	       csr_addr_dpc:        rg_dpc  <= word;
+	       csr_addr_dscratch0:  rg_dscratch0  <= word;
+	       csr_addr_dscratch1:  rg_dscratch1  <= word;
 `endif
 
-	    csr_addr_watch_n:     noAction;
-	    csr_addr_watchpoint1: rg_watchpoint1 <=word;
+	       default:       success = False;
+	    endcase
 
-	    default:       success = False;
-	 endcase
 	 if ((! success) && (cfg_verbosity > 1))
-	    $display ("%0d: ERROR: CSR-write addr 0x%0h val 0x%0h not successful", cur_cycle,
+	    $display ("%0d: ERROR: CSR-write addr 0x%0h val 0x%0h not successful", rg_mcycle,
 		      csr_addr, word);
       endaction
    endfunction
@@ -627,17 +660,21 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    (* execution_order = "read_csr,  rl_record_external_interrupt" *)
    (* execution_order = "write_csr, rl_record_external_interrupt" *)
-   rule rl_record_external_interrupt (rg_ei_requested);
-      let mip = rg_mip;
-      WordXL old_mip = mip_to_word (mip);
-      mip.eips [m_Priv_Mode] = 1'b1;
-      WordXL new_mip = mip_to_word (mip);
-      rg_mip <= mip;
-      rg_ei_requested <= False;
-      
+   rule rl_record_external_interrupt;
+      let ei_req <- pop (f_ei_reqs);
+
+      // Set or clear mip.mtip
+      let old_mip = rg_mip;
+      let new_mip = old_mip;
+      new_mip.eips [m_Priv_Mode] = (ei_req ? 1'b1 : 1'b0);
+      rg_mip <= new_mip;
+
+      WordXL old_mip_w = mip_to_word (old_mip);
+      WordXL new_mip_w = mip_to_word (new_mip);
+
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: CSR_RegFile.rl_record_external_interrupt: mip: %0h -> %0h",
-		   cur_cycle, old_mip, new_mip);
+		   rg_mcycle, old_mip_w, new_mip_w);
 	 $display ("    Current mie = %0h", mie_to_word (rg_mie));
       end
    endrule
@@ -655,27 +692,31 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
       WordXL old_mip_w = mip_to_word (old_mip);
       WordXL new_mip_w = mip_to_word (new_mip);
-      
+
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: CSR_RegFile.rl_record_timer_interrupt_req: mip: %0h -> %0h",
-		   cur_cycle, old_mip_w, new_mip_w);
+		   rg_mcycle, old_mip_w, new_mip_w);
 	 $display ("    Current mie = %0h", mie_to_word (rg_mie));
       end
    endrule
 
    (* execution_order = "read_csr,  rl_record_software_interrupt" *)
    (* execution_order = "write_csr, rl_record_software_interrupt" *)
-   rule rl_record_software_interrupt (rg_si_requested);
-      let mip = rg_mip;
-      WordXL old_mip = mip_to_word (mip);
-      mip.sips [m_Priv_Mode] = 1'b1;
-      WordXL new_mip = mip_to_word (mip);
-      rg_mip <= mip;
-      rg_si_requested <= False;
-      
+   rule rl_record_software_interrupt;
+      let si_req <- pop (f_si_reqs);
+
+      // Set or clear mip.msip
+      let old_mip = rg_mip;
+      let new_mip = old_mip;
+      new_mip.sips [m_Priv_Mode] = (si_req ? 1'b1 : 1'b0);
+      rg_mip <= new_mip;
+
+      WordXL old_mip_w = mip_to_word (old_mip);
+      WordXL new_mip_w = mip_to_word (new_mip);
+
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: CSR_RegFile.rl_record_software_interrupt: mip: %0h -> %0h",
-		   cur_cycle, old_mip, new_mip);
+		   rg_mcycle, old_mip_w, new_mip_w);
 	 $display ("    Current mie = %0h", mie_to_word (rg_mie));
       end
    endrule
@@ -748,6 +789,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       fav_write_csr (csr_addr, word);
    endmethod
 
+   // Read MISA
+   method MISA read_misa;
+      return misa;
+   endmethod
+
    // Read MSTATUS
    method WordXL read_mstatus;
       return  mstatus_to_word (rg_mstatus);
@@ -776,12 +822,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 			    Word       xtval);
 
       if (cfg_verbosity > 1) begin
-	 $display ("%0d: CSR_Regfile.csr_trap_actions:", cur_cycle);
+	 $display ("%0d: CSR_Regfile.csr_trap_actions:", rg_mcycle);
 	 $display ("    from priv %0d  pc 0x%0h  interrupt %0d  exc_code %0d  xtval 0x%0h",
 		   from_priv, pc, pack (interrupt), exc_code, xtval);
 `ifdef ISA_PRIV_S
 	 fa_show_trap_csrs (s_Priv_Mode, rg_mip, rg_mie, 0, 0, rg_scause,
-			    word_to_mstatus (fn_read_sstatus (rg_mstatus)),
+			    word_to_mstatus (misa,  fn_read_sstatus (rg_mstatus)),
 			    rg_stvec, rg_sepc, rg_stval);
 `endif
 	 fa_show_trap_csrs (m_Priv_Mode, rg_mip, rg_mie, rg_medeleg, rg_mideleg, rg_mcause,
@@ -815,11 +861,8 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       rg_xepc        <= pc;
       let xcause      = MCause {interrupt: pack (interrupt), exc_code: exc_code};
       rg_xcause      <= xcause;
+      rg_xtval       <= xtval;
 
-      // xTVal is recorded only for exceptions
-      if (! interrupt)
-	 rg_xtval <= xtval;
-      
       // Compute the exception PC based on the xTVEC mode bits
       Addr exc_pc     = (extend (rg_xtvec.base)) << 2;
       Addr vector_offset = (extend (exc_code)) << 2;
@@ -873,32 +916,50 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       return rg_mcycle;
    endmethod
 
-   // Read MCOUNTEREN
-   method MCounteren read_csr_mcounteren;
-      return rg_mcounteren;
+   // Fault on reading counters?
+   method Bool csr_counter_read_fault (Priv_Mode  priv, CSR_Addr  csr_addr);
+      return (   ((priv == s_Priv_Mode) || (priv == u_Priv_Mode))
+	      && (   ((csr_addr == csr_cycle)   && (rg_mcounteren.cy == 0))
+		  || ((csr_addr == csr_time)    && (rg_mcounteren.tm == 0))
+		  || ((csr_addr == csr_instret) && (rg_mcounteren.ir == 0))
+		  || ((csr_hpmcounter3  <= csr_addr) && (csr_addr <= csr_hpmcounter31))
+`ifdef RV32
+		  || ((csr_hpmcounter3h <= csr_addr) && (csr_addr <= csr_hpmcounter31h))
+`endif
+		  ));
+   endmethod
+
+   // Read MIP
+   method MIP read_csr_mip;
+      return rg_mip;
    endmethod
 
    // Interrupts
-   method Action  external_interrupt_req;
-      rg_ei_requested <= True;
+   method Action external_interrupt_req (Bool set_not_clear);
+      f_ei_reqs.enq (set_not_clear);
       if (cfg_verbosity > 1)
-	 $display ("%0d: CSR_RegFile.external_interrupt_req", cur_cycle);
+	 $display ("%0d: CSR_RegFile: external_interrupt_req: %x", rg_mcycle, set_not_clear);
    endmethod
 
    method Action timer_interrupt_req (Bool set_not_clear);
       f_ti_reqs.enq (set_not_clear);
-   endmethod      
-
-   method Action  software_interrupt_req;
-      rg_si_requested <= True;
       if (cfg_verbosity > 1)
-	 $display ("%0d: CSR_RegFile.software_interrupt_req", cur_cycle);
+	 $display ("%0d: CSR_RegFile: timer_interrupt_req: %x", rg_mcycle, set_not_clear);
+   endmethod
+
+   method Action software_interrupt_req (Bool set_not_clear);
+      f_si_reqs.enq (set_not_clear);
+      if (cfg_verbosity > 1)
+	 $display ("%0d: CSR_RegFile: software_interrupt_req: %x", rg_mcycle, set_not_clear);
    endmethod
 
    method Maybe #(Exc_Code) interrupt_pending (Priv_Mode cur_priv);
-      return fn_interrupt_pending (mstatus_to_word (rg_mstatus),
+      return fn_interrupt_pending (misa,
+				   mstatus_to_word (rg_mstatus),
 				   mip_to_word     (rg_mip),
 				   mie_to_word     (rg_mie),
+				   rg_mideleg,
+				   sideleg,
 				   cur_priv);
    endmethod
 
@@ -941,14 +1002,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    method Action write_dcsr_cause (DCSR_Cause cause);
       Bit #(3) b3 = pack (cause);
       rg_dcsr <= { rg_dcsr [31:9], b3, rg_dcsr [5:0] };
-   endmethod
-
-   method WordXL watchpoint_hit (WordXL addr);
-      return ((addr == rg_watchpoint1) ? 1 : 0);
-   endmethod
-
-   method Action set_watch_n (WordXL  n);
-      rg_watch_n <= n;
    endmethod
 
 `endif
