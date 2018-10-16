@@ -11,3 +11,11 @@ exe*
 *.log
 *_edited.v
 *.v
+sim64
+sim32
+b32
+b64
+b32
+simv64
+bv64
+gdb
