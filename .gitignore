@@ -10,3 +10,4 @@ Mem.hex
 exe*
 *.log
 *_edited.v
+*.v

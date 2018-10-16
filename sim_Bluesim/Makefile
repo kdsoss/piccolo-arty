@@ -6,7 +6,7 @@
 
 .PHONY: help
 help:
-	@echo 'options: sim32 b32 sim64 b64 simV64 bV64 simD64 bD64 test'
+	@echo 'options: sim32 b32 sim64 b64 simV64 bV64 simD64 bD64 test32 test64'
 
 .PHONY: all
 all: compile link
@@ -41,12 +41,15 @@ TOPMODULE = mkTop_HW_Side
 BSC_FLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-suppress-warnings G0020 \
 		-D RV32 \
+		-D SV32 \
 		-D FABRIC32 \
 		-D ISA_PRIV_M \
 		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
 		-D ISA_M \
 		-D Near_Mem_Caches \
 		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		+RTS -K64M -RTS  -show-range-conflict
 		
@@ -57,9 +60,11 @@ BSC_FLAGS64 += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D SV39 \
 		-D ISA_PRIV_M \
 		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
 		-D ISA_M \
 		-D Near_Mem_Caches \
 		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		+RTS -K64M -RTS  -show-range-conflict
 
@@ -75,6 +80,7 @@ BSC_FLAGS64FULL += -keep-fires -aggressive-conditions -no-warn-action-shadowing 
 		-D ISA_A \
 		-D Near_Mem_Caches \
 		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		+RTS -K64M -RTS  -show-range-conflict
 		
@@ -90,6 +96,7 @@ BSC_FLAGS64VERIF += -keep-fires -aggressive-conditions -no-warn-action-shadowing
 		-D ISA_A \
 		-D Near_Mem_Caches \
 		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		-D INCLUDE_WOLF_VERIF \
 		+RTS -K64M -RTS  -show-range-conflict
@@ -102,6 +109,10 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D ISA_PRIV_M \
 		-D ISA_PRIV_U \
 		-D ISA_M \
+		-D ISA_A \
+		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
+		-D CSR_REGFILE_UM \
 		-D INCLUDE_GDB_CONTROL\
 		-D Near_Mem_Caches \
 		-D FABRIC64 \
@@ -110,34 +121,37 @@ BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 # ================================================================
 # Make targets
 
-TMP_DIRS  = -bdir build  -simdir build  -info-dir build
-TMP_VDIRS = -bdir buildv -simdir buildv -info-dir buildv -vdir buildv
-TMP_SDIRS = -bdir buildsoc -simdir buildsoc -info-dir buildsoc -vdir buildsoc
-TMP_64DIRS = -bdir build64 -simdir build64 -info-dir build64 -vdir build64soc
-TMP_64FDIRS = -bdir buildF64 -simdir buildF64 -info-dir buildF64 -vdir buildF64
-TMP_64SIM = -bdir sim64 -simdir sim64 -info-dir sim64 -vdir sim64
-TMP_VERIF = -bdir verifsim -simdir verifsim -info-dir verifsim -vdir verifsim
-TMP_LOGIF = -bdir logif -simdir logif -info-dir logif -vdir logif
+TMP_DIRS   = -bdir sim32 -simdir sim32 -info-dir sim32
+TMP_VDIRS  = -bdir b32 -simdir b32 -info-dir b32 -vdir b32
+TMP_64SIM  = -bdir sim64 -simdir sim64 -info-dir sim64
+TMP_64DIRS = -bdir b64 -simdir b64 -info-dir b64 -vdir b64
+
+TMP_64FDIRS = -bdir f64 -simdir f64 -info-dir f64 -vdir f64
+
+TMP_VERIF = -bdir simv64 -simdir simv64 -info-dir simv64 -vdir simv64
+TMP_LOGIF = -bdir bv64 -simdir bv64 -info-dir bv64 -vdir bv64
+
 TMP_GDBV = -bdir gdbv -simdir gdbv -info-dir gdbv -vdir gdbv
 TMP_GDB = -bdir gdb -simdir gdb -info-dir gdb -vdir gdb
 
 .PHONY: sim32
-compile:
+sim32:
 	@echo "INFO: Compiling simulation (CPU, 32-bit)"
-	mkdir -p  build
+	mkdir -p  sim32
 	bsc -u -elab -sim -D SIM $(USEFUL_FLAGS) $(TMP_DIRS)  $(BSC_FLAGS)  $(BSC_PATH)  $(TOPFILE)
 	@echo "INFO: Compiled  Core (CPU, Caches)"
 	@echo "INFO: Linking bsc-compiled objects into Bluesim executable"
 	bsc -sim -parallel-sim-link 8 \
 		$(TMP_DIRS)\
 		-e $(TOPMODULE) -o ./$(BSIM_EXE_FILE) \
-		$(BSC_C_FLAGS)
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
 	@echo "INFO: Linked bsc-compiled objects into Bluesim executable"
 
 .PHONY: b32
-verilog:
+b32:
 	@echo "INFO: Compiling to verilog (CPU, 32-bit)"
-	mkdir -p  buildv
+	mkdir -p  b32
 	bsc -u -elab -verilog -D VERILOG $(USEFUL_FLAGS) $(TMP_VDIRS)  $(BSC_FLAGS)  $(BSC_PATH)  ../src_Core/Core/CPU.bsv
 	@echo "INFO: Re-compiled  Core (CPU)"
 
@@ -151,40 +165,42 @@ sim64:
 	bsc -sim -parallel-sim-link 8 \
 		$(TMP_64SIM)\
 		-e $(TOPMODULE) -o ./$(BSIM_EXE_FILE64) \
-		$(BSC_C_FLAGS)
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
 	@echo "INFO: linked bsc-compiled objects into Bluesim executable"
 
 .PHONY: b64
 b64:
 	@echo "INFO: Compiling to verilog (CPU, 64-bit)"
-	mkdir -p build64
+	mkdir -p b64
 	bsc -u -elab -verilog -D VERILOG $(USEFUL_FLAGS) $(TMP_64DIRS) $(BSC_FLAGS64) $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compiled 64-bit CPU to verilog"
-	
+
 .PHONY: bF64
 bF64:
 	@echo "INFO: Compiling experimental ISA_FD verilog (CPU, 64-bit)"
-	mkdir -p buildF64
+	mkdir -p f64
 	bsc -u -elab -verilog -D VERILOG $(USEFUL_FLAGS) $(TMP_64FDIRS) $(BSC_FLAGS64) -D ISA_F -D ISA_D $(BSC_PATH) ../src_Core/Core/CPU.bsv
 	@echo "INFO: Compiled 64-bit CPU to verilog"
 
 .PHONY: simV64
 simV64:
 	@echo "INFO: Compiling CPU with Verifier attachments"
-	mkdir -p  verifsim
+	mkdir -p  simv64
 	bsc -u -elab -sim -D SIM $(TMP_VERIF) $(BSC_FLAGS64VERIF)  $(BSC_PATH)  $(TOPFILE)
 	@echo "INFO: Compilation completed"
 	@echo "INFO: linking bsc-compiled objects into Bluesim executable"
 	bsc -sim -parallel-sim-link 8 \
 		$(TMP_VERIF) \
 		-e $(TOPMODULE) -o ./$(BSIM_EXE_FV64) \
-		$(BSC_C_FLAGS)
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
 	@echo "INFO: linked bsc-compiled objects into Bluesim executable"
 
 .PHONY: bV64
 bV64:
 	@echo "INFO: Compiling Verifier CPU to verilog"
-	mkdir -p logif
+	mkdir -p bv64
 	bsc -u -elab -verilog -D VERILOG $(TMP_LOGIF) $(BSC_FLAGS64VERIF)  $(BSC_PATH) -g mkVerifier_CPU ../src_Verifier/Verifier_CPU.bsv
 	@echo "INFO: Compilation completed"
 
@@ -198,7 +214,9 @@ simD64:
 	bsc -sim -parallel-sim-link 8 \
 		$(TMP_GDB)\
 		-e $(TOPMODULE) -o ./$(BSIM_EXE_FILEGDB) \
-		$(BSC_C_FLAGS)
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
+	@echo "INFO: linked debug objects into Bluesim executable"
     
     
 .PHONY: bD64
@@ -222,11 +240,17 @@ BSC_C_FLAGS += \
 # ================================================================
 # Test: run the executable on the standard 'add' RISCV ISA test
 
-.PHONY: test
-test:
+.PHONY: test32
+test32:
 	make -C  ../Tests/elf_to_hex
-	../Tests/elf_to_hex/elf_to_hex  ../Tests/isa/rv32ui-p-sub  Mem.hex
+	../Tests/elf_to_hex/elf_to_hex  ../Tests/isa/rv32ui-p-add  Mem.hex
 	./$(BSIM_EXE_FILE)  -m 2500  +v1  +tohost
+
+.PHONY: test64
+test64:
+	make -C  ../Tests/elf_to_hex
+	../Tests/elf_to_hex/elf_to_hex  ../Tests/isa/rv64ui-p-add  Mem.hex
+	./$(BSIM_EXE_FILE64)  -m 2500  +v1  +tohost
 
 # ================================================================
 
@@ -235,7 +259,10 @@ clean:
 	rm -r -f  *~  build
 	rm -rf buildv
 	rm -rf buildsoc
-	
+	rm -rf sim32 sim64 b32 b64 simv64 bv64 gdbv gdb
+	rm -f $(addprefix $(BSIM_EXE_FILE), *) $(addprefix $(BSIM_EXE_FILE64), *) $(addprefix $(BSIM_EXE_FV64), *) $(addprefix $(BSIM_EXE_FILEGDB), *)
+	rm -f Mem.hex 
+
 .PHONY: simclean
 simclean:
 	rm -rf build
