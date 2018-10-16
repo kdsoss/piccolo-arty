@@ -227,8 +227,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	                        instr:          instr,
 	                        rs1_addr:       rs1,
 	                        rs2_addr:       rs2,
-	                        rs1_data:       rs1_val,
-	                        rs2_data:       rs2_val,
+	                        rs1_data:       rs1_val_bypassed,
+	                        rs2_data:       rs2_val_bypassed,
 	                        pc_rdata:       pc,
 	                        pc_wdata:       next_pc,
 	                        mem_wdata:      alu_outputs.val2,
@@ -274,8 +274,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    method Action deq ();
-      // Writeback CSR if valid
       let data_to_stage2 = fv_out.data_to_stage2;
+      // Writeback CSR if valid
 
       // TODO: do we suppress MINSTRET increment if we write minstret here?
       Bool wrote_csr_minstret = False;

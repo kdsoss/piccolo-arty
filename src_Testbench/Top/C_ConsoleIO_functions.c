@@ -24,9 +24,9 @@
 // The dummy arg is not used, and is present only to appease Verilog
 // simulators which can be be finicky about zero-argument functions.
 
-uint8_t c_trygetchar (uint8_t  dummy)
+unsigned char c_trygetchar (unsigned char  dummy)
 {
-    uint8_t  ch;
+    unsigned char  ch;
     ssize_t  n;
     struct pollfd  x_pollfd;
     const int fd_stdin = 0;
@@ -60,7 +60,7 @@ uint8_t c_trygetchar (uint8_t  dummy)
 // ================================================================
 // Writes character to stdout
 
-void c_putchar (uint8_t ch)
+void c_putchar (unsigned char ch)
 {
     if ((ch == 0) || (ch > 0x7F)) return;
 

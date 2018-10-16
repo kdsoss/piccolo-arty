@@ -50,8 +50,7 @@ typedef struct {
     Bit#(masklen)   rvfi_mem_wmask; // [570 - 577] Write mask:              Indicates valid bytes written. 0 if unused.
     
     // XXX: SC writes something other than read value, but the value that would be read is unimportant.
-    // Completely unsure what the point of this is, it's only relevant when the value is
-    // going to be in rd anyway.
+    // Unsure what the point of this is, it's only relevant when the value is going to be in rd anyway.
     Bit#(xlen)      rvfi_mem_rdata; // [578 - 641] Read data:               Data read from mem_addr (i.e. before write)
     
     

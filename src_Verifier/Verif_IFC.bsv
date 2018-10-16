@@ -38,10 +38,17 @@ interface Verif_IFC;
     
 `endif
 
+`ifdef VERILOG
     (* ready = "available", enable = "sent" *)
     method ActionValue#(Info_CPU_to_Verifier) getPacket;
-   (*always_ready, always_enabled *)
-   method Bool halted;
+    (*always_ready, always_enabled *)
+    method Bool halted;
+`elsif TANDEM
+    (* ready = "available", enable = "sent" *)
+    method ActionValue#(Info_CPU_to_Verifier) getPacket;
+    (*always_ready, always_enabled *)
+    method Bool halted;
+`endif
 
 endinterface
 

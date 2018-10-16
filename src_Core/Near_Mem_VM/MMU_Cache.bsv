@@ -646,7 +646,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    //     VM on,  LD or AMO_LR, TLB hit and cache hit
    // Otherwise, moves to other states that handle TLB misses, cache
    // misses, 1-cycle delayed responses for ST and AMO, I/O requests, etc.
-
+   
+   
+   Reg#(Bool) rg_newrequest <- mkReg(False);
 
    rule rl_probe_and_immed_rsp (rg_state == MODULE_RUNNING);
       // Print some initial information for debugging
@@ -697,10 +699,15 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
       // ---- TLB miss
         if (vm_xlate_result.outcome == VM_XLATE_TLB_MISS) begin
+	        $display("TLB Miss: 0x%16h", rg_addr);
 	        rg_state <= PTW_START;
         end
       // ---- TLB translation excepion
         else if (vm_xlate_result.outcome == VM_XLATE_EXCEPTION) begin
+	        if(rg_newrequest && !dmem_not_imem) begin
+	            $display("TLB Exception: 0x%16h", rg_addr);
+	            rg_newrequest <= False;
+	        end
 	        rg_state <= MODULE_EXCEPTION_RSP;
 	        rg_exc_code <= vm_xlate_result.exc_code;
         end
@@ -708,6 +715,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
         else begin
 	 // (vm_xlate_result.outcome == VM_XLATE_OK)
 	        rg_pa <= vm_xlate_result.pa;
+	        // This is probably going to spam everything. Sorry.
+	        if(rg_newrequest && !dmem_not_imem) begin
+	            $display("Address translation: 0x%16h => 0x%16h", rg_addr, vm_xlate_result.pa);
+	            rg_newrequest <= False;
+	        end
 
 	 // IO requests
         if (soc_map.m_is_IO_addr (fn_PA_to_Fabric_Addr (vm_xlate_result.pa))) begin
@@ -728,6 +740,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
                 if (hit) begin
 		            // Cache hit; drive response
 		            fa_drive_mem_rsp (rg_f3, rg_addr, word64, 0);
+		            if(!dmem_not_imem)
+		                $display("RESULT: 0x%16h", word64);
 `ifdef ISA_A
 		            if (is_AMO_LR) begin
 		                rg_lrsc_valid <= True;
@@ -908,6 +922,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	        end
         end
     endrule: rl_probe_and_immed_rsp
+    
 
 `ifdef ISA_PRIV_S
    // ****************************************************************
@@ -1664,7 +1679,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 		       Bit #(1)   sstatus_SUM,
 		       Bit #(1)   mstatus_MXR,
 		       WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
-
+     
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.req: op:", cur_cycle, d_or_i, fshow (op),
 		   " f3:%0d addr:0x%0h st_value:0x%0h priv:",
@@ -1692,12 +1707,16 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       // Initial default PA assumes no VM translation
       rg_pa <= fn_WordXL_to_PA (addr);
 
+      if(!dmem_not_imem)
+        $display("IMEM REQUEST: 0x%16h", addr);
+
       if (! fn_is_aligned (f3, addr)) begin
 	 // We detect misaligned accesses and trap on them
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ADDR_MISALIGNED : exc_code_STORE_AMO_ADDR_MISALIGNED);
       end
       else begin
+      rg_newrequest <= True;
 	 rg_state <= MODULE_RUNNING;
 	 fa_req_ram_B (addr);
       end
@@ -1711,7 +1730,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       return rg_addr;
    endmethod
 
-   method Bit #(64)  word64;
+   method Bit#(64) word64;
       return dw_output_ld_val;
    endmethod
 

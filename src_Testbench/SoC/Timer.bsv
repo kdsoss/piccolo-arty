@@ -110,6 +110,7 @@ module mkTimer (Timer_IFC);
    // ----------------
    // Timer registers
 
+   
    Reg #(Bit #(64)) crg_time [2]        <- mkCRegU (2);
    Reg #(Bit #(64)) crg_timecmp [2]     <- mkCRegU (2);
 
@@ -248,7 +249,7 @@ module mkTimer (Timer_IFC);
 
 		     if (cfg_verbosity > 1)
 			$display ("%0d: Timer.rl_process_wr_req: Setting MTIMECMP = %0d (MTIME = %0d); delta = %0d",
-				  cur_cycle, wrd.wdata, crg_time [1], wrd.wdata - crg_time [1]);
+				  cur_cycle, wrd.wdata, crg_time [1], zeroExtend(wrd.wdata) - crg_time [1]);
 		  end
 	 'h_BFF8: begin
 		     // XXX Consult the actual size of the request?

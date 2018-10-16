@@ -236,7 +236,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
     Reg   #(Bool)                  rg_handler    <- mkReg (False);
     Reg   #(Bool)                  rg_donehalt       <- mkReg (False);    
     
-    // State for deciding when a new MIP command needs to be sent
     Reg #(MIP) rg_prev_mip <- mkRegU;
     
 `endif
@@ -249,7 +248,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	                      (new_mip.sips[m_Priv_Mode] != rg_prev_mip.sips[m_Priv_Mode]) ||
 	                      (new_mip.eips              != rg_prev_mip.eips));
       return mip_has_changed;
-// Not sure what this does yet, but we'll chuck it in for Wolf Verification just in case.
+// Currently this breaks if included - for some reason, it prevents Stage 1 from dequeueing, so
+// the pipeline ends up blocked.
 `elsif INCLUDE_WOLF_VERIF
       MIP new_mip = csr_regfile.read_csr_mip;
       Bool mip_has_changed = ((new_mip.tips[m_Priv_Mode] != rg_prev_mip.tips[m_Priv_Mode]) ||
@@ -260,6 +260,9 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       return False;
 `endif
    endfunction: mip_cmd_needed
+   
+   
+
 
    // ================================================================
    // Debugging: print instruction trace info
@@ -446,18 +449,13 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       if (cur_verbosity != 0)
 	 $display ("%0d: CPU.rl_reset_start", mcycle);
 
+    // TODO: Does Wolf require any info on a reset?
 `ifdef INCLUDE_TANDEM_VERIF
       let verif = getVerifierInfo(True, fromInteger(pc_tv_cmd), 0, 0, 0, True, fromInteger(tv_cmd_reset));
       f_to_verifier.enq (verif);
       rg_prev_mip <= mip_reset_value;
 `endif
    endrule
-
-      /* TODO: Not quite sure how to handle the reset, so we'll leave it for now.
-`elsif INCLUDE_ TODO _VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,False);
-	  f_to_verifier.enq(outpacket);
-	  rg_handler <= False;*/
 
    rule rl_reset_complete (rg_state == CPU_RESET2);
       let ack_gpr <- gpr_regfile.server_reset.response.get;
@@ -524,17 +522,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    Bool stage1_is_csrrx = ((stage1.out.ostatus == OSTATUS_PIPE)
 			   && fn_instr_is_csrrx (stage1.out.data_to_stage2.instr));
     
-    
-`ifdef INCLUDE_WOLF_VERIF
-   // ================================================================
-   // WOLF VERIFICATION RULES
-   
-   //rule rl_wolf_disable (rg_state != CPU_RUNNING)
-   //    rg_rvfi_valid <= True;
-   //endrule
-   
-`endif
-    
 
    // ================================================================
 
@@ -549,6 +536,15 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       to_verifier.instr = fromInteger(tv_cmd_mip);
       to_verifier.data1 = zeroExtend (mip_to_word (new_mip));
       f_to_verifier.enq (to_verifier);
+
+      if (cur_verbosity > 1)
+	 $display ("%0d: CPU.rl_stage1_mip_cmd: new MIP = ", mcycle, fshow(new_mip));
+   endrule
+`elsif INCLUDE_WOLF_VERIF
+   rule rl_stage1_mip_cmd (   (rg_state == CPU_RUNNING)
+			   && stage1_send_mip_cmd);
+      MIP new_mip = csr_regfile.read_csr_mip;
+      rg_prev_mip <= new_mip;
 
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage1_mip_cmd: new MIP = ", mcycle, fshow(new_mip));
@@ -568,48 +564,52 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
     
 
    (* fire_when_enabled *)
-   rule rl_pipe (   (rg_state == CPU_RUNNING)
+    rule rl_pipe (   (rg_state == CPU_RUNNING)
 		 && (! pipe_is_empty)
 		 && (! pipe_has_nonpipe)
 		 && (! stage1_halted));
 
-      Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);
-      Bool stage2_full = (stage2.out.ostatus != OSTATUS_EMPTY);
-      Bool stage1_full = (stage1.out.ostatus != OSTATUS_EMPTY);
+        Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);
+        Bool stage2_full = (stage2.out.ostatus != OSTATUS_EMPTY);
+        Bool stage1_full = (stage1.out.ostatus != OSTATUS_EMPTY);
+        
+        //$display("PIPELINE: S1 %s, S2 %s, S3 %s", getString(stage1_full), 
+        //                        getString(stage2_full), getString(stage3_full));
 
-      // ----------------
-      // Stage3 sink (does regfile writebacks)
+        // ----------------
+        // Stage3 sink (does regfile writebacks)
 
-      if (stage3.out.ostatus == OSTATUS_PIPE) begin
-	 stage3.deq; stage3_full = False;
-      end
+        if (stage3.out.ostatus == OSTATUS_PIPE) begin
+	        stage3.deq; 
+	        stage3_full = False;
+        end
 
-      // ----------------
-      // Move instruction from Stage2 to Stage3
+        // ----------------
+        // Move instruction from Stage2 to Stage3
 
-      if ((! stage3_full) && (stage2.out.ostatus == OSTATUS_PIPE)) begin
-	 stage2.deq;                              stage2_full = False;
-	 stage3.enq (stage2.out.data_to_stage3);  stage3_full = True;
-
+        if ((! stage3_full) && (stage2.out.ostatus == OSTATUS_PIPE)) begin
+	        stage2.deq; stage2_full = False;
+	        stage3.enq (stage2.out.data_to_stage3); stage3_full = True;
 `ifdef INCLUDE_TANDEM_VERIF
-	 // To Verifier
-	 f_to_verifier.enq (stage2.out.to_verifier);
+	        // To Verifier
+	        f_to_verifier.enq (stage2.out.to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-	 let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, False, 0, rg_handler,rg_donehalt);
-	 rg_donehalt <= outpacket.rvfi_halt;
-	 f_to_verifier.enq(outpacket);
-	 rg_handler <= False;
+	        let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, False, 
+	                                0, rg_handler,rg_donehalt);
+	        rg_donehalt <= outpacket.rvfi_halt;
+	        f_to_verifier.enq(outpacket);
+	        rg_handler <= False;
 `endif
 
-	 // Accounting
-	 rg_inum <= rg_inum + 1;
-	 fa_emit_instr_trace (rg_inum, stage2.out.data_to_stage3.pc, stage2.out.data_to_stage3.instr, rg_cur_priv);
+	    // Accounting
+	    rg_inum <= rg_inum + 1;
+	    fa_emit_instr_trace (rg_inum, stage2.out.data_to_stage3.pc, 
+	    stage2.out.data_to_stage3.instr, rg_cur_priv);
       end
-
+      
       // ----------------
       // Move instruction from Stage1 to Stage2
       // (but stall if Stage1 is CSRRx and rest of pipe is not empty)
-
       if (   (! halting)
 	  && (! stage2_full)
 	  && (stage1.out.ostatus == OSTATUS_PIPE)
@@ -623,7 +623,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // ----------------
       // Feed Stage 1
 
-      if (   (! halting)
+      if ((! halting)
 	  && (! stage1_full))
 	 begin
 	    if (stage1_is_csrrx) begin
@@ -690,8 +690,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("Stage 2 trap - EPC: 0x%0h, Mcause: 0x%0h", epc, mcause);
-      let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, True, exc_code, rg_handler,rg_donehalt);
+      let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, 
+                                rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= True;
@@ -738,7 +738,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         next_pc,new_mstatus,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("MRET EXC_CODE: 0x%4h", exc_code);
       let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -786,7 +785,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("FENCE.I EXC_CODE: 0x%4h", exc_code);
       let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -836,7 +834,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("FENCE EXC_CODE: 0x%4h", exc_code);
       let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -884,7 +881,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("SFENCE EXC_CODE: 0x%4h", exc_code);
       let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -1000,7 +996,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 					    mcause,True,instr);
       f_to_verifier.enq (to_verifier);
 `elsif INCLUDE_WOLF_VERIF
-      //$display("EPC: 0x%0h, Mcause: 0x%0h", epc, mcause);
       let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,True,exc_code,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);

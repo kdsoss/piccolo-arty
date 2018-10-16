@@ -128,7 +128,7 @@ module mkNear_Mem (Near_Mem_IFC);
 			  WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
 	 Bit #(7)  amo_funct7  = ?;
 	 Bit #(64) store_value = ?;
-	 //$display("ifetch: @0x%0x", addr);
+	 //$display("IMEM REQUEST: 0x%16h", addr);
 	 icache.req (CACHE_LD, f3,
 `ifdef ISA_A
 		     amo_funct7,
@@ -165,7 +165,7 @@ module mkNear_Mem (Near_Mem_IFC);
 			  Bit #(1)   sstatus_SUM,
 			  Bit #(1)   mstatus_MXR,
 			  WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
-	 //$display("dfetch: @0x%0x", addr);
+	 //$display("DMEM REQUEST: 0x%16h", addr);
 	 dcache.req (op, f3,
 `ifdef ISA_A
 		     amo_funct7,
