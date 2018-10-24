@@ -1,5 +1,16 @@
 // Copyright (c) 2013-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package SoC_Map;
 
 // ================================================================
@@ -177,7 +188,11 @@ module mkSoC_Map (SoC_Map_IFC);
    // ----------------------------------------------------------------
    // Main Mem Controller 0
 
-   Fabric_Addr mem0_controller_addr_size = 'h_1000_0000;//fromInteger (bytes_per_mem0);
+`ifdef RVFI_DII
+   Fabric_Addr mem0_controller_addr_size = 'h_0001_0000;
+`else
+   Fabric_Addr mem0_controller_addr_size = 'h_1000_0000;
+`endif
    Fabric_Addr mem0_controller_addr_base = 'h_8000_0000;
    Fabric_Addr mem0_controller_addr_lim  = mem0_controller_addr_base + mem0_controller_addr_size;
 

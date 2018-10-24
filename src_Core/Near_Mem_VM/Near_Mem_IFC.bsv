@@ -98,6 +98,7 @@ interface IMem_IFC;
    (* always_ready *)
    method Action  req (Bit #(3) f3,
 		       WordXL addr,
+                       Bool   trap,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,

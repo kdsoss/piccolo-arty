@@ -1,8 +1,31 @@
-/*
-
-
-
-*/
+/*-
+ * Copyright (c) 2018 Jack Deeley
+ * Copyright (c) 2018 Peter Rugg
+ * All rights reserved.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * @BERI_LICENSE_HEADER_START@
+ *
+ * Licensed to BERI Open Systems C.I.C. (BERI) under one or more contributor
+ * license agreements.  See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.  BERI licenses this
+ * file to you under the BERI Hardware-Software License, Version 1.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at:
+ *
+ *   http://www.beri-open-systems.org/legal/license-1-0.txt
+ *
+ * Unless required by applicable law or agreed to in writing, Work distributed
+ * under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+ * CONDITIONS OF ANY KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations under the License.
+ *
+ * @BERI_LICENSE_HEADER_END@
+ */
 
 package Verifier_CPU;
 
@@ -13,8 +36,8 @@ import GetPut           :: *;
 import ClientServer     :: *;
 
 import Verifier         :: *;
-import TV_Wolf_Info     :: *;
 import ISA_Decls        :: *;
+import RVFI_DII         :: *;
 
 import CPU_IFC          :: *;
 import Verif_IFC        :: *;
@@ -29,10 +52,11 @@ module mkVerifier_CPU #(parameter Bit#(64) pc_reset_value) (Verif_IFC);
     // The core we are going to verify
     CPU_IFC core <- mkCPU(pc_reset_value);
 
-`ifdef SIM
+`ifdef RVFI
+`ifndef RVFI_DII
     rule displayData;
         
-        Info_CPU_to_Verifier x <- core.to_verifier.get;
+        RVFI_DII_Execution #(XLEN) x <- core.to_verifier.get;
         $display("[[0x%4h]] insn:0x%8h, pc:0x%8h, rd:0x%8h, mem_addr:0x%8h, mem_wdata:0x%8h",
                     x.rvfi_order,x.rvfi_insn,x.rvfi_pc_rdata[31:0],x.rvfi_rd_wdata[31:0],
                     x.rvfi_mem_addr[31:0],x.rvfi_mem_wdata[31:0]);
@@ -41,14 +65,20 @@ module mkVerifier_CPU #(parameter Bit#(64) pc_reset_value) (Verif_IFC);
          //           x.rvfi_pc_rdata, x.rvfi_insn, x.rvfi_mem_wmask, x.rvfi_mem_rmask,   
          //           x.rvfi_mem_rdata, x.rvfi_rs1_data, x.rvfi_rs2_data);             
     endrule
-`elsif VERILOG
-    method ActionValue#(Info_CPU_to_Verifier) getPacket() = core.to_verifier.get;
-    method Bool halted = core.halted;
-`elsif TANDEM
-    method ActionValue#(Info_CPU_to_Verifier) getPacket() = core.to_verifier.get;
-    method Bool halted = core.halted;
+`endif
 `endif
 
+`ifdef INCLUDE_TANDEM_VERIF
+    method ActionValue#(Info_CPU_to_Verifier) getPacket() = core.to_verifier.get;
+    method Bool halted = core.halted;
+`elsif RVFI
+`ifdef RVFI_DII
+    interface RVFI_DII_Server rvfi_dii_server = core.rvfi_dii_server;
+`else
+    method ActionValue#(RVFI_DII_Execution #(XLEN)) getPacket() = core.to_verifier.get;
+    method Bool halted = core.halted;
+`endif
+`endif
 
     method Action external_interrupt_req (b) = core.external_interrupt_req(b);
     method Action timer_interrupt_req    (b) = core.timer_interrupt_req(b);

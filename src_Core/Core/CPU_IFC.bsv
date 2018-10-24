@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package CPU_IFC;
 
 // ================================================================
@@ -18,10 +30,9 @@ import ISA_Decls       :: *;
 import Verifier  :: *;
 import TV_Info         :: *;
 import ISA_Decls       :: *;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
 import Verifier  :: *;
-import TV_Wolf_Info    :: *;
-import ISA_Decls       :: *;
+import RVFI_DII    :: *;
 `endif
 
 import Fabric_Defs     :: *;
@@ -62,12 +73,14 @@ interface CPU_IFC;
 
    interface Get #(Info_CPU_to_Verifier)  to_verifier;
    
-`elsif INCLUDE_WOLF_VERIF  
-
-   interface Get #(Info_CPU_to_Verifier)  to_verifier;
+`elsif RVFI
+`ifdef RVFI_DII
+   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
+`else
+   interface Get #(RVFI_DII_Execution #(XLEN))  to_verifier;
    (*always_ready, always_enabled *)
    method Bool halted;
-   
+`endif
 `endif
 
    // ----------------

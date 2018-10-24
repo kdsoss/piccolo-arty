@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package EX_ALU_functions;
 
 // ================================================================
@@ -185,7 +197,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
    alu_outputs.rd        = 0;
    alu_outputs.addr      = (branch_taken ? branch_target : (inputs.pc + 4));
    // Gives a defined value when in verification mode.
-   `ifdef INCLUDE_WOLF_VERIF
+   `ifdef RVFI
    alu_outputs.val1      = 0;
    `endif
    alu_outputs.val2      = branch_target;    // For tandem verifier only

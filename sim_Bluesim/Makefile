@@ -2,11 +2,24 @@
 
 # Copyright (c) 2018 Bluespec, Inc. All Rights Reserved
 
+
+#-
+# RVFI_DII modifications:
+#     Copyright (c) 2018 Jack Deeley
+#     Copyright (c) 2018 Peter Rugg
+#     All rights reserved.
+#
+#     This software was developed by SRI International and the University of
+#     Cambridge Computer Laboratory (Department of Computer Science and
+#     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+#     DARPA SSITH research programme.
+#-
+
 # ================================================================
 
 .PHONY: help
 help:
-	@echo 'options: sim32 b32 sim64 b64 simV64 bV64 simD64 bD64 test32 test64'
+	@echo 'options: sim32 b32 sim64 b64 simV64 simV32 bV64 simD64 bD64 test32 test64'
 
 .PHONY: all
 all: compile link
@@ -23,7 +36,8 @@ REPO = ..
 
 CORE_DIRS = $(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/BSV_Additional_Libs:$(REPO)/src_Verifier
 TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC:$(REPO)/src_Testbench/Fabrics/AXI4_Lite
-BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):+
+RVFI_DII_DIRS = $(REPO)/src_Verifier/BSV-RVFI-DII
+BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(RVFI_DII_DIRS):+
 USEFUL_FLAGS = #-remove-unused-modules -remove-empty-rules -remove-starved-rules -remove-false-rules
 
 # ----------------
@@ -31,6 +45,7 @@ USEFUL_FLAGS = #-remove-unused-modules -remove-empty-rules -remove-starved-rules
 
 TOPFILE   = $(REPO)/src_Testbench/Top/Top_HW_Side.bsv
 TOPMODULE = mkTop_HW_Side
+RVFI_DII_TOPMODULE = mkPiccolo_RVFI_DII
 
 #----------------
 # bsc flags
@@ -52,7 +67,7 @@ BSC_FLAGS += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		+RTS -K64M -RTS  -show-range-conflict
-		
+
 BSC_FLAGS64 += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-suppress-warnings G0020 \
 		-D RV64 \
@@ -83,7 +98,7 @@ BSC_FLAGS64FULL += -keep-fires -aggressive-conditions -no-warn-action-shadowing 
 		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
 		+RTS -K64M -RTS  -show-range-conflict
-		
+
 BSC_FLAGS64VERIF += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
 		-suppress-warnings G0020 \
 		-D RV64 \
@@ -98,7 +113,25 @@ BSC_FLAGS64VERIF += -keep-fires -aggressive-conditions -no-warn-action-shadowing
 		-D SHIFT_BARREL \
 		-D MULT_SERIAL\
 		-D CSR_REGFILE_UM \
-		-D INCLUDE_WOLF_VERIF \
+		-D RVFI \
+		-D RVFI_DII \
+		+RTS -K64M -RTS  -show-range-conflict
+
+BSC_FLAGS32VERIF += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
+		-suppress-warnings G0020 \
+		-D RV32 \
+		-D SV32 \
+		-D FABRIC32 \
+		-D ISA_PRIV_M \
+		-D ISA_PRIV_U \
+		-D ISA_PRIV_S \
+		-D ISA_M \
+		-D Near_Mem_Caches \
+		-D SHIFT_BARREL \
+		-D MULT_SERIAL\
+		-D CSR_REGFILE_UM \
+		-D RVFI \
+		-D RVFI_DII \
 		+RTS -K64M -RTS  -show-range-conflict
 
 BSC_FLAGSGDB += -keep-fires -aggressive-conditions -no-warn-action-shadowing \
@@ -128,7 +161,8 @@ TMP_64DIRS = -bdir b64 -simdir b64 -info-dir b64 -vdir b64
 
 TMP_64FDIRS = -bdir f64 -simdir f64 -info-dir f64 -vdir f64
 
-TMP_VERIF = -bdir simv64 -simdir simv64 -info-dir simv64 -vdir simv64
+TMP_VERIF64 = -bdir simv64 -simdir simv64 -info-dir simv64 -vdir simv64
+TMP_VERIF32 = -bdir simv32 -simdir simv32 -info-dir simv32 -vdir simv32
 TMP_LOGIF = -bdir bv64 -simdir bv64 -info-dir bv64 -vdir bv64
 
 TMP_GDBV = -bdir gdbv -simdir gdbv -info-dir gdbv -vdir gdbv
@@ -185,17 +219,33 @@ bF64:
 
 .PHONY: simV64
 simV64:
-	@echo "INFO: Compiling CPU with Verifier attachments"
+	@echo "INFO: Compiling 64-bit CPU with Verifier attachments"
 	mkdir -p  simv64
-	bsc -u -elab -sim -D SIM $(TMP_VERIF) $(BSC_FLAGS64VERIF)  $(BSC_PATH)  $(TOPFILE)
+	bsc -u -elab -sim -D SIM $(TMP_VERIF64) $(BSC_FLAGS64VERIF)  $(BSC_PATH)  $(TOPFILE)
 	@echo "INFO: Compilation completed"
 	@echo "INFO: linking bsc-compiled objects into Bluesim executable"
-	bsc -sim -parallel-sim-link 8 \
-		$(TMP_VERIF) \
-		-e $(TOPMODULE) -o ./$(BSIM_EXE_FV64) \
+	CC=gcc-4.8 CXX=g++-4.8 bsc -sim -parallel-sim-link 8 \
+		$(TMP_VERIF64) \
+		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_FV64) \
 		$(BSC_C_FLAGS)\
-		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
+		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
 	@echo "INFO: linked bsc-compiled objects into Bluesim executable"
+
+.PHONY: simV32
+simV32:
+	@echo "INFO: Compiling 32-bit CPU with Verifier attachments"
+	mkdir -p  simv32
+	bsc -u -elab -sim -D SIM $(TMP_VERIF32) $(BSC_FLAGS32VERIF)  $(BSC_PATH)  $(TOPFILE)
+	@echo "INFO: Compiled  Core (CPU, Caches)"
+	@echo "INFO: Linking bsc-compiled objects into Bluesim executable"
+	bsc -sim -parallel-sim-link 8 \
+		$(TMP_VERIF32)\
+		-e $(RVFI_DII_TOPMODULE) -o ./$(BSIM_EXE_FV32) \
+		$(BSC_C_FLAGS)\
+		$(REPO)/src_Testbench/Top/C_ConsoleIO_functions.c \
+		$(REPO)/src_Verifier/BSV-RVFI-DII/SocketPacketUtils/socket_packet_utils.c
+	@echo "INFO: Linked bsc-compiled objects into Bluesim executable"
 
 .PHONY: bV64
 bV64:
@@ -230,6 +280,7 @@ bD64:
 BSIM_EXE_FILE = exe_HW_bsim
 BSIM_EXE_FILE64 = exe_HW_bsim64
 BSIM_EXE_FV64 = exe_HW_vs64
+BSIM_EXE_FV32 = exe_HW_vs32
 BSIM_EXE_FILEGDB = exe_GDB
 
 BSC_C_FLAGS += \
@@ -259,8 +310,8 @@ clean:
 	rm -r -f  *~  build
 	rm -rf buildv
 	rm -rf buildsoc
-	rm -rf sim32 sim64 b32 b64 simv64 bv64 gdbv gdb
-	rm -f $(addprefix $(BSIM_EXE_FILE), *) $(addprefix $(BSIM_EXE_FILE64), *) $(addprefix $(BSIM_EXE_FV64), *) $(addprefix $(BSIM_EXE_FILEGDB), *)
+	rm -rf sim32 sim64 b32 b64 simv64 bv64 gdbv gdb simv32
+	rm -f $(addprefix $(BSIM_EXE_FILE), *) $(addprefix $(BSIM_EXE_FILE64), *) $(addprefix $(BSIM_EXE_FV64), *) $(addprefix $(BSIM_EXE_FV32), *) $(addprefix $(BSIM_EXE_FILEGDB), *)
 	rm -f Mem.hex 
 
 .PHONY: simclean

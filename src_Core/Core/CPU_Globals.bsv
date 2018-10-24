@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package CPU_Globals;
 
 // ================================================================
@@ -23,8 +35,8 @@ import ISA_Decls :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info   :: *;
-`elsif INCLUDE_WOLF_VERIF
-import TV_Wolf_Info :: *;
+`elsif RVFI
+import RVFI_DII  :: *;
 `endif
 
 // ================================================================
@@ -217,14 +229,14 @@ typedef struct {
    Word       val2;     // OP_Stage2_ALU: csr_val
                         // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
-`ifdef INCLUDE_WOLF_VERIF
-   Data_Wolf_Stage1 wolf_info_s1;
+`ifdef RVFI
+   Data_RVFI_Stage1 info_RVFI_s1;
 `endif
 
    } Data_Stage1_to_Stage2
 deriving (Bits);
 
-`ifdef INCLUDE_WOLF_VERIF
+`ifdef RVFI
   
 typedef struct {
     Bit#(ILEN)  instr;
@@ -247,7 +259,7 @@ typedef struct {
     
     Bit#(XLEN)  mem_addr;
     
-} Data_Wolf_Stage1 deriving (Bits, Eq);
+} Data_RVFI_Stage1 deriving (Bits, Eq);
 
   
 `endif
@@ -316,24 +328,24 @@ typedef struct {
    CSR_Addr  csr;
    Word      csr_val;
    
-`ifdef INCLUDE_WOLF_VERIF
-   Data_Wolf_Stage2 wolf_info_s2;
+`ifdef RVFI
+   Data_RVFI_Stage2 info_RVFI_s2;
 `endif
    
    } Data_Stage2_to_Stage3
 deriving (Bits);
 
-`ifdef INCLUDE_WOLF_VERIF
+`ifdef RVFI
     
 typedef struct {
-    Data_Wolf_Stage1    stage1;
+    Data_RVFI_Stage1    stage1;
     // Hard to know what was written as SC pretends to write "0" on failure
     // instead of actual untouched value. So, indicate wmask = 0 perhaps?
     
     Bit#(MASKLEN)       mem_rmask;
     Bit#(MASKLEN)       mem_wmask;
     
-}   Data_Wolf_Stage2 deriving (Bits);
+}   Data_RVFI_Stage2 deriving (Bits);
     
 `endif
 

@@ -1,5 +1,16 @@
 // Copyright (c) 2018 Bluespec, Inc. All Rights Reserved.
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package BRVF_Core_IFC;
 
 // ================================================================
@@ -24,6 +35,11 @@ import Fabric_Defs      :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info :: *;
+`endif
+
+`ifdef RVFI_DII
+import RVFI_DII     :: *;
+import ISA_Decls      :: *;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -60,6 +76,8 @@ interface BRVF_Core_IFC;
    // Optional Tandem Verifier interface
 
    interface Get #(Info_CPU_to_Verifier)  tv_verifier_info_get;
+`elsif RVFI_DII
+   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL

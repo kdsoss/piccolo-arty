@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package CPU_Stage1;
 
 // ================================================================
@@ -62,7 +74,7 @@ interface CPU_Stage1_IFC;
 
    // ---- Input
    (* always_ready *)
-   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
+   method Action enq (Addr next_pc, Bool trap, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
 
    (* always_ready *)
    method Action set_full (Bool full);
@@ -222,8 +234,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 				    badaddr:  badaddr};  // v1.10 - mtval
 
 	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
-`ifdef INCLUDE_WOLF_VERIF
-	    let wolf_info = Data_Wolf_Stage1 {
+`ifdef RVFI
+	    let info_RVFI = Data_RVFI_Stage1 {
 	                        instr:          instr,
 	                        rs1_addr:       rs1,
 	                        rs2_addr:       rs2,
@@ -235,7 +247,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	                        rd_addr:        alu_outputs.rd,
 	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
 	                        rd_wdata_alu:   alu_outputs.val1,
-	                        mem_addr:       alu_outputs.addr
+	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
 	                    };
 `endif
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
@@ -247,8 +259,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 						     addr:      alu_outputs.addr,
 						     val1:      alu_outputs.val1,
 						     val2:      alu_outputs.val2 
-`ifdef INCLUDE_WOLF_VERIF
-                            ,wolf_info_s1: wolf_info
+`ifdef RVFI
+                            ,info_RVFI_s1: info_RVFI
 `endif
 						     };
 
@@ -290,10 +302,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    // ---- Input
-   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
-      icache.req (f3_LW, next_pc, priv, sstatus_SUM, mstatus_MXR, satp);
+   method Action enq (Addr next_pc, Bool trap, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
+      icache.req (f3_LW, next_pc, trap, priv, sstatus_SUM, mstatus_MXR, satp);
 
-      if (verbosity > 1)
+      if (verbosity > 0)
 	 $display ("    S1.enq: 0x%08x", next_pc);
    endmethod
 

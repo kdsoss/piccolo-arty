@@ -1,5 +1,16 @@
 // Copyright (c) 2013-2018 Bluespec, Inc. All Rights Reserved.
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package Top_HW_Side;
 
 // ================================================================
@@ -43,13 +54,23 @@ import ConsoleIO      :: *;
 import Tandem_Verif_Out :: *;
 `endif
 
+`ifdef RVFI_DII
+import RVFI_DII     :: *;
+`endif
+
 // ================================================================
 // Top-level module.
 // Instantiates the SoC.
 // Instantiates a memory model.
 
 (* synthesize *)
-module mkTop_HW_Side (Empty) ;
+module mkTop_HW_Side (
+`ifdef RVFI_DII
+RVFI_DII_Server #(XLEN)
+`else
+Empty
+`endif
+) ;
 
    SoC_Top_IFC    soc_top   <- mkSoC_Top;
    Mem_Model_IFC  mem_model <- mkMem_Model;
@@ -127,8 +148,31 @@ module mkTop_HW_Side (Empty) ;
 
    //  None (this is top-level)
 
+   //  Except RVFI_DII interface if enabled
+`ifdef RVFI_DII
+    return soc_top.rvfi_dii_server;
+`endif
+
+
 endmodule
 
+// ================================================================
+
+`ifdef RVFI_DII
+// ================================================================
+// mkPiccolo_RVFI_DII instantiates the toplevel with the RVFI_DII
+// interfaces enabled, allowing testing with directly 
+// ================================================================
+
+(* synthesize *)
+module mkPiccolo_RVFI_DII(Empty)
+  provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64));
+  RVFI_DII_Bridge #(XLEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
+  let    dut <- mkTop_HW_Side(reset_by bridge.new_rst);
+  mkConnection(bridge.inst, dut);
+endmodule
+
+`endif
 // ================================================================
 
 endpackage: Top_HW_Side

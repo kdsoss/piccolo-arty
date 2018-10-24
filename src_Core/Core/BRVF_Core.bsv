@@ -1,5 +1,16 @@
 // Copyright (c) 2018 Bluespec, Inc. All Rights Reserved.
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package BRVF_Core;
 
 // ================================================================
@@ -35,9 +46,11 @@ import BRVF_Core_IFC  :: *;
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info        :: *;
 import TV_Extra       :: *;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
 import Verifier_CPU   :: *;
+import RVFI_DII       :: *;
 import Verif_IFC      :: *;
+import ISA_Decls      :: *;
 `endif
 
 
@@ -47,7 +60,7 @@ import Verif_IFC      :: *;
 (* synthesize *)
 module mkBRVF_Core #(parameter Bit #(64)  pc_reset_value)  (BRVF_Core_IFC);
    // The CPU itself
-   `ifdef INCLUDE_WOLF_VERIF
+   `ifdef RVFI
    Verif_IFC  cpu <- mkVerifier_CPU (pc_reset_value);
    `else
    CPU_IFC cpu <- mkCPU (pc_reset_value);
@@ -209,6 +222,10 @@ module mkBRVF_Core #(parameter Bit #(64)  pc_reset_value)  (BRVF_Core_IFC);
 `else
    interface AXI4_Lite_Master_IFC  dm_master = debug_module.master;
 `endif
+`endif
+
+`ifdef RVFI_DII
+   interface RVFI_DII_Server rvfi_dii_server = cpu.rvfi_dii_server;
 `endif
 
 endmodule

@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package CPU_Stage2;
 
 // ================================================================
@@ -48,9 +60,9 @@ import ISA_Decls     :: *;
 `ifdef INCLUDE_TANDEM_VERIF
 import Verifier  :: *;
 import TV_Info       :: *;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
 import Verifier  :: *;
-import TV_Wolf_Info  :: *;
+import RVFI_DII  :: *;
 `endif
 
 import CPU_Globals   :: *;
@@ -129,17 +141,17 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
    // ----------------
-`ifdef INCLUDE_WOLF_VERIF
-   let wolf_s1 = rg_stage2.wolf_info_s1;
+`ifdef RVFI
+   let info_RVFI_s1 = rg_stage2.info_RVFI_s1;
 `endif
    
    let bypass_base = Bypass {bypass_state: BYPASS_RD_NONE,
 			     rd:           rg_stage2.rd,
 			     rd_val:       rg_stage2.val1 };
 
-`ifdef INCLUDE_WOLF_VERIF
-    let wolf_s2_base = Data_Wolf_Stage2 {
-                                    stage1:     wolf_s1,
+`ifdef RVFI
+    let info_RVFI_s2_base = Data_RVFI_Stage2 {
+                                    stage1:     info_RVFI_s1,
                                     mem_rmask:  0,
                                     mem_wmask:  0
                                 };
@@ -154,8 +166,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 						    csr_valid: rg_stage2.csr_valid,
 						    csr:       truncate (rg_stage2.addr),
 						    csr_val:   rg_stage2.val2
-`ifdef INCLUDE_WOLF_VERIF
-						    ,wolf_info_s2: wolf_s2_base
+`ifdef RVFI
+						    ,info_RVFI_s2: info_RVFI_s2_base
 `endif
 						    };
 
@@ -246,29 +258,29 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    let to_verifier   = to_verifier_base;
 	    to_verifier.data1 = result;
 	    to_verifier.data2 = truncate (dcache.st_amo_val);
-`elsif INCLUDE_WOLF_VERIF
-	    let wolf_s2 = wolf_s2_base;
+`elsif RVFI
+	    let info_RVFI_s2 = info_RVFI_s2_base;
         // If we're doing a load or AMO other than SC, we need to set the read mask.
         if((rg_stage2.op_stage2 == OP_Stage2_LD)
         `ifdef ISA_A
             ||((rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 != f5_AMO_SC))
         `endif
         ) begin
-            wolf_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+            info_RVFI_s2.mem_rmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
         end
         `ifdef ISA_A
         // If we're doing an AMO that's not an LR, we need to set the write mask as well.
         if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 != f5_AMO_LR) begin 
             // For most AMOs we can just go ahead and do it
             if (rg_f5 != f5_AMO_SC) begin
-                wolf_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+                info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
             // For SC however we do need to check that it was successful, otherwise we've not written.
             end else begin
-                wolf_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr) : 0);
+                info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr) : 0);
             end
         end
         `endif
-        data_to_stage3.wolf_info_s2 = wolf_s2;
+        data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
@@ -292,11 +304,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
 	    data_to_stage3.rd       = 0;
-`ifdef INCLUDE_WOLF_VERIF
+`ifdef RVFI
 	    data_to_stage3.rd_val   = 0;
-	    let wolf_s2 = wolf_s2_base;
-        wolf_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
-        data_to_stage3.wolf_info_s2 = wolf_s2;
+	    let info_RVFI_s2 = info_RVFI_s2_base;
+        info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+        data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `else
 	    data_to_stage3.rd_val   = ?;
 `endif
@@ -327,10 +339,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef INCLUDE_TANDEM_VERIF
 	    let to_verifier = to_verifier_base;
 	    to_verifier.data1 = result;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
         // No memory op, so very simple.
-        let wolf_s2 = wolf_s2_base;
-        data_to_stage3.wolf_info_s2 = wolf_s2;
+        let info_RVFI_s2 = info_RVFI_s2_base;
+        data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
@@ -362,10 +374,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef INCLUDE_TANDEM_VERIF
 	    let to_verifier = to_verifier_base;
 	    to_verifier.data1 = result;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
         // No memory op, so very simple.
-        let wolf_s2 = wolf_s2_base;
-        data_to_stage3.wolf_info_s2 = wolf_s2;
+        let info_RVFI_s2 = info_RVFI_s2_base;
+        data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
@@ -401,10 +413,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef INCLUDE_TANDEM_VERIF
 	    let to_verifier = to_verifier_base;
 	    to_verifier.data1 = result;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
         // No memory op, so very simple.
-        let wolf_s2 = wolf_s2_base;
-        data_to_stage3.wolf_info_s2 = wolf_s2;
+        let info_RVFI_s2 = info_RVFI_s2_base;
+        data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					trap_info:       trap_info_fbox,

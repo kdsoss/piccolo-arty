@@ -1,5 +1,16 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package SoC_Top;
 
 // ================================================================
@@ -60,6 +71,11 @@ import Accel_AES      :: *;
 import TV_Info :: *;
 `endif
 
+`ifdef RVFI_DII
+import RVFI_DII  :: *;
+import ISA_Decls :: *;
+`endif
+
 `ifdef INCLUDE_GDB_CONTROL
 import External_Control :: *;    // Control requests/responses from HSFE
 import Debug_Module     :: *;
@@ -101,6 +117,8 @@ interface SoC_Top_IFC;
 `ifdef INCLUDE_TANDEM_VERIF
    // To tandem verifier
    interface Get #(Info_CPU_to_Verifier) verify_out;
+`elsif RVFI_DII
+   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
 `endif
 
    // External real memory
@@ -355,6 +373,8 @@ module mkSoC_Top (SoC_Top_IFC);
 `ifdef INCLUDE_TANDEM_VERIF
    // To tandem verifier
    interface verify_out = brvf_core.tv_verifier_info_get;
+`elsif RVFI_DII
+   interface rvfi_dii_server = brvf_core.rvfi_dii_server;
 `endif
 
    // External real memory

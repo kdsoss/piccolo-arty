@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package CPU;
 
 // ================================================================
@@ -21,6 +33,7 @@ export mkCPU;
 
 import Memory       :: *;
 import FIFOF        :: *;
+import FIFO         :: *;
 import SpecialFIFOs :: *;
 import GetPut       :: *;
 import ClientServer :: *;
@@ -43,9 +56,13 @@ import ISA_Decls :: *;
 `ifdef INCLUDE_TANDEM_VERIF
 import Verifier  :: *;
 import TV_Info   :: *;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
 import Verifier  :: *;
-import TV_Wolf_Info :: *;
+import RVFI_DII  :: *;
+`endif
+
+`ifdef RVFI_DII
+import Piccolo_RVFI_DII_Bridge :: *;
 `endif
 
 import GPR_RegFile :: *;
@@ -106,6 +123,7 @@ endfunction
 
 // ================================================================
 
+
 (* synthesize *)
 module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
@@ -119,6 +137,15 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    // Near mem (caches or TCM, for example)
    Near_Mem_IFC  near_mem <- mkNear_Mem;
+
+   // ----------------
+   // If using Direct Instruction Injection then make a
+   // bridge that can insert instructions as if it were
+   // an instruction cache.
+`ifdef RVFI_DII
+   Piccolo_RVFI_DII_Bridge_IFC rvfi_bridge <- mkPiccoloRVFIDIIBridge;
+   IMem_IFC fake_imem = rvfi_bridge.insr_CPU;
+`endif
 
    // ----------------
    // For debugging
@@ -170,7 +197,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 					   fpr_regfile,
 `endif
 					   csr_regfile,
+`ifdef RVFI_DII
+					   fake_imem,
+`else
 					   near_mem.imem,
+`endif
 					   stage2.out.bypass,
 					   stage3.out.bypass,
 					   rg_cur_priv);
@@ -230,9 +261,9 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
     // State for deciding when a new MIP command needs to be sent
     Reg #(MIP) rg_prev_mip <- mkRegU;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
 
-    FIFOF #(Info_CPU_to_Verifier)  f_to_verifier <- mkFIFOF;
+    FIFOF #(RVFI_DII_Execution #(XLEN))  f_to_verifier <- mkFIFOF;
     Reg   #(Bool)                  rg_handler    <- mkReg (False);
     Reg   #(Bool)                  rg_donehalt       <- mkReg (False);    
     
@@ -250,7 +281,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       return mip_has_changed;
 // Currently this breaks if included - for some reason, it prevents Stage 1 from dequeueing, so
 // the pipeline ends up blocked.
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
       MIP new_mip = csr_regfile.read_csr_mip;
       Bool mip_has_changed = ((new_mip.tips[m_Priv_Mode] != rg_prev_mip.tips[m_Priv_Mode]) ||
 	                      (new_mip.sips[m_Priv_Mode] != rg_prev_mip.sips[m_Priv_Mode]) ||
@@ -303,12 +334,12 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Feed a new PC into IMem (to do an instruction fetch).
    // Set rg_halt on debugger stop request or dcsr.step step request
 
-   function Action fa_start_ifetch (Word next_pc, Priv_Mode priv);
+   function Action fa_start_ifetch (Word next_pc, Priv_Mode priv, Bool trap);
       action
 	 // Initiate the fetch
 	 Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
 	 Bit #(1) mstatus_MXR = (csr_regfile.read_mstatus) [19];
-	 stage1.enq (next_pc, priv,
+	 stage1.enq (next_pc, trap, priv,
 		     sstatus_SUM,
 		     mstatus_MXR,
 		     csr_regfile.read_satp);
@@ -351,7 +382,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    function Action fa_restart (Addr resume_pc);
       action
-	 fa_start_ifetch (resume_pc, rg_cur_priv);
+	 fa_start_ifetch (resume_pc, rg_cur_priv, True);
 	 stage1.set_full (True);
 	 rg_state <= CPU_RUNNING;
 
@@ -449,7 +480,6 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       if (cur_verbosity != 0)
 	 $display ("%0d: CPU.rl_reset_start", mcycle);
 
-    // TODO: Does Wolf require any info on a reset?
 `ifdef INCLUDE_TANDEM_VERIF
       let verif = getVerifierInfo(True, fromInteger(pc_tv_cmd), 0, 0, 0, True, fromInteger(tv_cmd_reset));
       f_to_verifier.enq (verif);
@@ -540,7 +570,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage1_mip_cmd: new MIP = ", mcycle, fshow(new_mip));
    endrule
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
    rule rl_stage1_mip_cmd (   (rg_state == CPU_RUNNING)
 			   && stage1_send_mip_cmd);
       MIP new_mip = csr_regfile.read_csr_mip;
@@ -593,8 +623,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 `ifdef INCLUDE_TANDEM_VERIF
 	        // To Verifier
 	        f_to_verifier.enq (stage2.out.to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-	        let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, rg_inum, False, 
+`elsif RVFI
+	        let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, ?, rg_inum, False,
 	                                0, rg_handler,rg_donehalt);
 	        rg_donehalt <= outpacket.rvfi_halt;
 	        f_to_verifier.enq(outpacket);
@@ -634,7 +664,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	       rg_state <= CPU_CSRRX_STALL;
 	    end
 	    else begin
-	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, False);
 	       stage1_full = True;
 	    end
 	 end
@@ -648,7 +678,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Restart the pipe after a CSRRX stall
 
    rule rl_stage1_restart_after_csrrx (rg_state == CPU_CSRRX_STALL);
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
       stage1.set_full (True);
       rg_state <= CPU_RUNNING;
       if (cur_verbosity > 1)
@@ -681,7 +711,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 							    badaddr);
       rg_cur_priv <= new_priv;
 
-      fa_start_ifetch (next_pc, new_priv);
+      fa_start_ifetch (next_pc, new_priv, True);
       stage1.set_full (True);
       stage2.set_full (False);
 
@@ -689,8 +719,9 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // Send trapping instr info to Tandem Verifier
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,mcause,True,instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoCondensed(stage2.out.data_to_stage3, 
+`elsif RVFI
+      $display("next_pc: %h, trap", next_pc);
+      let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 rg_inum, True, exc_code, rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
@@ -729,7 +760,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_cur_priv <= new_priv;
 
       // Redirect PC
-      fa_start_ifetch (next_pc, new_priv);
+      fa_start_ifetch (next_pc, new_priv, True);
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -737,8 +768,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
                         next_pc,new_mstatus,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= False;
@@ -776,7 +807,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -784,8 +815,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= False;
@@ -825,7 +856,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -833,8 +864,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= False;
@@ -872,7 +903,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    rule rl_finish_SFENCE_VMA (rg_state == CPU_SFENCE_VMA);
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -880,8 +911,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
                         0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= False;
@@ -924,7 +955,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe (it will handle the interrupt, if one is pending)
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -932,8 +963,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(False,stage1.out.data_to_stage2.pc,
 					    0,0,0,True,stage1.out.data_to_stage2.instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,False,0,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rg_inum,False,0,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= False;
@@ -987,7 +1018,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 							    exc_code,
 							    badaddr);       // v1.10 - mtval
       rg_cur_priv <= new_priv;
-      fa_start_ifetch (next_pc, new_priv);
+      fa_start_ifetch (next_pc, new_priv, True);
       stage1.set_full (True);
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -995,8 +1026,8 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       let to_verifier = getVerifierInfo(True,epc,next_pc,new_mstatus,
 					    mcause,True,instr);
       f_to_verifier.enq (to_verifier);
-`elsif INCLUDE_WOLF_VERIF
-      let outpacket = getWolfInfoS1(stage1.out.data_to_stage2,rg_inum,True,exc_code,rg_handler,rg_donehalt);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,next_pc,rg_inum,True,exc_code,rg_handler,rg_donehalt);
 	  rg_donehalt <= outpacket.rvfi_halt;
 	  f_to_verifier.enq(outpacket);
 	  rg_handler <= True;
@@ -1008,12 +1039,14 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Simulation heuristic: finish if trap back to this instr
 `ifndef INCLUDE_GDB_CONTROL
+`ifndef RVFI_DII
       if (epc == next_pc) begin
 	 $display ("%0d: CPU.rl_stage1_trap: Tight infinite trap loop: pc 0x%0x instr 0x%08x", mcycle,
 		   next_pc, instr);
 	 fa_report_CPI;
 	 $finish (0);
       end
+`endif
 `endif
 
       // Debug
@@ -1101,7 +1134,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // as the interrupt is taken
       Bit #(1) sstatus_SUM = new_mstatus [18];    // TODO: project new_mstatus to new_sstatus?
       Bit #(1) mstatus_MXR = new_mstatus [19];
-      stage1.enq (next_pc, new_priv,
+      stage1.enq (next_pc, True, new_priv,
 		  sstatus_SUM,
 		  mstatus_MXR,
 		  csr_regfile.read_satp);
@@ -1277,6 +1310,10 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    endrule
 `endif
 
+`ifdef RVFI_DII
+   mkConnection(rvfi_bridge.trace_report, toGet(f_to_verifier));
+`endif
+
    // ================================================================
    // ================================================================
    // ================================================================
@@ -1311,11 +1348,17 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    interface Get to_verifier = toGet (f_to_verifier);
    
-`elsif INCLUDE_WOLF_VERIF
-   
+`elsif RVFI
+`ifdef RVFI_DII
+
+   interface rvfi_dii_server = rvfi_bridge.insr_inject;
+
+`else
+
    interface Get to_verifier = toGet (f_to_verifier);
    method Bool halted = rg_donehalt;
-   
+
+`endif
 `endif
 
    // ----------------

@@ -202,7 +202,11 @@ endfunction
 // ================================================================
 // mtvec reset value    TODO: still relevant? No longer part of the spec?
 
+`ifdef RVFI_DII
+Word mtvec_reset_value = 'h0000;
+`else
 Word mtvec_reset_value = 'h1000;    // TODO: this is no longer standard?
+`endif
 
 // ================================================================
 // Major states of mkCSR_RegFile module

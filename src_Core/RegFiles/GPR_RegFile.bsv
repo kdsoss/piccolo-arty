@@ -1,5 +1,17 @@
 // Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
 
+//-
+// RVFI_DII modifications:
+//     Copyright (c) 2018 Jack Deeley
+//     Copyright (c) 2018 Peter Rugg
+//     All rights reserved.
+//
+//     This software was developed by SRI International and the University of
+//     Cambridge Computer Laboratory (Department of Computer Science and
+//     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+//     DARPA SSITH research programme.
+//-
+
 package GPR_RegFile;
 
 // ================================================================
@@ -76,7 +88,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 
 `ifdef INCLUDE_TANDEM_VERIF
    Reg #(RegName) rg_j <- mkRegU;    // reset loop index
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
    Reg #(RegName) rg_j <- mkRegU;
 `endif
 
@@ -84,7 +96,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
       rg_state <= RF_RESETTING;
 `ifdef INCLUDE_TANDEM_VERIF
       rg_j <= 1;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
       rg_j <= 1;
 `endif
    endrule
@@ -95,7 +107,7 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
       rg_j <= rg_j + 1;
       if (rg_j == 31)
 	 rg_state <= RF_RUNNING;
-`elsif INCLUDE_WOLF_VERIF
+`elsif RVFI
       regfile.upd (rg_j, 0);
       rg_j <= rg_j + 1;
       if (rg_j == 31)
