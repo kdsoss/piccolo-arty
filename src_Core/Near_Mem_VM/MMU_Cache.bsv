@@ -581,11 +581,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // IO-read responses
    function Action fa_drive_IO_read_rsp (Bit #(3) f3, Addr addr, Bit #(64) ld_val);
       action
-	 dw_valid         <= True;
+	 fa_drive_mem_rsp(f3, addr, ld_val, 0);
+	 //dw_valid         <= True;
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
-	 dw_output_ld_val <= fn_extend_bytes (f3, ld_val);
-	 if (cfg_verbosity > 1)
-	    $display ("%0d: %s.drive_IO_read_rsp: addr 0x%0h ld_val 0x%0h", cur_cycle, d_or_i, addr, ld_val);
+	 //dw_output_ld_val <= fn_extend_bytes (f3, ld_val);
+	 //if (cfg_verbosity > 1)
+	 //   $display ("%0d: %s.drive_IO_read_rsp: addr 0x%0h ld_val 0x%0h", cur_cycle, d_or_i, addr, ld_val);
       endaction
    endfunction
 
