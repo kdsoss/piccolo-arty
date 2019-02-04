@@ -98,7 +98,9 @@ interface IMem_IFC;
    (* always_ready *)
    method Action  req (Bit #(3) f3,
 		       WordXL addr,
-                       Bool   trap,
+`ifdef RVFI_DII
+                       UInt#(SEQ_LEN) trap,
+`endif
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -108,7 +110,12 @@ interface IMem_IFC;
    // CPU side: IMem response
    (* always_ready *)  method Bool     valid;
    (* always_ready *)  method WordXL   pc;
-   (* always_ready *)  method Instr    instr;
+   (* always_ready *)  method
+`ifdef RVFI_DII
+                              Tuple2#(Instr, UInt#(SEQ_LEN)) instr;
+`else
+                              Instr    instr;
+`endif
    (* always_ready *)  method Bool     exc;
    (* always_ready *)  method Exc_Code exc_code;
 endinterface

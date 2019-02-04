@@ -66,7 +66,7 @@ import RVFI_DII     :: *;
 (* synthesize *)
 module mkTop_HW_Side (
 `ifdef RVFI_DII
-RVFI_DII_Server #(XLEN)
+Piccolo_RVFI_DII_Server
 `else
 Empty
 `endif
@@ -85,6 +85,8 @@ Empty
    // ----------------------------------------------------------------
    // BEHAVIOR
 
+
+`ifndef RVFI_DII
    Reg #(Bool) rg_banner_printed <- mkReg (False);
 
    // Display a banner
@@ -100,6 +102,7 @@ Empty
       tv_out.reset;
 `endif
    endrule
+`endif
 
    // ----------------
    // Tandem verifier: drain and output/discard packets
@@ -166,10 +169,32 @@ endmodule
 
 (* synthesize *)
 module mkPiccolo_RVFI_DII(Empty)
-  provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64));
-  RVFI_DII_Bridge #(XLEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
-  let    dut <- mkTop_HW_Side(reset_by bridge.new_rst);
-  mkConnection(bridge.inst, dut);
+    provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64));
+
+    Reg #(Bool) rg_banner_printed <- mkReg (False);
+
+    // Display a banner
+    rule rl_step0 (! rg_banner_printed);
+       $display ("================================================================");
+       $display ("Bluespec RISC-V standalone system simulation v1.2");
+       $display ("Copyright (c) 2017-2018 Bluespec, Inc. All Rights Reserved.");
+       $display ("================================================================");
+
+       rg_banner_printed <= True;
+    endrule
+
+    RVFI_DII_Bridge #(XLEN, SEQ_LEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
+    let    dut <- mkTop_HW_Side(reset_by bridge.new_rst);
+    mkConnection(bridge.client.report, dut.trace_report);
+
+    (* descending_urgency = "bridge.handleReset, rl_provide_instr" *)
+    rule rl_provide_instr;
+        let req = dut.getSeqReq;
+        if (isValid(req)) begin
+            let inst <- bridge.client.getInst(dut.getSeqReq.Valid);
+            dut.putInst(tuple2(inst, req.Valid));
+        end
+    endrule
 endmodule
 
 `endif

@@ -74,7 +74,7 @@ interface Verif_IFC;
     method Bool halted;
 `elsif RVFI
 `ifdef RVFI_DII
-    interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
+    interface Piccolo_RVFI_DII_Server rvfi_dii_server;
 `else
     (* ready = "available", enable = "sent" *)
     method ActionValue#(RVFI_DII_Execution #(XLEN)) getPacket;

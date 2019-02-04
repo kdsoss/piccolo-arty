@@ -216,6 +216,9 @@ typedef struct {
    Priv_Mode  priv;
    Addr       pc;
    Instr      instr;    // For debugging. Just funct3 is enough for functionality.
+`ifdef RVFI_DII
+   UInt#(SEQ_LEN) instr_seq;
+`endif
    Op_Stage2  op_stage2;
    RegName    rd;
    Bool       csr_valid;
@@ -318,6 +321,9 @@ endinstance
 typedef struct {
    Addr      pc;            // For debugging only
    Instr     instr;         // For debugging only
+`ifdef RVFI_DII
+   UInt#(SEQ_LEN) instr_seq;
+`endif
    Priv_Mode priv;
 
    Bool      rd_valid;

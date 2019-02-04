@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 Peter Rugg
+ * Copyright (c) 2018-2019 Peter Rugg
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -31,13 +31,9 @@ package Piccolo_RVFI_DII_Bridge;
 // ================================================================
 // BSV library imports
 
-import FIFOF        :: *;
 import FIFO         :: *;
 import SpecialFIFOs :: *;
 import GetPut       :: *;
-import ClientServer :: *;
-import Connectable  :: *;
-import ConfigReg    :: *;
 
 // ================================================================
 // Project imports
@@ -50,77 +46,50 @@ import RVFI_DII  :: *;
 
 // ================================================================
 
-   interface Piccolo_RVFI_DII_Bridge_IFC;
-       interface RVFI_DII_Server #(XLEN) insr_inject;
-       interface IMem_IFC insr_CPU;
-       interface Put #(RVFI_DII_Execution #(XLEN)) trace_report;
-   endinterface
+    interface Piccolo_RVFI_DII_Bridge_IFC;
+        interface Piccolo_RVFI_DII_Server rvfi_dii_server;
+        interface IMem_IFC instr_CPU;
+        interface Put #(RVFI_DII_Execution #(XLEN)) trace_report;
+    endinterface
 
-   
-   module mkPiccoloRVFIDIIBridge(Piccolo_RVFI_DII_Bridge_IFC);
-       FIFOF#(Bit#(32)) requests <- mkGFIFOF(False,True);
-       Reg#(Maybe#(WordXL)) fake_addr <- mkReg(tagged Invalid);
-       FIFO#(RVFI_DII_Execution #(XLEN)) reports <- mkFIFO;
+    module mkPiccoloRVFIDIIBridge(Piccolo_RVFI_DII_Bridge_IFC);
+        Reg#(Maybe#(Tuple2#(Bit#(32), UInt#(SEQ_LEN)))) instr[2] <- mkCReg(2, Invalid);
+        Reg#(Maybe#(WordXL)) fake_addr <- mkReg(Invalid);
+        FIFO#(RVFI_DII_Execution #(XLEN)) reports <- mkFIFO;
+        Reg#(Maybe#(UInt#(SEQ_LEN))) seq_req[2] <- mkCReg(2, Invalid);
 
-       FIFOF#(Bit#(32)) requests_backup <- mkUGSizedFIFOF(10);
+        interface Piccolo_RVFI_DII_Server rvfi_dii_server;
+            method Maybe#(UInt#(SEQ_LEN)) getSeqReq;
+                return seq_req[0];
+            endmethod
+            method Action putInst(Tuple2#(Bit#(32), UInt#(SEQ_LEN)) _inst);
+                instr[0] <= Valid(_inst);
+                seq_req[0] <= Invalid;
+            endmethod
+            interface trace_report = toGet (reports);
+        endinterface
 
-       Reg#(UInt#(2)) pause_count[2] <- mkCReg(2, 0);
-       Reg#(Bool) trapped[2] <- mkCReg(2, False);
-       Reg#(Bool) instruction_pending <- mkReg(False);
+        interface IMem_IFC instr_CPU;
+            method Action req (Bit #(3) f3,
+                WordXL addr,
+                UInt#(SEQ_LEN) seq_request,
+                Priv_Mode  priv,
+                Bit #(1)   sstatus_SUM,
+                Bit #(1)   mstatus_MXR,
+                WordXL     satp);
+                fake_addr <= Valid(addr);
+                seq_req[1] <= Valid(seq_request);
+                instr[1] <= Invalid;
+            endmethod
 
-       let internal_valid = (trapped[1] ? !instruction_pending && requests_backup.notEmpty && pause_count[1] == 0 : requests.notEmpty ) && isValid(fake_addr);
-       let internal_instr = trapped[1] ? requests_backup.first : requests.first;
+            method Bool valid = isValid (fake_addr) && isValid (instr[1]);
+            method WordXL pc = fake_addr.Valid;
+            method Tuple2#(Instr, UInt#(SEQ_LEN)) instr = instr[1].Valid;
+            method Bool exc = False;
+            method Exc_Code exc_code = 0;
+        endinterface
 
-       rule rl_dec_pause_count;
-           pause_count[0] <= pause_count[0] == 0 ? 0 : pause_count[0] - 1;
-       endrule
-
-       rule rl_esc_trap if (pause_count[1] == 0 && !instruction_pending && !requests_backup.notEmpty);
-           trapped[0] <= False;
-       endrule
-
-       interface RVFI_DII_Server insr_inject;
-           interface request = toPut(requests);
-           interface response = toGet (reports);
-       endinterface
-
-       interface IMem_IFC insr_CPU;
-           method Action req (Bit #(3) f3,
-		       WordXL addr,
-                       Bool   trap,
-		       // The following  args for VM
-		       Priv_Mode  priv,
-		       Bit #(1)   sstatus_SUM,
-		       Bit #(1)   mstatus_MXR,
-		       WordXL     satp);
-               if (internal_valid) begin
-                   if (!trapped[1]) begin
-                       if (trap) begin
-                           pause_count[1] <= 3;
-                           trapped[1] <= True;
-                       end
-                       requests_backup.enq(internal_instr);
-                       requests.deq();
-                   end
-                   instruction_pending <= True;
-               end
-               fake_addr <= tagged Valid addr;
-           endmethod
-
-           method Bool valid = internal_valid;
-           method WordXL pc = fromMaybe(?, fake_addr);
-           method Instr instr = internal_instr;
-           method Bool exc = False;
-           method Exc_Code exc_code = 0;
-       endinterface
-
-       interface Put trace_report;
-           method Action put (RVFI_DII_Execution #(XLEN) report);
-               reports.enq(report);
-               requests_backup.deq();
-               instruction_pending <= False;
-           endmethod
-       endinterface
-   endmodule
+        interface Put trace_report = toPut(reports);
+    endmodule
 
 endpackage

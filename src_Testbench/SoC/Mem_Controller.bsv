@@ -564,7 +564,9 @@ module mkMem_Controller (Mem_Controller_IFC);
    method Action  set_addr_map (Fabric_Addr addr_base, Fabric_Addr addr_lim) if (rg_state == STATE_READY);
       rg_addr_base <= addr_base;
       rg_addr_lim  <= addr_lim;
+`ifndef RVFI_DII
       $display ("%0d: Mem_Controller.set_addr_map: addr_base 0x%0h addr_lim 0x%0h", cur_cycle, addr_base, addr_lim);
+`endif
 
 `ifdef INCLUDE_INITIAL_MEMZERO
       rg_cached_raw_mem_addr <= 0;

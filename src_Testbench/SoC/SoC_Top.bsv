@@ -118,7 +118,7 @@ interface SoC_Top_IFC;
    // To tandem verifier
    interface Get #(Info_CPU_to_Verifier) verify_out;
 `elsif RVFI_DII
-   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
+   interface Piccolo_RVFI_DII_Server rvfi_dii_server;
 `endif
 
    // External real memory

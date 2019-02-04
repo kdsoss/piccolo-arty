@@ -144,7 +144,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // an instruction cache.
 `ifdef RVFI_DII
    Piccolo_RVFI_DII_Bridge_IFC rvfi_bridge <- mkPiccoloRVFIDIIBridge;
-   IMem_IFC fake_imem = rvfi_bridge.insr_CPU;
+   IMem_IFC fake_imem = rvfi_bridge.instr_CPU;
 `endif
 
    // ----------------
@@ -334,15 +334,23 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Feed a new PC into IMem (to do an instruction fetch).
    // Set rg_halt on debugger stop request or dcsr.step step request
 
-   function Action fa_start_ifetch (Word next_pc, Priv_Mode priv, Bool trap);
+   function Action fa_start_ifetch (Word next_pc, Priv_Mode priv
+`ifdef RVFI_DII
+                                                                 , UInt#(SEQ_LEN) next_seq
+`endif
+   );
       action
 	 // Initiate the fetch
 	 Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
 	 Bit #(1) mstatus_MXR = (csr_regfile.read_mstatus) [19];
-	 stage1.enq (next_pc, trap, priv,
-		     sstatus_SUM,
-		     mstatus_MXR,
-		     csr_regfile.read_satp);
+	 stage1.enq (next_pc
+`ifdef RVFI_DII
+                  , next_seq
+`endif
+                  , priv
+		  , sstatus_SUM
+		  , mstatus_MXR
+		  , csr_regfile.read_satp);
 
 	 // Set rg_halt if requested.
 	 Bool do_halt = False;
@@ -382,7 +390,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
    function Action fa_restart (Addr resume_pc);
       action
-	 fa_start_ifetch (resume_pc, rg_cur_priv, True);
+	 fa_start_ifetch (resume_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                , 0
+`endif
+                                                   );
 	 stage1.set_full (True);
 	 rg_state <= CPU_RUNNING;
 
@@ -444,6 +456,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_self_stop_req <= False;
 `endif
 
+`ifndef RVFI_DII
       $display ("================================================================");
       $write   ("CPU: Bluespec  RISC-V  Piccolo  v3.0");
       if (rv_version == RV32)
@@ -452,6 +465,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	 $display (" (RV64)");
       $display ("Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.");
       $display ("================================================================");
+`endif
 
       gpr_regfile.server_reset.request.put (?);
 `ifdef ISA_F
@@ -664,7 +678,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 	       rg_state <= CPU_CSRRX_STALL;
 	    end
 	    else begin
-	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, False);
+	       fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                                , stage1.out.data_to_stage2.instr_seq + 1 
+`endif
+                                                                                                         );
 	       stage1_full = True;
 	    end
 	 end
@@ -678,7 +696,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    // Restart the pipe after a CSRRX stall
 
    rule rl_stage1_restart_after_csrrx (rg_state == CPU_CSRRX_STALL);
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                      , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                               );
       stage1.set_full (True);
       rg_state <= CPU_RUNNING;
       if (cur_verbosity > 1)
@@ -711,7 +733,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 							    badaddr);
       rg_cur_priv <= new_priv;
 
-      fa_start_ifetch (next_pc, new_priv, True);
+      fa_start_ifetch (next_pc, new_priv
+`ifdef RVFI_DII
+                                        , stage2.out.data_to_stage3.instr_seq + 1
+`endif
+                                                                                 );
       stage1.set_full (True);
       stage2.set_full (False);
 
@@ -760,7 +786,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       rg_cur_priv <= new_priv;
 
       // Redirect PC
-      fa_start_ifetch (next_pc, new_priv, True);
+      fa_start_ifetch (next_pc, new_priv
+`ifdef RVFI_DII
+                                        , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                 );
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -807,7 +837,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                      , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                               );
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -856,7 +890,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                      , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                               );
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -903,7 +941,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
    rule rl_finish_SFENCE_VMA (rg_state == CPU_SFENCE_VMA);
       // Resume pipe
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                      , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                               );
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -955,7 +997,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 
       // Resume pipe (it will handle the interrupt, if one is pending)
       rg_state <= CPU_RUNNING;
-      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv, True);
+      fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+`ifdef RVFI_DII
+                                                      , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                               );
       stage1.set_full (True);
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -1018,7 +1064,11 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 							    exc_code,
 							    badaddr);       // v1.10 - mtval
       rg_cur_priv <= new_priv;
-      fa_start_ifetch (next_pc, new_priv, True);
+      fa_start_ifetch (next_pc, new_priv
+`ifdef RVFI_DII
+                                         , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                                                                                  );
       stage1.set_full (True);
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -1134,10 +1184,14 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
       // as the interrupt is taken
       Bit #(1) sstatus_SUM = new_mstatus [18];    // TODO: project new_mstatus to new_sstatus?
       Bit #(1) mstatus_MXR = new_mstatus [19];
-      stage1.enq (next_pc, True, new_priv,
-		  sstatus_SUM,
-		  mstatus_MXR,
-		  csr_regfile.read_satp);
+      stage1.enq (next_pc
+`ifdef RVFI_DII
+                 ,stage1.out.data_to_stage2.instr_seq + 1
+`endif
+                 ,new_priv
+		 ,sstatus_SUM
+		 ,mstatus_MXR
+		 ,csr_regfile.read_satp);
       stage1.set_full (True);
 
       // Accounting: none (instruction is abandoned)
@@ -1351,7 +1405,7 @@ module mkCPU #(parameter Bit #(64)  pc_reset_value)  (CPU_IFC);
 `elsif RVFI
 `ifdef RVFI_DII
 
-   interface rvfi_dii_server = rvfi_bridge.insr_inject;
+   interface rvfi_dii_server = rvfi_bridge.rvfi_dii_server;
 
 `else
 

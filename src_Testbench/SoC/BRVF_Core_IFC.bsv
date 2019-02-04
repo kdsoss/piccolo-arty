@@ -77,7 +77,7 @@ interface BRVF_Core_IFC;
 
    interface Get #(Info_CPU_to_Verifier)  tv_verifier_info_get;
 `elsif RVFI_DII
-   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
+   interface Piccolo_RVFI_DII_Server rvfi_dii_server;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL

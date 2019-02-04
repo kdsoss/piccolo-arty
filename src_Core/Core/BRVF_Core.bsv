@@ -225,7 +225,7 @@ module mkBRVF_Core #(parameter Bit #(64)  pc_reset_value)  (BRVF_Core_IFC);
 `endif
 
 `ifdef RVFI_DII
-   interface RVFI_DII_Server rvfi_dii_server = cpu.rvfi_dii_server;
+   interface Piccolo_RVFI_DII_Server rvfi_dii_server = cpu.rvfi_dii_server;
 `endif
 
 endmodule

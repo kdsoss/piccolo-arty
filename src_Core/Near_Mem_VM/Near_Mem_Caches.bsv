@@ -121,7 +121,9 @@ module mkNear_Mem (Near_Mem_IFC);
       // CPU side: IMem request
       method Action  req (Bit #(3) f3,
 			  WordXL addr,
-                          Bool   trap,
+`ifdef RVFI_DII
+                          UInt#(SEQ_LEN) seq_req,
+`endif
 			  // The following  args for VM
 			  Priv_Mode  priv,
 			  Bit #(1)   sstatus_SUM,
@@ -140,7 +142,11 @@ module mkNear_Mem (Near_Mem_IFC);
       // CPU side: IMem response
       method Bool     valid    = icache.valid;
       method Addr     pc       = icache.addr;
-      method Instr    instr    = truncate (icache.word64);
+`ifdef RVFI_DII
+      method Tuple2#(Instr,UInt#(SEQ_LEN))    instr    = tuple2(truncate(icache.word64), 0);
+`else
+      method Instr    instr    = truncate(icache.word64);
+`endif
       method Bool     exc      = icache.exc;
       method Exc_Code exc_code = icache.exc_code;
    endinterface

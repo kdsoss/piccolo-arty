@@ -75,7 +75,7 @@ interface CPU_IFC;
    
 `elsif RVFI
 `ifdef RVFI_DII
-   interface RVFI_DII_Server #(XLEN) rvfi_dii_server;
+   interface Piccolo_RVFI_DII_Server rvfi_dii_server;
 `else
    interface Get #(RVFI_DII_Execution #(XLEN))  to_verifier;
    (*always_ready, always_enabled *)

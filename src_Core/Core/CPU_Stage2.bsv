@@ -160,6 +160,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
    let data_to_stage3_base = Data_Stage2_to_Stage3 {priv:      rg_stage2.priv,
 						    pc:        rg_stage2.pc,
 						    instr:     rg_stage2.instr,
+`ifdef RVFI_DII
+                                                    instr_seq: rg_stage2.instr_seq,
+`endif
 						    rd_valid:  False,
 						    rd:        rg_stage2.rd,
 						    rd_val:    rg_stage2.val1,

@@ -31,6 +31,10 @@ package ISA_Decls;
 import DefaultValue :: *;
 import Vector       :: *;
 import BuildVector  :: *;
+`ifdef RVFI_DII
+import GetPut       :: *;
+import RVFI_DII     :: *;
+`endif
 
 // ================================================================
 // BSV project imports
@@ -810,6 +814,18 @@ CSR_Addr   csr_hpmcounter31h  = 12'hC9F;    // Upper 32 bits of performance-moni
 // Machine-Level ISA defs
 
 `include "ISA_Decls_Priv_M.bsv"
+
+// ================================================================
+// Common RVFI_DII interface passed through several layers of Piccolo
+
+`ifdef RVFI_DII
+    typedef 3 SEQ_LEN; // Number of bits to identify an instruction, i.e. must be > log(stages)
+    interface Piccolo_RVFI_DII_Server;
+        method Maybe#(UInt#(SEQ_LEN)) getSeqReq;
+        method Action putInst (Tuple2#(Bit#(32), UInt#(SEQ_LEN)) _inst);
+        interface Get #(RVFI_DII_Execution#(XLEN)) trace_report;
+    endinterface
+`endif
 
 // ================================================================
 

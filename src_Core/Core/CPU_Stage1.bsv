@@ -74,7 +74,11 @@ interface CPU_Stage1_IFC;
 
    // ---- Input
    (* always_ready *)
-   method Action enq (Addr next_pc, Bool trap, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
+   method Action enq (Addr next_pc,
+`ifdef RVFI_DII
+                                    UInt#(SEQ_LEN) seq_req,
+`endif
+                                                            Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
 
    (* always_ready *)
    method Action set_full (Bool full);
@@ -117,8 +121,12 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    function Output_Stage1 fv_out;
       let pc            = icache.pc;
+`ifdef RVFI_DII
+      let instr         = tpl_1(icache.instr);
+`else
       let instr         = icache.instr;
-      let decoded_instr = fv_decode (instr);
+`endif
+      let decoded_instr = fv_decode(instr);
       let funct3        = decoded_instr.funct3;
       let csr           = decoded_instr.csr;
 
@@ -253,6 +261,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
 						     pc:        pc,
 						     instr:     instr,
+`ifdef RVFI_DII
+                                                     instr_seq: tpl_2(icache.instr),
+`endif
 						     op_stage2: alu_outputs.op_stage2,
 						     rd:        alu_outputs.rd,
 						     csr_valid: alu_outputs.csr_valid,
@@ -302,8 +313,16 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    // ---- Input
-   method Action enq (Addr next_pc, Bool trap, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
-      icache.req (f3_LW, next_pc, trap, priv, sstatus_SUM, mstatus_MXR, satp);
+   method Action enq (Addr next_pc,
+`ifdef RVFI_DII
+                                    UInt#(SEQ_LEN) seq_req,
+`endif
+                                                            Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
+      icache.req (f3_LW, next_pc, 
+`ifdef RVFI_DII
+                                  seq_req,
+`endif
+                                           priv, sstatus_SUM, mstatus_MXR, satp);
 
       if (verbosity > 0)
 	 $display ("    S1.enq: 0x%08x", next_pc);
