@@ -1,4 +1,4 @@
-// Copyright (c) 2010-2017, The Regents of the University of California
+// Copyright (c) 2010-2019, The Regents of the University of California
 // (Regents).  All Rights Reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -66,9 +66,7 @@
 //
 #define  CPU_HZ              50000lu
 
-// For Cissr
-//
-//#define  CPU_HZ              100000000lu
+// #define  CPU_HZ              10000000lu
 
 // ================================================================
 

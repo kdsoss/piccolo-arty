@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved.
 
 // Near_Mem_IFC is an abstraction of two alternatives: caches or TCM
 // (TCM = Tightly Coupled Memory).  Both are memories that are
@@ -26,6 +26,7 @@ import ConfigReg    :: *;
 import FIFOF        :: *;
 import GetPut       :: *;
 import ClientServer :: *;
+import Connectable  :: *;
 
 // ----------------
 // BSV additional libs
@@ -36,11 +37,15 @@ import GetPut_Aux :: *;
 // ================================================================
 // Project imports
 
-import ISA_Decls       :: *;
-import Near_Mem_IFC    :: *;
-// import ICache          :: *;
-import MMU_Cache       :: *;
-import AXI4_Lite_Types :: *;
+import ISA_Decls    :: *;
+import Near_Mem_IFC :: *;
+import MMU_Cache    :: *;
+import AXI4_Types   :: *;
+import Near_Mem_IO  :: *;
+import Fabric_Defs  :: *;
+
+// System address map and pc_reset value
+import SoC_Map :: *;
 
 // ================================================================
 // Exports
@@ -60,13 +65,17 @@ module mkNear_Mem (Near_Mem_IFC);
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
    Reg #(State)    rg_state      <- mkReg (STATE_READY);
 
+   // ----------------
+   // System address map and pc reset value
+   SoC_Map_IFC  soc_map  <- mkSoC_Map;
+
    // Reset response queue
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
-   // ICache and DCache
-   // ICache_IFC     icache <- mkICache;
    MMU_Cache_IFC  icache <- mkMMU_Cache (False);
    MMU_Cache_IFC  dcache <- mkMMU_Cache (True);
+
+   Near_Mem_IO_IFC  near_mem_io <- mkNear_Mem_IO;
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -78,6 +87,7 @@ module mkNear_Mem (Near_Mem_IFC);
    rule rl_reset (rg_state == STATE_RESET);
       icache.server_reset.request.put (?);
       dcache.server_reset.request.put (?);
+      near_mem_io.server_reset.request.put (?);
       rg_state <= STATE_RESETTING;
 
       if (cfg_verbosity > 1)
@@ -87,12 +97,28 @@ module mkNear_Mem (Near_Mem_IFC);
    rule rl_reset_complete (rg_state == STATE_RESETTING);
       let _dummy1 <- icache.server_reset.response.get;
       let _dummy2 <- dcache.server_reset.response.get;
+      let _dummy3 <- near_mem_io.server_reset.response.get;
+
+      near_mem_io.set_addr_map (soc_map.m_near_mem_io_addr_base,
+				soc_map.m_near_mem_io_addr_lim);
+
       f_reset_rsps.enq (?);
       rg_state <= STATE_READY;
 
       if (cfg_verbosity > 1)
 	 $display ("%0d: Near_Mem.rl_reset_complete", cur_cycle);
    endrule
+
+   // ----------------
+   // Stub out icache's near_mem_io interface
+
+   Server #(Near_Mem_IO_Req, Near_Mem_IO_Rsp) ss = server_stub;
+   mkConnection (icache.near_mem_io_client, ss);
+
+   // ----------------
+   // Connect dcache's near_mem_io interface to near_mem_io
+
+   mkConnection (dcache.near_mem_io_client, near_mem_io.server);
 
    // ----------------------------------------------------------------
    // INTERFACE
@@ -121,17 +147,17 @@ module mkNear_Mem (Near_Mem_IFC);
       // CPU side: IMem request
       method Action  req (Bit #(3) f3,
 			  WordXL addr,
-`ifdef RVFI_DII
-                          UInt#(SEQ_LEN) seq_req,
-`endif
 			  // The following  args for VM
 			  Priv_Mode  priv,
 			  Bit #(1)   sstatus_SUM,
 			  Bit #(1)   mstatus_MXR,
-			  WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
+			  WordXL     satp
+`ifdef RVFI_DII
+            , UInt#(SEQ_LEN) seq_req
+`endif
+                             );    // { VM_Mode, ASID, PPN_for_page_table }
 	 Bit #(7)  amo_funct7  = ?;
 	 Bit #(64) store_value = ?;
-	 //$display("IMEM REQUEST: 0x%16h", addr);
 	 icache.req (CACHE_LD, f3,
 `ifdef ISA_A
 		     amo_funct7,
@@ -140,15 +166,17 @@ module mkNear_Mem (Near_Mem_IFC);
       endmethod
 
       // CPU side: IMem response
-      method Bool     valid    = icache.valid;
-      method Addr     pc       = icache.addr;
+      method Bool     valid          = icache.valid;
+      method Bool     is_i32_not_i16 = True;
+      method WordXL   pc             = icache.addr;
 `ifdef RVFI_DII
       method Tuple2#(Instr,UInt#(SEQ_LEN))    instr    = tuple2(truncate(icache.word64), 0);
 `else
-      method Instr    instr    = truncate(icache.word64);
+      method Instr    instr          = truncate (icache.word64);
 `endif
-      method Bool     exc      = icache.exc;
-      method Exc_Code exc_code = icache.exc_code;
+      method Bool     exc            = icache.exc;
+      method Exc_Code exc_code       = icache.exc_code;
+      method WordXL   tval           = icache.addr;
    endinterface
 
    // Fabric side
@@ -172,7 +200,6 @@ module mkNear_Mem (Near_Mem_IFC);
 			  Bit #(1)   sstatus_SUM,
 			  Bit #(1)   mstatus_MXR,
 			  WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
-	 //$display("DMEM REQUEST: 0x%16h", addr);
 	 dcache.req (op, f3,
 `ifdef ISA_A
 		     amo_funct7,
@@ -238,11 +265,20 @@ module mkNear_Mem (Near_Mem_IFC);
    endmethod
 
    // ----------------
+   // Interrupts from nearby memory-mapped IO (timer, SIP, ...)
+
+   // Timer interrupt
+   // True/False = set/clear interrupt-pending in CPU's MTIP
+   interface Get  get_timer_interrupt_req = near_mem_io.get_timer_interrupt_req;
+
+   // Software interrupt
+   interface Get  get_sw_interrupt_req = near_mem_io.get_sw_interrupt_req;
+
+   // ----------------
    // Back-door slave interface from fabric into Near_Mem
    // There is no back-door into the caches.
 
-   // Also, this is a dummy interface so it doesn't do anything at all
-   interface near_mem_slave = dummy_AXI4_Lite_Slave_ifc;
+   interface near_mem_slave = dummy_AXI4_Slave_ifc;
 endmodule
 
 // ================================================================

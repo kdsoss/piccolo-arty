@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
 // RVFI_DII modifications:
@@ -20,13 +20,6 @@ package CPU_Stage1;
 // IF: "Instruction Fetch".
 // RD: "Register Read"
 // EX: "Execute"
-
-// Note: $displays are indented by (stage num x 4) spaces.
-// for traditional pipeline display
-//     IF
-//         DM
-//             WB
-// i.e., 4 spaces for this stage.
 
 // ================================================================
 // Exports
@@ -55,8 +48,16 @@ import ISA_Decls        :: *;
 import CPU_Globals      :: *;
 import Near_Mem_IFC     :: *;
 import GPR_RegFile      :: *;
+`ifdef ISA_F
+import FPR_RegFile      :: *;
+`endif
 import CSR_RegFile      :: *;
 import EX_ALU_functions :: *;
+
+`ifdef ISA_C
+// 'C' extension (16b compressed instructions)
+import CPU_Decode_C     :: *;
+`endif
 
 // ================================================================
 // Interface
@@ -74,11 +75,11 @@ interface CPU_Stage1_IFC;
 
    // ---- Input
    (* always_ready *)
-   method Action enq (Addr next_pc,
+   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp
 `ifdef RVFI_DII
-                                    UInt#(SEQ_LEN) seq_req,
+                                                                                                           , UInt#(SEQ_LEN) seq_req
 `endif
-                                                            Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
+                                                                                                                                   );
 
    (* always_ready *)
    method Action set_full (Bool full);
@@ -89,22 +90,25 @@ endinterface
 
 module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		      GPR_RegFile_IFC  gpr_regfile,
+		      CSR_RegFile_IFC  csr_regfile,
+		      IMem_IFC         imem,
 `ifdef ISA_F
 		      FPR_RegFile_IFC  fpr_regfile,
+		      FBypass          fbypass_from_stage2,
+		      FBypass          fbypass_from_stage3,
 `endif
-		      CSR_RegFile_IFC  csr_regfile,
-		      IMem_IFC         icache,
 		      Bypass           bypass_from_stage2,
 		      Bypass           bypass_from_stage3,
 		      Priv_Mode        cur_priv)
                     (CPU_Stage1_IFC);
 
-   Reg #(Stage_Run_State) rg_run_state  <- mkReg (STAGE_RUNNING);
-
    FIFOF #(Token) f_reset_reqs <- mkFIFOF;
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
    Reg #(Bool) rg_full  <- mkReg (False);
+
+   MISA misa   = csr_regfile.read_misa;
+   Bit #(2) xl = ((xlen == 32) ? misa_mxl_32 : misa_mxl_64);
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -113,173 +117,195 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       f_reset_reqs.deq;
       rg_full <= False;
       f_reset_rsps.enq (?);
-      rg_run_state <= STAGE_RUNNING;
    endrule
+
+   // ----------------
+   // ALU
+
+   let   pc             = imem.pc;
+   let   is_i32_not_i16 = imem.is_i32_not_i16;
+`ifdef RVFI_DII
+   Instr instr          = tpl_1(imem.instr);
+`else
+   Instr instr          = imem.instr;
+`endif
+`ifdef ISA_C
+   Instr_C instr_C = instr [15:0];
+   if (! is_i32_not_i16)
+      instr = fv_decode_C (misa, xl, instr_C);
+`endif
+   let decoded_instr  = fv_decode (instr);
+   let funct3         = decoded_instr.funct3;
+
+   // Register rs1 read and bypass
+   let rs1 = decoded_instr.rs1;
+   let rs1_val = gpr_regfile.read_rs1 (rs1);
+   match { .busy1a, .rs1a } = fn_gpr_bypass (bypass_from_stage3, rs1, rs1_val);
+   match { .busy1b, .rs1b } = fn_gpr_bypass (bypass_from_stage2, rs1, rs1a);
+   Bool rs1_busy = (busy1a || busy1b);
+   Word rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
+
+   // Register rs2 read and bypass
+   let rs2 = decoded_instr.rs2;
+   let rs2_val = gpr_regfile.read_rs2 (rs2);
+   match { .busy2a, .rs2a } = fn_gpr_bypass (bypass_from_stage3, rs2, rs2_val);
+   match { .busy2b, .rs2b } = fn_gpr_bypass (bypass_from_stage2, rs2, rs2a);
+   Bool rs2_busy = (busy2a || busy2b);
+   Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
+
+`ifdef ISA_F
+   // FP Register rs1 read and bypass
+   let frs1_val = fpr_regfile.read_rs1 (rs1);
+   match { .fbusy1a, .frs1a } = fn_fpr_bypass (fbypass_from_stage3, rs1, frs1_val);
+   match { .fbusy1b, .frs1b } = fn_fpr_bypass (fbypass_from_stage2, rs1, frs1a);
+   Bool frs1_busy = (fbusy1a || fbusy1b);
+   WordFL frs1_val_bypassed = frs1b;
+
+   // FP Register rs2 read and bypass
+   let frs2_val = fpr_regfile.read_rs2 (rs2);
+   match { .fbusy2a, .frs2a } = fn_fpr_bypass (fbypass_from_stage3, rs2, frs2_val);
+   match { .fbusy2b, .frs2b } = fn_fpr_bypass (fbypass_from_stage2, rs2, frs2a);
+   Bool frs2_busy = (fbusy2a || fbusy2b);
+   WordFL frs2_val_bypassed = frs2b;
+
+   // FP Register rs3 read and bypass
+   let rs3 = decoded_instr.rs3;
+   let frs3_val = fpr_regfile.read_rs3 (rs3);
+   match { .fbusy3a, .frs3a } = fn_fpr_bypass (fbypass_from_stage3, rs3, frs3_val);
+   match { .fbusy3b, .frs3b } = fn_fpr_bypass (fbypass_from_stage2, rs3, frs3a);
+   Bool frs3_busy = (fbusy3a || fbusy3b);
+   WordFL frs3_val_bypassed = frs3b;
+`endif
+
+   // ALU function
+   let alu_inputs = ALU_Inputs {
+        cur_priv        : cur_priv
+      , pc              : pc
+      , is_i32_not_i16  : imem.is_i32_not_i16
+      , instr           : instr
+`ifdef ISA_C
+      , instr_C         : instr_C
+`endif
+      , decoded_instr   : decoded_instr
+      , rs1_val         : rs1_val_bypassed
+      , rs2_val         : rs2_val_bypassed
+`ifdef ISA_F
+      , frs1_val        : frs1_val_bypassed
+      , frs2_val        : frs2_val_bypassed
+      , frs3_val        : frs3_val_bypassed
+      , fcsr_frm        : csr_regfile.read_frm
+`endif
+      , mstatus         : csr_regfile.read_mstatus
+      , misa            : csr_regfile.read_misa
+   }; 
+   let alu_outputs = fv_ALU (alu_inputs);
+
+   let fall_through_pc = pc + (imem.is_i32_not_i16 ? 4 : 2);
+
+   let next_pc = ((alu_outputs.control == CONTROL_BRANCH)
+		 ? alu_outputs.addr
+		 : fall_through_pc);
+
+`ifdef RVFI
+   let info_RVFI = Data_RVFI_Stage1 {
+                       instr:          instr,
+                       rs1_addr:       rs1,
+                       rs2_addr:       rs2,
+                       rs1_data:       rs1_val_bypassed,
+                       rs2_data:       rs2_val_bypassed,
+                       pc_rdata:       pc,
+                       pc_wdata:       next_pc,
+                       mem_wdata:      alu_outputs.val2,
+                       rd_addr:        alu_outputs.rd,
+                       rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
+                       rd_wdata_alu:   alu_outputs.val1,
+                       mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
+                   };
+`endif
+
+   let data_to_stage2 = Data_Stage1_to_Stage2 {
+        priv            : cur_priv
+      , pc              : pc
+      , instr           : instr
+`ifdef RVFI_DII
+      , instr_seq       : tpl_2(imem.instr)
+`endif
+      , op_stage2       : alu_outputs.op_stage2
+      , rd              : alu_outputs.rd
+      , addr            : alu_outputs.addr
+      , val1            : alu_outputs.val1
+      , val2            : alu_outputs.val2
+`ifdef ISA_F
+      , val3            : alu_outputs.val3
+      , rd_in_fpr       : alu_outputs.rd_in_fpr
+      , rounding_mode   : alu_outputs.rm
+`endif
+`ifdef INCLUDE_TANDEM_VERIF
+      , trace_data      : alu_outputs.trace_data
+`endif
+`ifdef RVFI
+      , info_RVFI_s1    : info_RVFI
+`endif
+   };
 
    // ----------------
    // Combinational output function
 
    function Output_Stage1 fv_out;
-      let pc            = icache.pc;
-`ifdef RVFI_DII
-      let instr         = tpl_1(icache.instr);
-`else
-      let instr         = icache.instr;
-`endif
-      let decoded_instr = fv_decode(instr);
-      let funct3        = decoded_instr.funct3;
-      let csr           = decoded_instr.csr;
-
-      // Register rs1 read and bypass
-      let rs1 = decoded_instr.rs1;
-      let rs1_val = gpr_regfile.read_rs1 (rs1);
-      match { .busy1a, .rs1a } = fn_gpr_bypass (bypass_from_stage3, rs1, rs1_val);
-      match { .busy1b, .rs1b } = fn_gpr_bypass (bypass_from_stage2, rs1, rs1a);
-      Bool rs1_busy = (busy1a || busy1b);
-      Word rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
-
-      // Register rs2 read and bypass
-      let rs2 = decoded_instr.rs2;
-      let rs2_val = gpr_regfile.read_rs2 (rs2);
-      match { .busy2a, .rs2a } = fn_gpr_bypass (bypass_from_stage3, rs2, rs2_val);
-      match { .busy2b, .rs2b } = fn_gpr_bypass (bypass_from_stage2, rs2, rs2a);
-      Bool rs2_busy = (busy2a || busy2b);
-      Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
-
-      // ----------------
-      // CSR address-based protection checks
-      Bool is_csrrx = ((decoded_instr.opcode == op_SYSTEM) && f3_is_CSRR_any (funct3));
-
-      // CSR accessible at this privilege?
-      Bool csr_priv_fault = (cur_priv < csr [9:8]);
-
-      // CSR hpm counter read allowed?
-      Bool csr_ctr_fault = csr_regfile.csr_counter_read_fault (cur_priv, csr);
-
-      // CSR writing a read-only CSR?
-      Bool csr_write_fault = (   (f3_is_CSRR_W (funct3) || (rs1 != 0))    // attempting write
-			      && (csr [11:10] == 2'b11));                 // read-only csr
-
-      // CSR reads
-      // Note: csr should not be read for CSRRW[I] if Rd=0 (i.e., don't cause its side-effects).
-      // But currently csr_reads are pure (no side effects), so we omit this check.
-
-      let m_csr_val = csr_regfile.read_csr (csr);
-      let csr_valid = (is_csrrx && isValid (m_csr_val)
-		       && (! csr_priv_fault)
-		       && (! csr_ctr_fault)
-		       && (! csr_write_fault));
-
-        let csr_val   = fromMaybe (?, m_csr_val);
-
-      // ALU function
-        let alu_inputs = ALU_Inputs {cur_priv:       cur_priv,
-				   pc:             pc,
-				   instr:          instr,
-				   decoded_instr:  decoded_instr,
-				   rs1_val:        rs1_val_bypassed,
-				   rs2_val:        rs2_val_bypassed,
-				   csr_valid:      csr_valid,
-				   csr_val:        csr_val,
-
-				   mstatus:        csr_regfile.read_mstatus,
-				   misa:           csr_regfile.read_misa};
-
-      let alu_outputs = fv_ALU (alu_inputs);
-
       Output_Stage1 output_stage1 = ?;
 
       // This stage is empty
       if (! rg_full) begin
-	    output_stage1.ostatus = OSTATUS_EMPTY;
+	 output_stage1.ostatus = OSTATUS_EMPTY;
       end
 
-      // Stall if ICache not ready
-      else if (! icache.valid) begin
-	    output_stage1.ostatus = OSTATUS_BUSY;
+      // Stall if IMem not ready
+      else if (! imem.valid) begin
+	 output_stage1.ostatus = OSTATUS_BUSY;
       end
 
       // Stall if bypass pending for rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
-	    output_stage1.ostatus = OSTATUS_BUSY;
+	 output_stage1.ostatus = OSTATUS_BUSY;
       end
 
-      // Trap on ICache exception
-      else if (icache.exc) begin
-	    output_stage1.ostatus   = OSTATUS_NONPIPE;
-	    output_stage1.control   = CONTROL_TRAP;
-	    output_stage1.trap_info = Trap_Info {epc:      pc,
-					      exc_code: icache.exc_code,
-					      badaddr:  pc};    // TODO: '?', perhaps?
+      // Trap on IMem exception
+      else if (imem.exc) begin
+	 output_stage1.ostatus    = OSTATUS_NONPIPE;
+	 output_stage1.control    = CONTROL_TRAP;
+	 output_stage1.trap_info  = Trap_Info {epc:      pc,
+					       exc_code: imem.exc_code,
+					       tval:     imem.tval};
+	 output_stage1.data_to_stage2 = data_to_stage2;
       end
 
-      // Trap on CSR access fault
-
-      else if (is_csrrx && ((! isValid (m_csr_val)) || csr_priv_fault || csr_ctr_fault || csr_write_fault))
-	 begin
-	    output_stage1.ostatus   = OSTATUS_NONPIPE;
-	    output_stage1.control   = CONTROL_TRAP;
-	    output_stage1.trap_info = Trap_Info {epc:      pc,
-						 exc_code: exc_code_ILLEGAL_INSTRUCTION,
-						 badaddr:  zeroExtend(instr)}; // v1.10 - mtval
-	  end
-
-      // ALU outputs: normal, trap, and non-pipe instrs (CSR, MRET, FENCE.I, FENCE, WPI)
+      // ALU outputs: pipe (straight/branch)
+      // and non-pipe (CSRR_W, CSRR_S_or_C, FENCE.I, FENCE, SFENCE_VMA, xRET, WFI, TRAP)
       else begin
-	    let ostatus = (  (   (alu_outputs.control == CONTROL_STRAIGHT)
+	 let ostatus = (  (   (alu_outputs.control == CONTROL_STRAIGHT)
 			   || (alu_outputs.control == CONTROL_BRANCH))
 			? OSTATUS_PIPE
 			: OSTATUS_NONPIPE);
 
-	 // TODO: change name 'badaddr' to 'tval'
-	    let badaddr = 0;
-	    if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
-	        badaddr = zeroExtend (instr);
-	    else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
-	        badaddr = alu_outputs.addr;    // branch target pc
-	    let trap_info = Trap_Info {epc:      pc,
+	 // Compute MTVAL in case of traps
+	 let tval = 0;
+	 if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
+	    tval = zeroExtend (instr);  // The instruction
+	 else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
+	    tval = alu_outputs.addr;    // The branch target pc
+	 else if (alu_outputs.exc_code == exc_code_BREAKPOINT)
+	    tval = pc;                  // The faulting virtual address
+
+	 let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
-				    badaddr:  badaddr};  // v1.10 - mtval
+				    tval:     tval};
 
-	    let next_pc = ((alu_outputs.control == CONTROL_BRANCH) ? alu_outputs.addr : pc + 4);
-`ifdef RVFI
-	    let info_RVFI = Data_RVFI_Stage1 {
-	                        instr:          instr,
-	                        rs1_addr:       rs1,
-	                        rs2_addr:       rs2,
-	                        rs1_data:       rs1_val_bypassed,
-	                        rs2_data:       rs2_val_bypassed,
-	                        pc_rdata:       pc,
-	                        pc_wdata:       next_pc,
-	                        mem_wdata:      alu_outputs.val2,
-	                        rd_addr:        alu_outputs.rd,
-	                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
-	                        rd_wdata_alu:   alu_outputs.val1,
-	                        mem_addr:       ((alu_outputs.op_stage2 == OP_Stage2_LD) || (alu_outputs.op_stage2 == OP_Stage2_ST)) ? alu_outputs.addr : 0
-	                    };
-`endif
-	    let data_to_stage2 = Data_Stage1_to_Stage2 {priv:      cur_priv,
-						     pc:        pc,
-						     instr:     instr,
-`ifdef RVFI_DII
-                                                     instr_seq: tpl_2(icache.instr),
-`endif
-						     op_stage2: alu_outputs.op_stage2,
-						     rd:        alu_outputs.rd,
-						     csr_valid: alu_outputs.csr_valid,
-						     addr:      alu_outputs.addr,
-						     val1:      alu_outputs.val1,
-						     val2:      alu_outputs.val2 
-`ifdef RVFI
-                            ,info_RVFI_s1: info_RVFI
-`endif
-						     };
+	 output_stage1.ostatus        = ostatus;
+	 output_stage1.control        = alu_outputs.control;
+	 output_stage1.trap_info      = trap_info;
+	 output_stage1.next_pc        = next_pc;
+	 output_stage1.data_to_stage2 = data_to_stage2;
 
-	    output_stage1.ostatus        = ostatus;
-	    output_stage1.trap_info      = trap_info;
-	    output_stage1.control        = alu_outputs.control;
-	    output_stage1.next_pc        = next_pc;
-	    output_stage1.data_to_stage2 = data_to_stage2;
       end
 
       return output_stage1;
@@ -297,35 +323,22 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    method Action deq ();
-      let data_to_stage2 = fv_out.data_to_stage2;
-      // Writeback CSR if valid
-
-      // TODO: do we suppress MINSTRET increment if we write minstret here?
-      Bool wrote_csr_minstret = False;
-      if (data_to_stage2.csr_valid) begin
-	 CSR_Addr csr_addr = truncate (data_to_stage2.addr);
-	 WordXL   csr_val  = data_to_stage2.val2;
-	 csr_regfile.write_csr (csr_addr, csr_val);
-	 wrote_csr_minstret = ((csr_addr == csr_minstret) || (csr_addr == csr_minstreth));
-	 if (verbosity > 1)
-	    $display ("    S1: write CSR 0x%0h, val 0x%0h", csr_addr, csr_val);
-      end
    endmethod
 
    // ---- Input
-   method Action enq (Addr next_pc,
+   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp
 `ifdef RVFI_DII
-                                    UInt#(SEQ_LEN) seq_req,
+                                                                                                            , UInt#(SEQ_LEN) seq_req
 `endif
-                                                            Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
-      icache.req (f3_LW, next_pc, 
+                                                                                                                                    );
+      imem.req (f3_LW, next_pc, priv, sstatus_SUM, mstatus_MXR, satp
 `ifdef RVFI_DII
-                                  seq_req,
+                                                                    , seq_req
 `endif
-                                           priv, sstatus_SUM, mstatus_MXR, satp);
+                                                                             );
 
-      if (verbosity > 0)
-	 $display ("    S1.enq: 0x%08x", next_pc);
+      if (verbosity > 1)
+	 $display ("    CPU_Stage_1.enq: 0x%08x", next_pc);
    endmethod
 
    method Action set_full (Bool full);

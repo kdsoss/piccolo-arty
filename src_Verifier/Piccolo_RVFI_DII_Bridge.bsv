@@ -71,22 +71,24 @@ import RVFI_DII  :: *;
 
         interface IMem_IFC instr_CPU;
             method Action req (Bit #(3) f3,
-                WordXL addr,
-                UInt#(SEQ_LEN) seq_request,
-                Priv_Mode  priv,
-                Bit #(1)   sstatus_SUM,
-                Bit #(1)   mstatus_MXR,
-                WordXL     satp);
+                WordXL         addr,
+                Priv_Mode      priv,
+                Bit #(1)       sstatus_SUM,
+                Bit #(1)       mstatus_MXR,
+                WordXL         satp,
+                UInt#(SEQ_LEN) seq_request);
                 fake_addr <= Valid(addr);
                 seq_req[1] <= Valid(seq_request);
                 instr[1] <= Invalid;
             endmethod
 
             method Bool valid = isValid (fake_addr) && isValid (instr[1]);
+            method Bool is_i32_not_i16 = True;
             method WordXL pc = fake_addr.Valid;
             method Tuple2#(Instr, UInt#(SEQ_LEN)) instr = instr[1].Valid;
             method Bool exc = False;
             method Exc_Code exc_code = 0;
+            method WordXL tval = fake_addr.Valid; //TODO adjust this for compressed instructions?
         endinterface
 
         interface Put trace_report = toPut(reports);

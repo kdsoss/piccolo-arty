@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved.
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved.
 
 // Near_Mem_IFC encapsulates the MMU and L1 cache.
 // It is 'near' the CPU (1-cycle access in common case).
@@ -37,8 +37,9 @@ import Cur_Cycle :: *;
 // Project imports
 
 import ISA_Decls       :: *;
-import Fabric_Defs     :: *;
-import AXI4_Lite_Types :: *;
+
+import AXI4_Types  :: *;
+import Fabric_Defs :: *;
 
 // ================================================================
 
@@ -53,7 +54,7 @@ interface Near_Mem_IFC;
    interface IMem_IFC  imem;
 
    // Fabric side
-   interface AXI4_Lite_Master_IFC #(Wd_Addr, Wd_Data, Wd_User) imem_master;
+   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) imem_master;
 
    // ----------------
    // DMem
@@ -62,7 +63,7 @@ interface Near_Mem_IFC;
    interface DMem_IFC  dmem;
 
    // Fabric side
-   interface AXI4_Lite_Master_IFC #(Wd_Addr, Wd_Data, Wd_User) dmem_master;
+   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) dmem_master;
 
    // ----------------
    // Fences
@@ -75,8 +76,18 @@ interface Near_Mem_IFC;
    method Action sfence_vma;
 
    // ----------------
+   // Interrupts from nearby memory-mapped IO (timer, SIP, ...)
+
+   // Timer interrupt
+   // True/False = set/clear interrupt-pending in CPU's MTIP
+   interface Get #(Bool)  get_timer_interrupt_req;
+
+   // Software interrupt
+   interface Get #(Bool)  get_sw_interrupt_req;
+
+   // ----------------
    // Back-door slave interface from fabric into Near_Mem
-   interface AXI4_Lite_Slave_IFC #(Wd_Addr, Wd_Data, Wd_User) near_mem_slave;
+   interface AXI4_Slave_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) near_mem_slave;
 endinterface
    
 // ================================================================
@@ -98,17 +109,19 @@ interface IMem_IFC;
    (* always_ready *)
    method Action  req (Bit #(3) f3,
 		       WordXL addr,
-`ifdef RVFI_DII
-                       UInt#(SEQ_LEN) trap,
-`endif
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
 		       Bit #(1)   mstatus_MXR,
-		       WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
+		       WordXL     satp
+`ifdef RVFI_DII
+             , UInt#(SEQ_LEN) seq_req
+`endif
+                              );    // { VM_Mode, ASID, PPN_for_page_table }
 
    // CPU side: IMem response
    (* always_ready *)  method Bool     valid;
+   (* always_ready *)  method Bool     is_i32_not_i16;
    (* always_ready *)  method WordXL   pc;
    (* always_ready *)  method
 `ifdef RVFI_DII
@@ -118,6 +131,7 @@ interface IMem_IFC;
 `endif
    (* always_ready *)  method Bool     exc;
    (* always_ready *)  method Exc_Code exc_code;
+   (* always_ready *)  method WordXL   tval;        // can be different from PC
 endinterface
 
 // ================================================================
@@ -242,11 +256,12 @@ function Bit #(64) fn_extend_bytes (Bit #(3) f3, Bit #(64) word64);
 endfunction
 
 // ================================================================
+// Convert width of an address from PA to Fabric_Addr
 
 function Fabric_Addr fn_PA_to_Fabric_Addr (PA pa);
-   Bit #(TAdd #(Wd_Addr, PA_sz)) x = zeroExtend (pa);
+   Bit #(TAdd #(Wd_Addr, PA_sz)) fa = zeroExtend (pa);
    Integer hi = valueOf (Wd_Addr) - 1;
-   return x [hi:0];
+   return fa [hi:0];
 endfunction
 
 // ================================================================

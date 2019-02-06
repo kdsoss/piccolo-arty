@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 package CSR_RegFile;
 
@@ -15,10 +15,10 @@ export CSR_RegFile_Min :: *;
 // ================================================================
 `else
 
-// Default CSR RegFile: User-mode and Machine-Mode CSRs
+// Machine-mode, Supervisor-mode and User-mode CSRs
 
-import CSR_RegFile_UM :: *;
-export CSR_RegFile_UM :: *;
+import CSR_RegFile_MSU :: *;
+export CSR_RegFile_MSU :: *;
 
 // ================================================================
 `endif

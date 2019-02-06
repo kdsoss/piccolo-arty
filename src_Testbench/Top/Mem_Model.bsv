@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 package Mem_Model;
 
@@ -43,7 +43,7 @@ module mkMem_Model (Mem_Model_IFC);
 
    Integer verbosity = 0;    // 0 = quiet; 1 = verbose
 
-   Raw_Mem_Addr alloc_size = 'h_900_0000;
+   Raw_Mem_Addr alloc_size = 'h_80_0000;    // 8M raw mem words, or 256MB
                    
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
 
@@ -63,7 +63,7 @@ module mkMem_Model (Mem_Model_IFC);
 	    else if (req.write) begin
 	       rf.upd (req.address, req.data);
 	       if (verbosity != 0)
-		   $display ("%0d: Mem_Model write [0x%0h] <= 0x%0h", cur_cycle, req.address, req.data);
+		  $display ("%0d: Mem_Model write [0x%0h] <= 0x%0h", cur_cycle, req.address, req.data);
 	    end
 	    else begin
 	       let x = rf.sub (req.address);

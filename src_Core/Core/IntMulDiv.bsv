@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2013-2019 Bluespec, Inc. All Rights Reserved
 
 package IntMulDiv;
 
@@ -14,13 +14,13 @@ package IntMulDiv;
 // - 'get_result' returns (err, quotient, remainder)
 //    err is True if and only if denominator is 0
 
- interface IntDiv_IFC #(numeric type w);
-    (* always_ready *)
-    method Action start (Bool num_is_signed, Bool den_is_signed);
-    (* always_ready *)
-    method Bool                          result_valid;
-    (* always_ready *)
-    method Tuple2 #(Bit #(w), Bit #(w))  result_value;
+interface IntDiv_IFC #(numeric type w);
+   (* always_ready *)
+   method Action start (Bool num_is_signed, Bool den_is_signed);
+   (* always_ready *)
+   method Bool                          result_valid;
+   (* always_ready *)
+   method Tuple2 #(Bit #(w), Bit #(w))  result_value;
 endinterface
 
 // ================================================================
@@ -215,24 +215,23 @@ module mkIntMul (IntMul_IFC #(w));
    // INTERFACE
 
    method Action put_args (Bool x_is_signed, Bit #(w) x,
-
-      Bool y_is_signed, Bit #(w) y);//  if (! rg_busy);
+			   Bool y_is_signed, Bit #(w) y);//  if (! rg_busy);
       Int #(w) x_s = unpack (x);
       Int #(w) y_s = unpack (y);
       Bool isNeg   = False;
 
       if (x_is_signed && y_is_signed) begin
-	    x = pack (abs (x_s));
-	    y = pack (abs (y_s));
-	    isNeg = ((x_s < 0) != (y_s < 0));
+	 x = pack (abs (x_s));
+	 y = pack (abs (y_s));
+	 isNeg = ((x_s < 0) != (y_s < 0));
       end
       else if (x_is_signed) begin
-	    x = pack (abs (x_s));
-	    isNeg = (x_s < 0);
+	 x = pack (abs (x_s));
+	 isNeg = (x_s < 0);
       end
       else if (y_is_signed) begin
-	    y = pack (abs (y_s));
-	    isNeg = (y_s < 0);
+	 y = pack (abs (y_s));
+	 isNeg = (y_s < 0);
       end
 
       rg_x      <= { 0, x };
@@ -249,8 +248,8 @@ module mkIntMul (IntMul_IFC #(w));
    method result_value;
       let xy = rg_xy;
       if (rg_isNeg) begin
-	    Int #(TAdd #(w,w)) xy_s = unpack (xy);
-	    xy = pack (- xy_s);
+	 Int #(TAdd #(w,w)) xy_s = unpack (xy);
+	 xy = pack (- xy_s);
       end
       return xy;
    endmethod

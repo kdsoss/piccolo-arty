@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 
 package FPR_RegFile;
@@ -43,6 +43,8 @@ interface FPR_RegFile_IFC;
    method WordFL read_rs1_port2 (RegName rs1);    // For debugger access only
    (* always_ready *)
    method WordFL read_rs2 (RegName rs2);
+   (* always_ready *)
+   method WordFL read_rs3 (RegName rs3);
 
    // FPR write
    (* always_ready *)
@@ -132,6 +134,10 @@ module mkFPR_RegFile (FPR_RegFile_IFC);
 
    method WordFL read_rs2 (RegName rs2);
       return (regfile.sub (rs2));
+   endmethod
+
+   method WordFL read_rs3 (RegName rs3);
+      return (regfile.sub (rs3));
    endmethod
 
    // FPR write

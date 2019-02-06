@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 package CSR_RegFile_UM;
 
@@ -55,6 +55,16 @@ interface CSR_RegFile_IFC;
    (* always_ready *)
    method Action write_csr (CSR_Addr csr_addr, Word word);
 
+`ifdef ISA_F
+   // Read FCSR.FRM
+   (* always_ready *)
+   method Bit #(3) read_frm;
+
+   // Update FCSR.FFLAGS
+   (* always_ready *)
+   method Action update_fcsr_fflags (Bit #(5) flags);
+`endif
+
    // Read MISA
    (* always_ready *)
    method MISA read_misa;
@@ -107,7 +117,9 @@ interface CSR_RegFile_IFC;
    method MIP read_csr_mip;
 
    // Interrupts
+   (* always_ready, always_enabled *)
    method Action external_interrupt_req (Bool set_not_clear);
+
    method Action timer_interrupt_req    (Bool set_not_clear);
    method Action software_interrupt_req (Bool set_not_clear);
 
@@ -797,6 +809,18 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    method MISA read_misa;
       return misa;
    endmethod
+
+`ifdef ISA_F
+   // Read FCSR.FRM
+   method Bit# (3) read_frm;
+      return rg_frm;
+   endmethod
+
+   // Update FCSR.FFLAGS
+   method Action update_fcsr_fflags (Bit#(5) flags);
+      rg_fflags <= rg_fflags | flags;
+   endmethod
+`endif
 
    // Read MSTATUS
    method WordXL read_mstatus;

@@ -145,8 +145,8 @@ endfunction
 
 `endif
 
-function Bit #(MASKLEN) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
-    Bit #(MASKLEN) result    = 0;
+function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
+    Bit #(Bytes_per_Addr) result    = 0;
 `ifdef RV64
     Bit #(3)  addr_lsbs = addr [2:0];
 `else

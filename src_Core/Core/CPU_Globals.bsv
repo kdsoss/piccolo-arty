@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
 // RVFI_DII modifications:
@@ -33,17 +33,7 @@ package CPU_Globals;
 
 import ISA_Decls :: *;
 
-`ifdef INCLUDE_TANDEM_VERIF
 import TV_Info   :: *;
-`elsif RVFI
-import RVFI_DII  :: *;
-`endif
-
-// ================================================================
-// Run-state, for each stage
-
-typedef enum { STAGE_RESETTING, STAGE_RUNNING } Stage_Run_State
-deriving (Eq, Bits, FShow);
 
 // ================================================================
 // Output status of each stage
@@ -96,6 +86,28 @@ instance FShow #(Bypass);
    endfunction
 endinstance
 
+`ifdef ISA_F
+typedef struct {
+   Bypass_State  bypass_state;
+   RegName       rd;
+   WordFL        rd_val;
+   } FBypass
+deriving (Bits);
+
+instance FShow #(FBypass);
+   function Fmt fshow (FBypass x);
+      let fmt0 = $format ("FBypass {");
+      let fmt1 = ((x.bypass_state == BYPASS_RD_NONE)
+		  ? $format ("FRd -")
+		  : $format ("FRd %0d ", x.rd) + ((x.bypass_state == BYPASS_RD)
+						 ? $format ("-")
+						 : $format ("frd_val:%h", x.rd_val)));
+      let fmt2 = $format ("}");
+      return fmt0 + fmt1 + fmt2;
+   endfunction
+endinstance
+`endif
+
 // ----------------
 // Baseline bypass info
 
@@ -103,6 +115,11 @@ Bypass no_bypass = Bypass {bypass_state: BYPASS_RD_NONE,
 			   rd: ?,
 			   rd_val: ? };
 
+`ifdef ISA_F
+FBypass no_fbypass = FBypass {bypass_state: BYPASS_RD_NONE,
+			   rd: ?,
+			   rd_val: ? };
+`endif
 // ----------------
 // Bypass functions for GPRs
 // Returns '(busy, val)'
@@ -116,13 +133,26 @@ function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_
    return tuple2 (busy, val);
 endfunction
 
+`ifdef ISA_F
+// FBypass functions for FPRs
+// Returns '(busy, val)'
+// 'busy' means that the RegName is valid and matches, but the value is not available yet
+function Tuple2 #(Bool, WordFL) fn_fpr_bypass (FBypass bypass, RegName rd, WordFL rd_val);
+   Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
+   WordFL val= (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
+		? bypass.rd_val
+		: rd_val);
+   return tuple2 (busy, val);
+endfunction
+`endif
+
 // ================================================================
 // Trap information
 
 typedef struct {
    Addr      epc;
    Exc_Code  exc_code;
-   Addr      badaddr;    // Only relevant for mem exceptions
+   Addr      tval;
    } Trap_Info
 deriving (Bits, FShow);
 
@@ -132,6 +162,8 @@ deriving (Bits, FShow);
 // Outputs from Stage1 to pipeline control
 typedef enum {  CONTROL_STRAIGHT
 	      , CONTROL_BRANCH
+	      , CONTROL_CSRR_W
+	      , CONTROL_CSRR_S_or_C
 	      , CONTROL_FENCE
 	      , CONTROL_FENCE_I
 	      , CONTROL_SFENCE_VMA
@@ -151,7 +183,7 @@ typedef struct {
    Trap_Info              trap_info;
 
    // feedback
-   WordXL                   next_pc;
+   WordXL                 next_pc;
 
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
@@ -206,7 +238,7 @@ typedef enum {  OP_Stage2_ALU         // Pass-through (non mem, M, FD, AMO)
 	      , OP_Stage2_AMO
 `endif
 
-`ifdef ISA_FD
+`ifdef ISA_F
 	      , OP_Stage2_FD
 `endif
    } Op_Stage2
@@ -215,32 +247,51 @@ deriving (Eq, Bits, FShow);
 typedef struct {
    Priv_Mode  priv;
    Addr       pc;
-   Instr      instr;    // For debugging. Just funct3 is enough for functionality.
+   Instr      instr;    // For debugging. Just funct3, funct7 are enough for
+                        // functionality.
 `ifdef RVFI_DII
    UInt#(SEQ_LEN) instr_seq;
 `endif
    Op_Stage2  op_stage2;
    RegName    rd;
-   Bool       csr_valid;
    Addr       addr;     // Branch, jump: newPC
                         // Mem ops and AMOs: mem addr
-                        // CSRRx: csr addr
-
-   Word       val1;     // OP_Stage2_ALU: rd_val
+`ifdef ISA_D
+   // When D is enabled, the val from Stage1 to Stage2 should be sized to
+   // max (sizeOf (WordXL), sizeOf (WordFL))
+   // Using lower-level Bit types here as the data in vals always be raw bit
+   // data
+   WordFL     val1;     // OP_Stage2_ALU: rd_val
                         // OP_Stage2_M and OP_Stage2_FD: arg1
 
-   Word       val2;     // OP_Stage2_ALU: csr_val
-                        // OP_Stage2_ST: store-val;
+   WordFL     val2;     // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
+`else
+   WordXL     val1;     // OP_Stage2_ALU: rd_val
+                        // OP_Stage2_M and OP_Stage2_FD: arg1
+
+   WordXL     val2;     // OP_Stage2_ST: store-val;
+                        // OP_Stage2_M and OP_Stage2_FD: arg2
+`endif
+
+`ifdef ISA_F
+   WordFL     val3;     // OP_Stage2_FD: arg3
+   Bool       rd_in_fpr;// The rd should update into FPR
+   Bit #(3)   rounding_mode;    // rounding mode from fcsr_frm or instr.rm
+`endif
+
+`ifdef INCLUDE_TANDEM_VERIF
+   Trace_Data  trace_data;
+`endif
+
 `ifdef RVFI
    Data_RVFI_Stage1 info_RVFI_s1;
 `endif
-
    } Data_Stage1_to_Stage2
 deriving (Bits);
 
 `ifdef RVFI
-  
+
 typedef struct {
     Bit#(ILEN)  instr;
     // From decode
@@ -259,20 +310,24 @@ typedef struct {
     // Might be killed by memory OPs.
     Bool        rd_alu;
     Bit#(XLEN)  rd_wdata_alu;
-    
+
     Bit#(XLEN)  mem_addr;
-    
+
 } Data_RVFI_Stage1 deriving (Bits, Eq);
 
-  
+
 `endif
 
 
 instance FShow #(Data_Stage1_to_Stage2);
    function Fmt fshow (Data_Stage1_to_Stage2 x);
       Fmt fmt =   $format ("data_to_Stage 2 {pc:%h  instr:%h  priv:%0d\n", x.pc, x.instr, x.priv);
-      fmt = fmt + $format ("            op_stage2:", fshow (x.op_stage2), "  rd:%0d  csr_valid:", x.rd, fshow (x.csr_valid), "\n");
+      fmt = fmt + $format ("            op_stage2:", fshow (x.op_stage2), "  rd:%0d\n", x.rd);
+`ifdef ISA_F
+      fmt = fmt + $format ("            addr:%h  val1:%h  val2:%h  val3:%h}", x.addr, x.val1, x.val2, x.val3);
+`else
       fmt = fmt + $format ("            addr:%h  val1:%h  val2:%h}", x.addr, x.val1, x.val2);
+`endif
       return fmt;
    endfunction
 endinstance
@@ -286,15 +341,14 @@ typedef struct {
 
    // feedback
    Bypass                 bypass;
+`ifdef ISA_F
+   FBypass                fbypass;
+`endif
 
    // feedforward data
    Data_Stage2_to_Stage3  data_to_stage3;
-   
-   // Verifier info
-`ifdef INCLUDE_TANDEM_VERIF
-   Info_CPU_to_Verifier   to_verifier;
-`endif
 
+   Trace_Data             trace_data;
    } Output_Stage2
 deriving (Bits);
 
@@ -328,38 +382,56 @@ typedef struct {
 
    Bool      rd_valid;
    RegName   rd;
-   Word      rd_val;
 
-   Bool      csr_valid;
-   CSR_Addr  csr;
-   Word      csr_val;
-   
 `ifdef RVFI
    Data_RVFI_Stage2 info_RVFI_s2;
 `endif
-   
+
+`ifdef ISA_F
+   Bool      upd_flags;
+   Bool      rd_in_fpr;
+   Bit #(5)  fpr_flags;
+`endif
+`ifdef ISA_D
+   // When FP is enabled, the rd_val from Stage2 to Stage3 should be sized to
+   // max (sizeOf (WordXL), sizeOf (WordFL))
+   // Using lower-level Bit types here as the data in rd_val always be raw
+   // bit data
+   WordFL    rd_val;
+`else
+   WordXL    rd_val;
+`endif
    } Data_Stage2_to_Stage3
 deriving (Bits);
 
 `ifdef RVFI
-    
+
 typedef struct {
     Data_RVFI_Stage1    stage1;
     // Hard to know what was written as SC pretends to write "0" on failure
     // instead of actual untouched value. So, indicate wmask = 0 perhaps?
-    
-    Bit#(MASKLEN)       mem_rmask;
-    Bit#(MASKLEN)       mem_wmask;
-    
+
+    Bit#(Bytes_per_Addr)       mem_rmask;
+    Bit#(Bytes_per_Addr)       mem_wmask;
+
 }   Data_RVFI_Stage2 deriving (Bits);
-    
+
 `endif
 
 instance FShow #(Data_Stage2_to_Stage3);
    function Fmt fshow (Data_Stage2_to_Stage3 x);
       Fmt fmt =   $format ("data_to_Stage3 {pc:%h  instr:%h  priv:%0d\n", x.pc, x.instr, x.priv);
-      fmt = fmt + $format ("        rd_valid:", fshow (x.rd_valid), " rd:%0d  rd_val:%h\n", x.rd, x.rd_val);
-      fmt = fmt + $format ("        csr_valid:", fshow (x.csr_valid), " csr:%h  csr_val:%h", x.csr, x.csr_val, "}");
+      fmt = fmt + $format ("        rd_valid:", fshow (x.rd_valid));
+
+`ifdef ISA_F
+      if (x.upd_flags)
+         fmt = fmt + $format ("  fflags: %05b", fshow (x.fpr_flags));
+
+      if (x.rd_in_fpr)
+         fmt = fmt + $format ("  frd:%0d  rd_val:%h\n", x.rd, x.rd_val);
+      else
+`endif
+         fmt = fmt + $format ("  grd:%0d  rd_val:%h\n", x.rd, x.rd_val);
       return fmt;
    endfunction
 endinstance
@@ -370,6 +442,9 @@ endinstance
 typedef struct {
    Stage_OStatus  ostatus;
    Bypass         bypass;
+`ifdef ISA_F
+   FBypass        fbypass;
+`endif
    } Output_Stage3
 deriving (Bits);
 

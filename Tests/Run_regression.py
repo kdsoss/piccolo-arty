@@ -1,26 +1,34 @@
 #!/usr/bin/python3
 
-# Copyright (c) 2018 Bluespec, Inc.
+# Copyright (c) 2018-2019 Bluespec, Inc.
 # See LICENSE for license details
 
-usage_line = \
-"Usage:    CMD    <simulation_executable>  <arch_string>  <root-dir-for-ISA-tests>  <logs_dir>  <optional_verbosity>\n"
-
-help_lines = \
-"  Runs the RISC-V simulation executable with ELF files from root-dir and its sub-directories.\n" \
-"  Only runs it on those ELF files that are relevant to the provided arch_string." \
-"  For each ELF file FOO, saves simulation output in <logs_dir>/FOO.log. \n" \
-"  The optional verbosity flag is:\n" \
-"      v1:    Print instruction trace during simulation\n" \
-"      v2:    Print pipeline stage state during simulation\n" \
-"\n" \
-"  Example:    $ CMD ../sim_verilator/exe_HW_sim  RV32IMU  ./isa  ./Logs  v1\n" \
-"      will run the verilator simulation executable on the following RISC-V ISA tests\n" \
-"            isa/rv32ui-p*\n"    \
-"            isa/rv32mi-p*\n"    \
-"            isa/rv32um-p*\n"    \
-"  and leave a transcript of each test's simulation output in files like ./Logs/rv32ui-p-add.log\n" \
-"  Each log will contain an instruction trace (because of the 'v1' arg).\n"
+usage_line = (
+    "  Usage:\n"
+    "    $ <this_prog>    <simulation_executable>  <repo_dir>  <logs_dir>  <arch>  <opt verbosity>\n"
+    "\n"
+    "  Runs the RISC-V <simulation_executable>\n"
+    "  on ISA tests: ELF files taken from <repo-dir>/isa and its sub-directories.\n"
+    "\n"
+    "  Runs it only on those ELF files that are relevant to architecture <arch>.\n"
+    "\n"
+    "  For each ELF file FOO, saves simulation output in <logs_dir>/FOO.log. \n"
+    "\n"
+    "  If <opt verbosity> is given, it must be one of the following:\n"
+    "      v1:    Print instruction trace during simulation\n"
+    "      v2:    Print pipeline stage state during simulation\n"
+    "\n"
+    "  Example:\n"
+    "      $ <this_prog>  .exe_HW_sim  ~somebody/GitHub/Piccolo  ./Logs  RV32IMU  v1\n"
+    "    will run the verilator simulation executable on the following RISC-V ISA tests:\n"
+    "            ~somebody/GitHub/Tests/isa/rv32ui-p*\n"
+    "            ~somebody/GitHub/Tests/isa/rv32mi-p*\n"
+    "            ~somebody/GitHub/Tests/isa/rv32um-p*\n"
+    "    which are relevant for architecture RV32IMU\n"
+    "    and will leave a transcript of each test's simulation output in files like\n"
+    "            ./Logs/rv32ui-p-add.log\n"
+    "    Each log will contain an instruction trace (because of the 'v1' arg).\n"
+)
 
 import sys
 import os
@@ -28,16 +36,6 @@ import stat
 import subprocess
 
 # ================================================================
-# Ignores files with the following in their names
-
-ignore_list = [".",                   # Files with extensions (e.g., foo.dump)
-               "rv32uc", "rv64uc",    # C (compressed) not yet implemented
-               "rv32uf", "rv64uf",    # Single precision floating point not yet implemented
-               "rv32ud", "rv64ud"]    # Double precision floating point not yet implemented
-
-# ================================================================
-
-elf_to_hex_exe = "./elf_to_hex/elf_to_hex"
 
 num_executed = 0
 num_passed   = 0
@@ -48,48 +46,122 @@ def main (argv = None):
     print ("Use flag --help  or --h for a help message")
     if ((len (argv) <= 1) or
         (argv [1] == '-h') or (argv [1] == '--help') or
-        ((len (argv) != 5) and (len (argv) != 6))):
+        (len (argv) < 5)):
 
-        sys.stdout.write (usage_line.replace ("CMD", argv [0]))
-        sys.stdout.write ("\n")
-        sys.stdout.write (help_lines.replace ("CMD", argv [0]))
+        sys.stdout.write (usage_line)
         sys.stdout.write ("\n")
         return 0
 
+    # Simulation executable
+    if not (os.path.exists (argv [1])):
+        sys.stderr.write ("ERROR: The given simulation path does not seem to exist?\n")
+        sys.stderr.write ("    Simulation path: " + sim_path + "\n")
+        sys.exit (1)
+    args_dict = {'sim_path': os.path.abspath (os.path.normpath (argv [1]))}
 
-    sim_path = os.path.abspath (os.path.normpath (argv [1]))
+    # Repo in which to find ELFs and elf_to_hex executable
+    if (not os.path.exists (argv [2])):
+        sys.stderr.write ("ERROR: repo directory ({0}) does not exist?\n".format (argv [2]))
+        sys.stdout.write ("\n")
+        sys.stdout.write (usage_line)
+        sys.stdout.write ("\n")
+        return 1
+    repo = os.path.abspath (os.path.normpath (argv [2]))
 
-    test_families = select_test_families (argv [2])
-    print ("Testing the following families of ISA tests")
-    for tf in test_families:
-        print ("    " + tf)
+    elfs_path = os.path.join (repo, "Tests", "isa")
+    if (not os.path.exists (elfs_path)):
+        sys.stderr.write ("ERROR: ELFs directory ({0}) does not exist?\n".format (elfs_path))
+        sys.stdout.write ("\n")
+        sys.stdout.write (usage_line)
+        sys.stdout.write ("\n")
+        return 1
+    args_dict ['elfs_path'] = elfs_path
 
-    elfs_path = os.path.abspath (os.path.normpath (argv [3]))
-
-    logs_path = os.path.abspath (os.path.normpath (argv [4]))
+    # Logs directory
+    logs_path = os.path.abspath (os.path.normpath (argv [3]))
     if not (os.path.exists (logs_path) and os.path.isdir (logs_path)):
         print ("Creating dir: " + logs_path)
         os.mkdir (logs_path)
+    args_dict ['logs_path'] = logs_path
 
+    # Architecture string and implied ISA test families
+    arch_string = extract_arch_string (argv [4])
+    if (arch_string == None):
+        sys.stderr.write ("ERROR: no architecture specified?\n")
+        sys.stdout.write ("\n")
+        sys.stdout.write (usage_line)
+        sys.stdout.write ("\n")
+        return 1
+    args_dict ['arch_string'] = arch_string
+
+    test_families = select_test_families (arch_string)
+    print ("Testing the following families of ISA tests")
+    for tf in test_families:
+        print ("    " + tf)
+    args_dict ['test_families'] = test_families
+
+    # Optional verbosity
     verbosity = 0
-    if (len (argv) == 6):
-        if (argv [5] == "v1"):
+    for arg in argv [5:]:
+         if arg == "v1":
             verbosity = 1
-        elif (argv [6] == "v2"):
+         elif arg == "v2":
             verbosity = 2
-        else:
-            sys.stdout.write ("Unknown command-line argument: {0}\n".format (argv [5]))
-            print ("Use flag --help  or --h for a help message")
-            return -1
+    args_dict ['verbosity'] = verbosity
+
+    # elf_to_hex executable
+    elf_to_hex_exe = os.path.join (repo, "Tests", "elf_to_hex", "elf_to_hex")
+    if (not os.path.exists (elf_to_hex_exe)):
+        sys.stderr.write ("ERROR: elf_to_hex executable does not exist?\n")
+        sys.stderr.write ("    at {0}\n".format (elf_to_hex_exe))
+        sys.stdout.write ("\n")
+        sys.stdout.write (usage_line)
+        sys.stdout.write ("\n")
+        return 1
+    args_dict ['elf_to_hex_exe'] = elf_to_hex_exe
+
+    sys.stdout.write ("Parameters:\n")
+    for key in iter (args_dict):
+        sys.stdout.write ("    {0:<16}: {1}\n".format (key, args_dict [key]))
 
     # Perform the recursive traversal
     max_level = 20
-    traverse (max_level, 0, sim_path, test_families, elfs_path, logs_path, verbosity)
+    traverse (max_level, 0, args_dict)
 
     # Write final statistics
     sys.stdout.write ("Executed: {0} tests\n".format (num_executed))
     sys.stdout.write ("PASS:     {0} tests\n".format (num_passed))
 
+
+# ================================================================
+# Extract the architecture string (e.g., RV64AIMSU) from the string s
+
+def extract_arch_string (s):
+    s1     = s.upper()
+    j_rv32 = s1.find ("RV32")
+    j_rv64 = s1.find ("RV64")
+
+    if (j_rv32 >= 0):
+        j = j_rv32
+    elif (j_rv64 >= 0):
+        j = j_rv64
+    else:
+        sys.stderr.write ("ERROR: cannot find architecture string beginning with RV32 or RV64 in: \n")
+        sys.stderr.write ("    '" + s + "'\n")
+        sys.exit (1)
+
+    k = j + 4
+    rv = s1 [j:k]
+
+    extns = ""
+    while (k < len (s)):
+        ch = s [k]
+        if (ch < "A") or (ch > "Z"): break
+        extns = extns + s [k]
+        k     = k + 1
+
+    arch = rv + extns
+    return arch
 
 # ================================================================
 # Select ISA test families based on provided arch string
@@ -136,24 +208,28 @@ def select_test_families (arch):
 # ================================================================
 # Recursively traverse the dir tree below elf_path and process each file
 
-def traverse (max_level, level, sim_path, test_families, elfs_path, logs_path, verbosity):
+def traverse (max_level, level, args_dict):
+    elfs_path = args_dict ['elfs_path']
     st = os.stat (elfs_path)
     is_dir = stat.S_ISDIR (st.st_mode)
     is_regular = stat.S_ISREG (st.st_mode)
-    do_foreachfile_function (level, is_dir, is_regular, sim_path, test_families, elfs_path, logs_path, verbosity)
+    do_foreachfile_function (level, is_dir, is_regular, args_dict)
     if is_dir and level < max_level:
         for entry in os.listdir (elfs_path):
             elfs_path1 = os.path.join (elfs_path, entry)
-            traverse (max_level, level + 1, sim_path, test_families, elfs_path1, logs_path, verbosity)
+            args_dict1 = args_dict.copy ()
+            args_dict1 ['elfs_path'] = elfs_path1
+            traverse (max_level, level + 1, args_dict1)
     return 0
 
 # ================================================================
 # This function is applied to every path in the
 # recursive traversal
 
-def do_foreachfile_function (level, is_dir, is_regular, sim_path, test_families, elfs_path, logs_path, verbosity):
+def do_foreachfile_function (level, is_dir, is_regular, args_dict):
     prefix = ""
     for j in range (level): prefix = "  " + prefix
+    elfs_path = args_dict ['elfs_path']
 
     # directories
     if is_dir:
@@ -164,7 +240,7 @@ def do_foreachfile_function (level, is_dir, is_regular, sim_path, test_families,
         dirname  = os.path.dirname (elfs_path)
         basename = os.path.basename (elfs_path)
         # print ("%s%d %s" % (prefix, level, elfs_path))
-        do_regular_file_function (level, dirname, basename, sim_path, test_families, logs_path, verbosity)
+        do_regular_file_function (level, dirname, basename, args_dict)
 
     # other files
     else:
@@ -173,22 +249,26 @@ def do_foreachfile_function (level, is_dir, is_regular, sim_path, test_families,
 # ================================================================
 # For each ELF file, execute it in the RISC-V simulator
 
-def do_regular_file_function (level, dirname, basename, sim_path, test_families, logs_path, verbosity):
+def do_regular_file_function (level, dirname, basename, args_dict):
     global num_executed
     global num_passed
 
     full_filename = os.path.join (dirname, basename)
 
-    # Ignore filename if has .dump extension (not an ELF file)
-    if basename.find (".dump") != -1: return
+    # Ignore filename if has any extension (heuristic that it's not an ELF file)
+    if "." in basename: return
 
     # Ignore filename if does not match test_families
     ignore = True
-    for x in test_families:
+    for x in args_dict ['test_families']:
         if basename.find (x) != -1: ignore = False
     if ignore:
         # print ("Ignoring file: " + full_filename)
         return
+
+    # TEMPORARY FILTER WHILE DEBUGGING:
+    # if basename.find ("rv64ui-v-add") == -1: return
+    # sys.stdout.write ("WARNING: TEMPORARY FILTER IN EFFECT; REMOVE AFTER DEBUGGING\n")
 
     # For debugging only
     # prefix = ""
@@ -196,13 +276,14 @@ def do_regular_file_function (level, dirname, basename, sim_path, test_families,
     # sys.stdout.write ("{0}{1} ACTION:    {2}\n".format (prefix, level, full_filename))
 
     # Construct the commands for sub-process execution
-    command1 = [elf_to_hex_exe, full_filename, "Mem.hex"]
+    command1 = [args_dict ['elf_to_hex_exe'], full_filename, "Mem.hex"]
 
-    command2 = [sim_path,  "+tohost"]
-    if (verbosity == 1): command2.append ("+v1")
-    elif (verbosity == 2): command2.append ("+v2")
+    command2 = [args_dict ['sim_path'],  "+tohost"]
+    if (args_dict ['verbosity'] == 1): command2.append ("+v1")
+    elif (args_dict ['verbosity'] == 2): command2.append ("+v2")
 
-    sys.stdout.write ("Test {0}\n".format (basename))
+    num_executed = num_executed + 1
+    sys.stdout.write ("Test {0}: {1}\n".format (num_executed, basename))
 
     sys.stdout.write ("    Exec:")
     for x in command1:
@@ -217,7 +298,6 @@ def do_regular_file_function (level, dirname, basename, sim_path, test_families,
     # Run command as a sub-process
     completed_process1 = run_command (command1)
     completed_process2 = run_command (command2)
-    num_executed = num_executed + 1
     passed = completed_process2.stdout.find ("PASS") != -1
     if passed:
         sys.stdout.write ("    PASS")
@@ -225,13 +305,20 @@ def do_regular_file_function (level, dirname, basename, sim_path, test_families,
     else:
         sys.stdout.write ("    FAIL")
 
-    log_filename = os.path.join (logs_path, basename + ".log")
-    sys.stdout.write ("      Writing log: {0}.log\n".format (basename))
+    # Save stdouts in log file
+    log_filename = os.path.join (args_dict ['logs_path'], basename + ".log")
+    sys.stdout.write ("    Writing log: {0}\n".format (log_filename))
 
     fd = open (log_filename, 'w')
     fd.write (completed_process1.stdout)
     fd.write (completed_process2.stdout)
     fd.close ()
+
+    # If Tandem Verification trace file was created, save it as well
+    if os.path.exists ("./trace_out.dat"):
+        trace_filename = os.path.join (args_dict ['logs_path'], basename + ".trace_data")
+        os.rename ("./trace_out.dat", trace_filename)
+        sys.stdout.write ("    Trace output saved in: {0}\n".format (trace_filename))
 
     return
 
