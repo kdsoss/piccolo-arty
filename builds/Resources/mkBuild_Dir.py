@@ -4,9 +4,9 @@
 # See LICENSE for license details
 
 #-
-# RVFI_DII modifications:
-#     Copyright (c) 2018 Jack Deeley
-#     Copyright (c) 2018 Peter Rugg
+# RVFI_DII + CHERI modifications:
+#     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+#     Copyright (c) 2018-19 Peter Rugg (RVFI_DII + CHERI)
 #     All rights reserved.
 #
 #     This software was developed by SRI International and the University of
@@ -67,49 +67,51 @@ def main (argv = None):
     # Collect <arch> and check if legal
 
     known_arch_features = "ACDFGIMSU"
-    arch = arg_arch.upper ()
+    arch_split = arg_arch.split("x")
+    arch_std = arch_split[0]
+    arch = arch_std.upper ()
 
     # G is an abbreviation for IMAFD
-    arch = arch.replace ("G", "IMAFD")
+    arch_std = arch_std.replace ("G", "IMAFD")
 
     # We always have "I"
-    if ((not "I" in arch) and (not "G" in arch)): arch = arch + "I"
+    if ((not "I" in arch_std) and (not "G" in arch_std)): arch_std = arch_std + "I"
 
     # For Piccolo and Flute, we always have Priv U (along with Priv M)
-    if (not "U" in arch): arch = arch + "U"
+    if (not "U" in arch_std): arch_std = arch_std + "U"
 
-    if (not (arch.startswith ("RV32") or arch.startswith ("RV64"))):
-        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch))
+    if (not (arch_std.startswith ("RV32") or arch_std.startswith ("RV64"))):
+        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch_std))
         sys.stdout.write ("    Should begin with 'RV32' or 'RV64'\n")
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
-    if (not all (map ((lambda x: x in known_arch_features), arch [4:]))):
-        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch))
+    if (not all (map ((lambda x: x in known_arch_features), arch_std [4:]))):
+        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch_std))
         sys.stdout.write ("    Should only contain alphabets from {0} after RV32/RV64\n".format (known_arch_features))
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
-    if (not ('I' in arch)):
-        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch))
+    if (not ('I' in arch_std)):
+        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch_std))
         sys.stdout.write ("    Should contain 'I'\n")
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
-    if (('S' in arch) and not ('U' in arch)):
-        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch))
+    if (('S' in arch_std) and not ('U' in arch_std)):
+        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch_std))
         sys.stdout.write ("    Should contain 'U' since it contains 'S'\n")
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
-    if (('D' in arch) and not ('F' in arch)):
-        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch))
+    if (('D' in arch_std) and not ('F' in arch_std)):
+        sys.stdout.write ("Error in command-line arg 1 (<arch>='{0}')\n".format (arch_std))
         sys.stdout.write ("    Should contain 'F' since it contains 'D'\n")
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
 
-    arch = canonical_arch_string (arch)
+    arch = canonical_arch_string ("x".join([arch_std] + arch_split[1:]))
     sys.stdout.write ("Canonical arch string is:  '{0}'\n".format (arch))
 
     # ----------------
@@ -130,6 +132,7 @@ def main (argv = None):
 
     debug = ""
     tv    = ""
+    rvfi_dii = ""
 
     if ((len (opt_args) > 0) and (opt_args [0] == "debug")):
         debug = "_debug"
@@ -162,14 +165,16 @@ def main (argv = None):
 # Can be invoked with or without the leading "RV32" or "RV64"
 
 def canonical_arch_string (arch):
+    arch_split = arch.split('x');
+    arch_std = arch_split[0];
     prefix = ""
-    letters_s = arch
-    if arch.startswith ("RV32"):
+    letters_s = arch_std
+    if arch_std.startswith ("RV32"):
         prefix = "RV32"
-        letters_s = arch [4:]
-    elif arch.startswith ("RV64"):
+        letters_s = arch_std [4:]
+    elif arch_std.startswith ("RV64"):
         prefix = "RV64"
-        letters_s = arch [4:]
+        letters_s = arch_std [4:]
 
     # Convert  'letters_s'  string to list of single-char strings
     letters_l  = map  ((lambda j: letters_s [j]),  (range (len (letters_s))))
@@ -180,7 +185,7 @@ def canonical_arch_string (arch):
     # Join them back into a string
     letters_s  = "".join (letters_l)
 
-    return (prefix + letters_s)
+    return ("x".join([prefix + letters_s] + arch_split[1:]))
 
 # ================================================================
 # Create the build directory and its Makefile
@@ -199,7 +204,7 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
         return
 
     # Create the directory
-    dirname = arch + "_" + repobase + "_" + sim + debug + tv + rvfi_dii
+    dirname = arch + "_" + repobase + "_" + sim + debug + tv
     if (os.path.exists (dirname)):
         sys.stdout.write ("Directory  '{0}'  exists already\n".format (dirname))
     else:
@@ -234,41 +239,45 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
     fo.write ("ARCH ?= {0}\n".format (arch))
     fo.write ("\n")
 
+    arch_split = arch.split('x');
+    arch_std = arch_split[0]
+
     # RISC-V config macros passed into Bluespec 'bsc' compiler
     fo.write ("# ================================================================\n")
     fo.write ("# RISC-V config macros passed into Bluespec 'bsc' compiler\n")
     fo.write ("\n")
     fo.write ("BSC_COMPILATION_FLAGS += \\\n")
-    fo.write ("\t-D " + arch [0:4] + " \\\n")
+    fo.write ("\t-D " + arch_std [0:4] + " \\\n")
 
     # RISC-V privilege levels
     fo.write ("\t-D ISA_PRIV_M")
-    if ("U" in arch): fo.write ("  -D ISA_PRIV_U")
-    if ("S" in arch): fo.write ("  -D ISA_PRIV_S")
+    if ("U" in arch_std [0:4]): fo.write ("  -D ISA_PRIV_U")
+    if ("S" in arch_std [0:4]): fo.write ("  -D ISA_PRIV_S")
     fo.write ("  \\\n")
 
     # If 'S', specify Virtual Memory scheme
-    if ("S" in arch):
-        if (arch.startswith ("RV32")):
+    if ("S" in arch_std):
+        if (arch_std.startswith ("RV32")):
             fo.write ("\t-D SV32  \\\n")
         else:
             fo.write ("\t-D SV39  \\\n")
 
     # RISC-V arch features
     arch_flags = ""
-    if ("G" in arch):
+    if ("G" in arch_std):
         arch_flags = arch_flags + "  -D ISA_I"
         arch_flags = arch_flags + "  -D ISA_M"
         arch_flags = arch_flags + "  -D ISA_A"
         arch_flags = arch_flags + "  -D ISA_F"
         arch_flags = arch_flags + "  -D ISA_D"
     else:
-        if ("I" in arch): arch_flags = arch_flags + "  -D ISA_I"
-        if ("I" in arch): arch_flags = arch_flags + "  -D ISA_M"
-        if ("A" in arch): arch_flags = arch_flags + "  -D ISA_A"
-        if ("F" in arch): arch_flags = arch_flags + "  -D ISA_F"
-        if ("D" in arch): arch_flags = arch_flags + "  -D ISA_D"
-    if ("C" in arch): arch_flags = arch_flags + "  -D ISA_C"
+        if ("I" in arch_std): arch_flags = arch_flags + "  -D ISA_I"
+        if ("I" in arch_std): arch_flags = arch_flags + "  -D ISA_M"
+        if ("A" in arch_std): arch_flags = arch_flags + "  -D ISA_A"
+        if ("F" in arch_std): arch_flags = arch_flags + "  -D ISA_F"
+        if ("D" in arch_std): arch_flags = arch_flags + "  -D ISA_D"
+    if ("C" in arch_std): arch_flags = arch_flags + "  -D ISA_C"
+    arch_flags += "".join(["  -D ISA_" + non_std_ext for non_std_ext in arch_split[1:]])
     fo.write ("\t{0}  \\\n".format (arch_flags.lstrip()))
 
     # TODO: Uncomment after floating-point DIV is working

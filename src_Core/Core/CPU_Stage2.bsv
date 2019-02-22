@@ -1,9 +1,9 @@
 // Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
+// RVFI_DII + CHERI modifications:
 //     Copyright (c) 2018 Jack Deeley
-//     Copyright (c) 2018 Peter Rugg
+//     Copyright (c) 2018-2019 Peter Rugg (RVFI_DII + CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -77,6 +77,10 @@ import RISCV_MBox  :: *;
 
 `ifdef ISA_F
 import RISCV_FBox  :: *;
+`endif
+
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
 `endif
 
 // ================================================================
@@ -298,7 +302,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 `else
             // A GPR load in a non-FD system
+`ifdef ISA_CHERI
+	    data_to_stage3.rd_val   = nullWithAddr(result);
+`else
 	    data_to_stage3.rd_val   = result;
+`endif
 `endif
 
             // Update the bypass channel
@@ -328,7 +336,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             // Bypassing GPR value in a non-FD system. LD result meant for GPR
 	    if (rg_stage2.rd != 0) begin    // TODO: is this test necessary?
 	       bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-	       bypass.rd_val       = result;
+`ifdef ISA_CHERI
+           bypass.rd_val       = nullWithAddr(result);
+`else
+           bypass.rd_val       = result;
+`endif
 	    end
 `endif
 
@@ -383,7 +395,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
 	 data_to_stage3.rd       = 0;
 `ifdef RVFI
+`ifdef ISA_CHERI
+	 data_to_stage3.rd_val   = nullCap;
+`else
 	 data_to_stage3.rd_val   = 0;
+`endif
 	 let info_RVFI_s2 = info_RVFI_s2_base;
 	 info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
 	 data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
@@ -458,12 +474,20 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_D
 	 data_to_stage3.rd_val   = extend (result);
 `else
+`ifdef ISA_CHERI
+	 data_to_stage3.rd_val   = nullWithAddr(result);
+`else
 	 data_to_stage3.rd_val   = result;
+`endif
 `endif
 
 	 let bypass = bypass_base;
 	 bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
+`ifdef ISA_CHERI
+	 bypass.rd_val       = nullWithAddr(result);
+`else
 	 bypass.rd_val       = result;
+`endif
 
 	 let trace_data   = ?;
 `ifdef INCLUDE_TANDEM_VERIF
@@ -591,6 +615,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    else if (x.op_stage2 == OP_Stage2_AMO) cache_op = CACHE_AMO;
 `endif
 
+//TODO cap check goes here
 	    dcache.req (cache_op,
 			instr_funct3 (x.instr),
 `ifdef ISA_A
@@ -600,7 +625,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_D
 			x.val2,
 `else
+`ifdef ISA_CHERI
+			zeroExtend (getAddr(x.val2)),
+`else
 			zeroExtend (x.val2),
+`endif
 `endif
 			mem_priv,
 			sstatus_SUM,
@@ -643,8 +672,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 		      truncate (x.val2)
 `endif
 `else
+`ifdef ISA_CHERI
+		      getAddr(x.val1),
+		      getAddr(x.val2)
+`else
 		      x.val1,
 		      x.val2
+`endif
 `endif
 		      );
 	 end

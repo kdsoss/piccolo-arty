@@ -1,9 +1,9 @@
 // Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
-//     Copyright (c) 2018 Peter Rugg
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+//     Copyright (c) 2018-2019 Peter Rugg (RVFI_DII + CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -93,6 +93,10 @@ import Near_Mem_TCM :: *;
 
 `ifdef INCLUDE_GDB_CONTROL
 import Debug_Module :: *;
+`endif
+
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
 `endif
 
 // System address map and pc_reset value
@@ -758,7 +762,11 @@ module mkCPU (CPU_IFC);
       // TODO: is this ifdef necessary? Can't we always use 'truncate'?
       WordXL stage2_val1= truncate (stage1.out.data_to_stage2.val1);
 `else
+`ifdef ISA_CHERI
+      WordXL stage2_val1= getAddr(stage1.out.data_to_stage2.val1);
+`else
       WordXL stage2_val1= stage1.out.data_to_stage2.val1;
+`endif
 `endif
 
       let rs1_val  = (  (funct3 == f3_CSRRW)
@@ -788,7 +796,12 @@ module mkCPU (CPU_IFC);
 
 	 // Writeback to GPR file
 	 let new_rd_val = csr_val;
+
+`ifdef ISA_CHERI
+	 gpr_regfile.write_rd (rd, nullWithAddr(new_rd_val));
+`else
 	 gpr_regfile.write_rd (rd, new_rd_val);
+`endif
 
 	 // Writeback to CSR file
 	 let new_csr_val <- csr_regfile.mav_csr_write (csr_addr, rs1_val);
@@ -843,7 +856,11 @@ module mkCPU (CPU_IFC);
       // With FP, the val is always Bit #(64)
       WordXL stage2_val1= truncate (stage1.out.data_to_stage2.val1);
 `else
+`ifdef ISA_CHERI
+      WordXL stage2_val1= getAddr(stage1.out.data_to_stage2.val1);
+`else
       WordXL stage2_val1= stage1.out.data_to_stage2.val1;
+`endif
 `endif
 
       let rs1_val  = (  ((funct3 == f3_CSRRS) || (funct3 == f3_CSRRC))
@@ -870,7 +887,11 @@ module mkCPU (CPU_IFC);
 
 	 // Writeback to GPR file
 	 let new_rd_val = csr_val;
+`ifdef ISA_CHERI
+	 gpr_regfile.write_rd (rd, nullWithAddr(new_rd_val));
+`else
 	 gpr_regfile.write_rd (rd, new_rd_val);
+`endif
 
 	 // Writeback to CSR file, but only if rs1 != 0
 	 let x = (  ((funct3 == f3_CSRRS) || (funct3 == f3_CSRRSI))

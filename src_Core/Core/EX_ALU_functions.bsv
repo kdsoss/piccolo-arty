@@ -1,9 +1,9 @@
 // Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
-//     Copyright (c) 2018 Peter Rugg
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+//     Copyright (c) 2018 Peter Rugg (RVFI_DII + CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -42,6 +42,9 @@ import Vector :: *;
 import ISA_Decls   :: *;
 import CPU_Globals :: *;
 import TV_Info     :: *;
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
+`endif
 
 // ================================================================
 // ALU inputs
@@ -63,6 +66,10 @@ typedef struct {
    WordFL         frs1_val;
    WordFL         frs2_val;
    WordFL         frs3_val;
+`endif
+`ifdef ISA_CHERI
+   CapPipe        cap_rs1_val;
+   CapPipe        cap_rs2_val;
 `endif
    MISA           misa;
    } ALU_Inputs
@@ -115,6 +122,13 @@ typedef struct {
    Bit #(3)   rm;       // rounding mode
 `endif
 
+`ifdef ISA_CHERI
+   CapPipe    cap_val1;
+   CapPipe    cap_val2;
+   Bool       val1_cap_not_int;
+   Bool       val2_cap_not_int;
+`endif
+
    Trace_Data trace_data;
    } ALU_Outputs
 deriving (Bits, FShow);
@@ -131,6 +145,12 @@ ALU_Outputs alu_outputs_base
 	       val3      : ?,
 	       rd_in_fpr : False,
 	       rm        : ?,
+`endif
+`ifdef ISA_CHERI
+	       cap_val1  : ?,
+	       cap_val2  : ?,
+	       val1_cap_not_int: False,
+	       val2_cap_not_int: False,
 `endif
 	       trace_data: ?};
 
@@ -1041,6 +1061,106 @@ endfunction
 `endif
 
 // ----------------------------------------------------------------
+// CHERI
+// Capability operations
+
+`ifdef ISA_CHERI
+function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
+    let funct3  = inputs.decoded_instr.funct3;
+    let funct5c = inputs.decoded_instr.funct5c;
+    let funct7  = inputs.decoded_instr.funct7;
+
+    let rt_val = inputs.rs2_val;
+    let cb_val = inputs.cap_rs1_val;
+    let cb_tag = isValidCap(inputs.cap_rs1_val);
+    let cb_addr = getAddr(cb_val);
+    let cb_base = getBase(cb_val);
+    let cb_top = getTop(cb_val);
+    let cb_sealed = isSealed(cb_val);
+
+    let rd_val = ?;
+
+    let alu_outputs = alu_outputs_base;
+
+    case (funct3)
+    /*
+    f3_cap_CIncOffsetImmediate:
+        //TODO
+    f3_cap_CSetBoundsImmediate:
+        //TODO */
+    f3_cap_ThreeOp:
+        case (funct7) /*
+        f7_cap_Mem:
+            alu_outputs.op_stage2 = OP_Stage2_Mem;
+            //TODO
+       f7_cap_CSpecialRW:
+           //TODO */
+       f7_cap_CSetBounds:
+           if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else begin
+               let new_base = cb_addr;
+               Bit #(65) new_top = zeroExtend(cb_addr) + zeroExtend(rt_val);
+               if (new_base < cb_base || new_top > cb_top) begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO length exception
+                   //TODO bounds check in next stage
+               end
+               else begin
+                   rd_val = setBounds(cb_val, zeroExtend(rt_val)).value;
+                   alu_outputs.cap_val1 = rd_val;
+                   alu_outputs.val1_cap_not_int = True;
+                   alu_outputs.op_stage2 = OP_Stage2_ALU;
+                   alu_outputs.control = CONTROL_STRAIGHT;
+                   alu_outputs.rd = inputs.decoded_instr.rd;
+               end
+           end
+       f7_cap_TwoOp:
+           case (funct5c)
+           f5c_cap_CGetLen: begin
+               let length = cb_top - zeroExtend(cb_base);
+               alu_outputs.val1 = unpack(msb(length)) ? -1 : truncate(length);
+               alu_outputs.op_stage2 = OP_Stage2_ALU;
+               alu_outputs.control = CONTROL_STRAIGHT;
+               alu_outputs.rd = inputs.decoded_instr.rd;
+           end
+           f5c_cap_CGetBase: begin
+               alu_outputs.val1 = cb_base;
+               alu_outputs.op_stage2 = OP_Stage2_ALU;
+               alu_outputs.control = CONTROL_STRAIGHT;
+               alu_outputs.rd = inputs.decoded_instr.rd;
+           end
+           default:
+               alu_outputs.control = CONTROL_TRAP;
+           endcase
+
+
+        default:
+            alu_outputs.control = CONTROL_TRAP;
+        endcase /*
+        f3_cap_CSetBoundsImmediate:
+            //TODO */
+        default:
+            alu_outputs.control = CONTROL_TRAP;
+    endcase
+
+    alu_outputs.rd = inputs.decoded_instr.rd;
+
+   // Normal trace output (if no trap)
+    alu_outputs.trace_data = mkTrace_I_RD (fall_through_pc (inputs),
+					  fv_trace_isize (inputs),
+					  fv_trace_instr (inputs),
+					  inputs.decoded_instr.rd,
+					  getAddr(rd_val));
+   return alu_outputs;
+endfunction
+`endif
+
+// ----------------------------------------------------------------
 // Top-level ALU function
 
 function ALU_Outputs fv_ALU (ALU_Inputs inputs);
@@ -1160,6 +1280,11 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
             || (inputs.decoded_instr.opcode == op_FNMSUB)
             || (inputs.decoded_instr.opcode == op_FNMADD))
       alu_outputs = fv_FP (inputs);
+`endif
+
+`ifdef ISA_CHERI
+   else if (   (inputs.decoded_instr.opcode == op_cap_Manip))
+      alu_outputs = fv_CHERI (inputs);
 `endif
 
    else begin

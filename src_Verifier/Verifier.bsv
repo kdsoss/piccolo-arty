@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2018 Jack Deeley
- * Copyright (c) 2018 Peter Rugg
+ * Copyright (c) 2018-2019 Peter Rugg
  * All rights reserved.
  *
  * This software was developed by SRI International and the University of
@@ -37,6 +37,9 @@ import RVFI_DII :: *;
 `endif
 import ISA_Decls   :: *;
 import CPU_Globals :: *;
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
+`endif
 
 `ifdef RVFI
 // This function relies on info that is only passed in RVFI-mode.
@@ -69,14 +72,22 @@ function RVFI_DII_Execution #(XLEN) getRVFIInfoCondensed(
         rvfi_rd_addr:   data_s2_s3.rd_valid ? data_s2_s3.rd : 0,
         rvfi_rs1_data:  s1.rs1_data,
         rvfi_rs2_data:  s1.rs2_data,
+`ifdef ISA_CHERI
+        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : getAddr(data_s2_s3.rd_val),
+`else
         rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : data_s2_s3.rd_val,
+`endif
         rvfi_pc_rdata:  data_s2_s3.pc,
         rvfi_pc_wdata:  isTrap ? trapPC : s1.pc_wdata,
         rvfi_mem_wdata: s1.mem_wdata,
         rvfi_mem_addr:  s1.mem_addr,
         rvfi_mem_rmask: s2.mem_rmask,
         rvfi_mem_wmask: s2.mem_wmask,
+`ifdef ISA_CHERI
+        rvfi_mem_rdata: getAddr(data_s2_s3.rd_val)
+`else
         rvfi_mem_rdata: data_s2_s3.rd_val
+`endif
     };
 endfunction : getRVFIInfoCondensed
             

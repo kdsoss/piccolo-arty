@@ -1,9 +1,9 @@
 // Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
-//     Copyright (c) 2018 Peter Rugg
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+//     Copyright (c) 2018-2019 Peter Rugg (RVFI_DII + CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -32,6 +32,10 @@ package CPU_Globals;
 // Project imports
 
 import ISA_Decls :: *;
+
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
+`endif
 
 import TV_Info   :: *;
 
@@ -69,7 +73,11 @@ deriving (Eq, Bits, FShow);
 typedef struct {
    Bypass_State  bypass_state;
    RegName       rd;
+`ifdef ISA_CHERI
+   CapPipe       rd_val;
+`else
    Word          rd_val;
+`endif
    } Bypass
 deriving (Bits);
 
@@ -125,9 +133,13 @@ FBypass no_fbypass = FBypass {bypass_state: BYPASS_RD_NONE,
 // Returns '(busy, val)'
 // 'busy' means that the RegName is valid and matches, but the value is not available yet
 
+`ifdef ISA_CHERI
+function Tuple2 #(Bool, CapPipe) fn_gpr_bypass (Bypass bypass, RegName rd, CapPipe rd_val);
+`else
 function Tuple2 #(Bool, Word) fn_gpr_bypass (Bypass bypass, RegName rd, Word rd_val);
+`endif
    Bool busy = ((bypass.bypass_state == BYPASS_RD) && (bypass.rd == rd));
-   Word val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
+   let val  = (  ((bypass.bypass_state == BYPASS_RD_RDVAL) && (bypass.rd == rd))
 		? bypass.rd_val
 		: rd_val);
    return tuple2 (busy, val);
@@ -266,7 +278,14 @@ typedef struct {
 
    WordFL     val2;     // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
+`elsif ISA_CHERI
+   CapPipe    val1;     // OP_Stage2_ALU: rd_val
+                        // OP_Stage2_M and OP_Stage2_FD: arg1
+
+   CapPipe    val2;     // OP_Stage2_ST: store-val;
+                        // OP_Stage2_M and OP_Stage2_FD: arg2
 `else
+
    WordXL     val1;     // OP_Stage2_ALU: rd_val
                         // OP_Stage2_M and OP_Stage2_FD: arg1
 
@@ -392,12 +411,15 @@ typedef struct {
    Bool      rd_in_fpr;
    Bit #(5)  fpr_flags;
 `endif
+
 `ifdef ISA_D
    // When FP is enabled, the rd_val from Stage2 to Stage3 should be sized to
    // max (sizeOf (WordXL), sizeOf (WordFL))
    // Using lower-level Bit types here as the data in rd_val always be raw
    // bit data
    WordFL    rd_val;
+`elsif ISA_CHERI
+   CapPipe   rd_val;
 `else
    WordXL    rd_val;
 `endif

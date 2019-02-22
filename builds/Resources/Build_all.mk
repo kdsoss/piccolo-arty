@@ -39,12 +39,12 @@ build_all:
 
 .PHONY: build_and_test
 build_and_test:
-	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM)  $(RVFI_DII)
-	logsave  build_and_test.log  make -C  $(ARCH)_Piccolo_$(SIM)_$(RVFI_DII)  all  test  isa_tests
+	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
+	logsave  build_and_test.log  make -C  $(ARCH)_Piccolo_$(SIM) all  test  isa_tests
 	mv  build_and_test.log  $(ARCH)_Piccolo_$(SIM)_$(RVFI_DII)$
 
 .PHONY: build_and_test_iverilog
 build_and_test_iverilog:
-	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM)
+	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
 	logsave  build_and_test.log  make -C  $(ARCH)_Piccolo_$(SIM)  all
 	mv  build_and_test.log  $(ARCH)_Piccolo_$(SIM)

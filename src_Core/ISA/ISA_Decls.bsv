@@ -1,8 +1,9 @@
 // Copyright (c) 2013-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+//     Copyright (c) 2019 Peter Rugg (CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -38,6 +39,9 @@ import BuildVector  :: *;
 `ifdef RVFI_DII
 import GetPut       :: *;
 import RVFI_DII     :: *;
+`endif
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
 `endif
 
 // ================================================================
@@ -236,6 +240,11 @@ typedef struct {
    Bit #(7)  funct7;
    Bit #(10) funct10;
 
+`ifdef ISA_CHERI
+   Bit #(5)  funct5c;
+   Bit #(5)  imm5;
+`endif
+
    Bit #(12) imm12_I;
    Bit #(12) imm12_S;
    Bit #(13) imm13_SB;
@@ -262,6 +271,10 @@ function Decoded_Instr fv_decode (Instr instr);
 			 funct5:    instr_funct5   (instr),
 			 funct7:    instr_funct7   (instr),
 			 funct10:   instr_funct10  (instr),
+`ifdef ISA_CHERI
+			 funct5c:   instr_cap_funct5c  (instr),
+			 imm5:      instr_cap_imm5     (instr),
+`endif
 
 			 imm12_I:   instr_I_imm12  (instr),
 			 imm12_S:   instr_S_imm12  (instr),
@@ -1119,6 +1132,11 @@ CSR_Addr   csr_addr_hpmcounter31h  = 12'hC9F;    // Upper 32 bits of performance
 // Supervisor-Level ISA defs
 
 `include "ISA_Decls_Priv_S.bsv"
+
+// ================================================================
+// CHERI ISA defs
+
+`include "ISA_Decls_CHERI.bsv"
 
 // ================================================================
 // Hypervisor-Level ISA defs

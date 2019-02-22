@@ -103,7 +103,11 @@ module mkSoC_Map (SoC_Map_IFC);
    // UART 0
 
    Fabric_Addr uart0_addr_base = 'hC000_0000;
+`ifdef RVFI_DII
+   Fabric_Addr uart0_addr_size = 'h0000_0000;    // 0
+`else
    Fabric_Addr uart0_addr_size = 'h0000_0080;    // 128
+`endif
    Fabric_Addr uart0_addr_lim  = uart0_addr_base + uart0_addr_size;
 
    function Bool fn_is_uart0_addr (Fabric_Addr addr);
@@ -114,7 +118,11 @@ module mkSoC_Map (SoC_Map_IFC);
    // Near_Mem_IO (including CLINT, the core-local interruptor)
 
    Fabric_Addr near_mem_io_addr_base = 'h_0200_0000;
+`ifdef RVFI_DII
+   Fabric_Addr near_mem_io_addr_size = 'h_0000_0000;    // 0K
+`else
    Fabric_Addr near_mem_io_addr_size = 'h_0000_C000;    // 48K
+`endif
    Fabric_Addr near_mem_io_addr_lim  = near_mem_io_addr_base + near_mem_io_addr_size;
 
    function Bool fn_is_near_mem_io_addr (Fabric_Addr addr);
@@ -141,7 +149,11 @@ module mkSoC_Map (SoC_Map_IFC);
    // Main Mem Controller 0
 
    Fabric_Addr mem0_controller_addr_base = 'h_8000_0000;
+`ifdef RVFI_DII
+   Fabric_Addr mem0_controller_addr_size = 'h_0000_0000;    // 0 MB
+`else
    Fabric_Addr mem0_controller_addr_size = 'h_0FFF_FFFF;    // 256 MB
+`endif
    Fabric_Addr mem0_controller_addr_lim  = mem0_controller_addr_base + mem0_controller_addr_size;
 
    function Bool fn_is_mem0_controller_addr (Fabric_Addr addr);

@@ -1,9 +1,9 @@
 // Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Jack Deeley
-//     Copyright (c) 2018 Peter Rugg
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018 Jack Deeley (RVFI_DII)
+//     Copyright (c) 2018-2019 Peter Rugg (RVFI_DII + CHERI)
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
@@ -53,6 +53,9 @@ import FPR_RegFile      :: *;
 `endif
 import CSR_RegFile      :: *;
 import EX_ALU_functions :: *;
+`ifdef ISA_CHERI
+import CHERICC128Cap :: *;
+`endif
 
 `ifdef ISA_C
 // 'C' extension (16b compressed instructions)
@@ -143,7 +146,12 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    match { .busy1a, .rs1a } = fn_gpr_bypass (bypass_from_stage3, rs1, rs1_val);
    match { .busy1b, .rs1b } = fn_gpr_bypass (bypass_from_stage2, rs1, rs1a);
    Bool rs1_busy = (busy1a || busy1b);
+`ifdef ISA_CHERI
+   CapPipe rs1_val_bypassed = ((rs1 == 0) ? nullCap : rs1b);
+`else
    Word rs1_val_bypassed = ((rs1 == 0) ? 0 : rs1b);
+`endif
+
 
    // Register rs2 read and bypass
    let rs2 = decoded_instr.rs2;
@@ -151,7 +159,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    match { .busy2a, .rs2a } = fn_gpr_bypass (bypass_from_stage3, rs2, rs2_val);
    match { .busy2b, .rs2b } = fn_gpr_bypass (bypass_from_stage2, rs2, rs2a);
    Bool rs2_busy = (busy2a || busy2b);
+`ifdef ISA_CHERI
+   CapPipe rs2_val_bypassed = ((rs2 == 0) ? nullCap : rs2b);
+`else
    Word rs2_val_bypassed = ((rs2 == 0) ? 0 : rs2b);
+`endif
 
 `ifdef ISA_F
    // FP Register rs1 read and bypass
@@ -187,8 +199,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , instr_C         : instr_C
 `endif
       , decoded_instr   : decoded_instr
+`ifdef ISA_CHERI
+      , cap_rs1_val     : rs1_val_bypassed
+      , cap_rs2_val     : rs2_val_bypassed
+      , rs1_val         : getAddr(rs1_val_bypassed)
+      , rs2_val         : getAddr(rs2_val_bypassed)
+`else
       , rs1_val         : rs1_val_bypassed
       , rs2_val         : rs2_val_bypassed
+`endif
 `ifdef ISA_F
       , frs1_val        : frs1_val_bypassed
       , frs2_val        : frs2_val_bypassed
@@ -211,8 +230,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                        instr:          instr,
                        rs1_addr:       rs1,
                        rs2_addr:       rs2,
+`ifdef ISA_CHERI
+                       rs1_data:       getAddr(rs1_val_bypassed),
+                       rs2_data:       getAddr(rs2_val_bypassed),
+`else
                        rs1_data:       rs1_val_bypassed,
                        rs2_data:       rs2_val_bypassed,
+`endif
                        pc_rdata:       pc,
                        pc_wdata:       next_pc,
                        mem_wdata:      alu_outputs.val2,
@@ -233,8 +257,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , op_stage2       : alu_outputs.op_stage2
       , rd              : alu_outputs.rd
       , addr            : alu_outputs.addr
+`ifdef ISA_CHERI
+      , val1            : alu_outputs.val1_cap_not_int ? alu_outputs.cap_val1 : nullWithAddr(alu_outputs.val1)
+      , val2            : alu_outputs.val2_cap_not_int ? alu_outputs.cap_val2 : nullWithAddr(alu_outputs.val2)
+`else
       , val1            : alu_outputs.val1
       , val2            : alu_outputs.val2
+`endif
 `ifdef ISA_F
       , val3            : alu_outputs.val3
       , rd_in_fpr       : alu_outputs.rd_in_fpr
