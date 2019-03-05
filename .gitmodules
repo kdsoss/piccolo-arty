@@ -2,3 +2,6 @@
 	path = src_Verifier/BSV-RVFI-DII
 	url = https://github.com/CTSRD-CHERI/BSV-RVFI-DII.git
 	branch = master
+[submodule "src_CHERI/cheri-cap-lib"]
+	path = src_CHERI/cheri-cap-lib
+	url = git@github.com:CTSRD-CHERI/cheri-cap-lib.git

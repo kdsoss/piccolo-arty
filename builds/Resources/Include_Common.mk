@@ -40,7 +40,9 @@ TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC:$(REPO)/sr
 
 RVFI_DII_DIRS = $(REPO)/src_Verifier:$(REPO)/src_Verifier/BSV-RVFI-DII
 
-BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(RVFI_DII_DIRS):+
+CHERI_DIRS = $(REPO)/src_CHERI/cheri-cap-lib
+
+BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(RVFI_DII_DIRS):$(CHERI_DIRS):+
 
 # ----------------
 # Top-level file and module
