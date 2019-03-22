@@ -1121,6 +1121,97 @@ endfunction
 // Capability operations
 
 `ifdef ISA_CHERI
+
+// ----------------------------------------------------------------
+// CJALR
+//TODO remove duplication of some calculuations
+
+function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
+   let rs1_val = inputs.cap_rs1_val;
+
+   Addr  next_pc   = getOffset(rs1_val);
+   Addr  ret_pc    = fall_through_pc (inputs);
+
+   next_pc [0] = 1'b0;
+
+   //TODO redundant base calculations
+   Bool misaligned_target = (next_pc [1] == 1'b1) || (getBase(rs1_val)[1:0] != 2'b0);
+`ifdef ISA_C
+   misaligned_target = (getBase(rs1_val)[0] != 1'b1);
+`endif
+
+   let alu_outputs = alu_outputs_base;
+   alu_outputs.control   = (misaligned_target ? CONTROL_TRAP : CONTROL_BRANCH);
+   alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+   alu_outputs.op_stage2 = OP_Stage2_ALU;
+   alu_outputs.rd        = inputs.decoded_instr.rd;
+
+   if (!isValidCap(rs1_val)) begin
+       //TODO tag exception
+       alu_outputs.control = CONTROL_TRAP;
+   end else if (isSealed(rs1_val)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO seal exception
+       //TODO sentry
+   end else if (!getHardPerms(rs1_val).permitExecute) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO Permit X exception
+   end else begin
+       alu_outputs.addr      = next_pc;
+       alu_outputs.pcc       = rs1_val;
+       alu_outputs.pcc_changed = True;
+`ifdef ISA_D
+       alu_outputs.val1      = extend (ret_pc);
+`else
+       alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc).value; //TODO factor this out. Note that ret_pc must be representable
+       alu_outputs.val1_cap_not_int = True;
+`endif
+       //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
+       alu_outputs.check_enable = True;
+       alu_outputs.check_address_low = getBase(rs1_val) + next_pc;
+       alu_outputs.check_address_high = zeroExtend(getBase(rs1_val)) + zeroExtend(next_pc) + 2;
+       alu_outputs.check_authority = rs1_val;
+       alu_outputs.check_inclusive = False;
+   end
+
+   // Normal trace output (if no trap)
+   alu_outputs.trace_data = mkTrace_I_RD (next_pc,
+					  fv_trace_isize (inputs),
+					  fv_trace_instr (inputs),
+					  inputs.decoded_instr.rd,
+					  ret_pc);
+   return alu_outputs;
+endfunction
+
+//TODO make this an instance of single-instance function?
+function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, WordXL length, Bool exactRequired);
+    if (!tag) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO tag exception
+    end else if (sealed) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO sealing exception
+    end else if (!isInBounds(cap, True)) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO length exception
+    end else begin
+        alu_outputs.check_enable = True;
+        alu_outputs.check_authority = cap;
+        alu_outputs.check_inclusive = True;
+        let result = setBounds(cap, length);
+        alu_outputs.cap_val1 = result.value; //TODO check what work is done within library
+        if (exactRequired && !result.exact) begin
+            alu_outputs.control = CONTROL_TRAP;
+        end else begin
+            alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
+            alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
+            //TODO very long critical path here?
+            alu_outputs.val1_cap_not_int = True;
+        end
+    end
+    return alu_outputs;
+endfunction
+
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let funct3  = inputs.decoded_instr.funct3;
     let funct5c = inputs.decoded_instr.funct5c;
@@ -1129,30 +1220,93 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let rt_val = inputs.rs2_val;
 
     let cb_val = inputs.cap_rs1_val;
-    let cb_tag = isValidCap(inputs.cap_rs1_val);
+    let cb_tag = isValidCap(cb_val);
     let cb_addr = getAddr(cb_val);
-    let cb_base = getBase(cb_val);
-    let cb_top = getTop(cb_val);
     let cb_sealed = isSealed(cb_val);
 
-    let rd_val = ?;
+    let ct_val = inputs.cap_rs2_val;
+    let ct_tag = isValidCap(ct_val);
+    let ct_addr = getAddr(ct_val);
+    let ct_sealed = isSealed(ct_val);
+
+    let rd_val = ?; //TODO update this in all cases
 
     let alu_outputs = alu_outputs_base;
+    alu_outputs.rd = inputs.decoded_instr.rd; //TODO remove this in some cases?
+    alu_outputs.op_stage2 = OP_Stage2_ALU; //TODO remove this in some cases?
 
     case (funct3)
     /*
     f3_cap_CIncOffsetImmediate:
-        //TODO
-    f3_cap_CSetBoundsImmediate:
         //TODO */
-    f3_cap_ThreeOp:
+    f3_cap_CSetBoundsImmediate: begin
+        alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
+        end
+    f3_cap_ThreeOp: begin
         case (funct7) /*
         f7_cap_Mem:
             alu_outputs.op_stage2 = OP_Stage2_Mem;
             //TODO
        f7_cap_CSpecialRW:
            //TODO */
-       f7_cap_CSetBounds:
+       f7_cap_CSetBounds: begin
+           alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, False);
+       end
+       f7_cap_CSetBoundsExact: begin
+           alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, True);
+       end
+       f7_cap_CSetOffset: begin
+           if (cb_tag && cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else begin
+               let result = setOffset(cb_val, rt_val);
+               if (result.exact) begin
+                   rd_val = result.value;
+               end else begin
+                   //TODO wasted computation, as library setOffset already does this
+                   rd_val = nullWithAddr(getBase(cb_val) + rt_val);
+               end
+               alu_outputs.cap_val1 = rd_val;
+               alu_outputs.val1_cap_not_int = True;
+           end
+       end
+       f7_cap_CSeal: begin
+           if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (!ct_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO seal exception
+           end else if (ct_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO seal exception
+           end else if (!getHardPerms(ct_val).permitSeal) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO seal permission exception
+           end else if (!validAsType(cb_val, truncate(ct_addr))) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO length exception
+           end else begin
+               let result = setType(cb_val, truncate(ct_addr));
+               if (!result.exact) begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO inexact bounds exception
+               end else begin
+                   alu_outputs.check_enable = True;
+                   alu_outputs.check_authority = ct_val;
+                   alu_outputs.check_address_low = ct_addr;
+                   alu_outputs.check_address_high = zeroExtend(ct_addr);
+                   alu_outputs.check_inclusive = False;
+                   alu_outputs.cap_val1 = result.value;
+                   alu_outputs.val1_cap_not_int = True;
+               end
+           end
+       end
+       f7_cap_CAndPerm: begin
            if (!cb_tag) begin
                alu_outputs.control = CONTROL_TRAP;
                //TODO tag exception
@@ -1160,51 +1314,69 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.control = CONTROL_TRAP;
                //TODO sealing exception
            end else begin
-               let new_base = cb_addr;
-               Bit #(65) new_top = zeroExtend(cb_addr) + zeroExtend(rt_val);
-               if (new_base < cb_base || new_top > cb_top) begin
-                   alu_outputs.control = CONTROL_TRAP;
-                   //TODO length exception
-                   //TODO bounds check in next stage
-               end
-               else begin
-                   rd_val = setBounds(cb_val, zeroExtend(rt_val)).value;
-                   alu_outputs.cap_val1 = rd_val;
-                   alu_outputs.val1_cap_not_int = True;
-                   alu_outputs.op_stage2 = OP_Stage2_ALU;
-                   alu_outputs.control = CONTROL_STRAIGHT;
-                   alu_outputs.rd = inputs.decoded_instr.rd;
-               end
+               alu_outputs.cap_val1 = setPerms(cb_val, pack(getPerms(cb_val)) & truncate(rt_val));
+               alu_outputs.val1_cap_not_int = True;
            end
-       f7_cap_TwoOp:
+       end
+       f7_cap_TwoOp: begin
            case (funct5c)
            f5c_cap_CGetLen: begin
-               let length = cb_top - zeroExtend(cb_base);
-               alu_outputs.val1 = unpack(msb(length)) ? -1 : truncate(length);
-               alu_outputs.op_stage2 = OP_Stage2_ALU;
-               alu_outputs.control = CONTROL_STRAIGHT;
-               alu_outputs.rd = inputs.decoded_instr.rd;
+               //TODO needs thinking about behaviour when wrapping round addr space
+               let length = getTop(cb_val) - zeroExtend(getBase(cb_val));
+               Bit #(XLEN) maxLength = -1;
+               alu_outputs.val1 = length > zeroExtend(maxLength) ? -1 : truncate(length);
            end
            f5c_cap_CGetBase: begin
-               alu_outputs.val1 = cb_base;
-               alu_outputs.op_stage2 = OP_Stage2_ALU;
-               alu_outputs.control = CONTROL_STRAIGHT;
-               alu_outputs.rd = inputs.decoded_instr.rd;
+               alu_outputs.val1 = getBase(cb_val);
            end
+           f5c_cap_CGetTag: begin
+               alu_outputs.val1 = zeroExtend(pack(isValidCap(cb_val)));
+           end
+           f5c_cap_CGetSealed: begin
+               alu_outputs.val1 = zeroExtend(pack(isSealed(cb_val)));
+           end
+           f5c_cap_CMove: begin
+               alu_outputs.cap_val1 = cb_val;
+               alu_outputs.val1_cap_not_int = True;
+           end
+           f5c_cap_CClearTag: begin
+               alu_outputs.cap_val1 = setValidCap(cb_val, False);
+               alu_outputs.val1_cap_not_int = True;
+           end
+           f5c_cap_CGetAddr: begin
+               alu_outputs.val1 = getAddr(cb_val);
+           end
+           f5c_cap_CGetOffset: begin
+               alu_outputs.val1 = getOffset(cb_val);
+           end
+           f5c_cap_CGetPerm: begin
+               alu_outputs.val1 = zeroExtend(getPerms(cb_val));
+           end
+           f5c_cap_CJALR: begin
+               alu_outputs = fv_CJALR(inputs);
+           end
+/* TODO: this instruction may be garbage collected. If not, it should be re-encoded since RISC-V is very consistent about which operands are which. This would use the destination register address as a source register address, as would CCheckType
+           f5c_cap_CCheckPerm: begin
+               if (!cb_tag) begin
+                   alu_outputs.control = CONTROL_TRAP;
+               end else if ((rt_val & zeroExtend(getPerms(cb_val))) != rt_val) begin
+                   alu_outputs.control = CONTROL_TRAP;
+               end
+           end
+*/
            default:
                alu_outputs.control = CONTROL_TRAP;
            endcase
-
-
-        default:
-            alu_outputs.control = CONTROL_TRAP;
-        endcase /*
-        f3_cap_CSetBoundsImmediate:
-            //TODO */
-        default:
-            alu_outputs.control = CONTROL_TRAP;
-    endcase
-
+       end
+       default:
+           alu_outputs.control = CONTROL_TRAP;
+       endcase /*
+       f3_cap_CSetBoundsImmediate:
+           //TODO */
+   end
+   default:
+       alu_outputs.control = CONTROL_TRAP;
+   endcase
     alu_outputs.rd = inputs.decoded_instr.rd;
 
    // Normal trace output (if no trap)
