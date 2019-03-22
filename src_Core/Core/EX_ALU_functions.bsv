@@ -1171,7 +1171,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
        alu_outputs.check_address_low = getBase(rs1_val) + next_pc;
        alu_outputs.check_address_high = zeroExtend(getBase(rs1_val)) + zeroExtend(next_pc) + 2;
        alu_outputs.check_authority = rs1_val;
-       alu_outputs.check_inclusive = False;
+       alu_outputs.check_inclusive = True;
    end
 
    // Normal trace output (if no trap)
@@ -1199,14 +1199,12 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
         alu_outputs.check_authority = cap;
         alu_outputs.check_inclusive = True;
         let result = setBounds(cap, length);
-        alu_outputs.cap_val1 = result.value; //TODO check what work is done within library
+        alu_outputs.cap_val1 = result.value;
+        alu_outputs.val1_cap_not_int = True;
+        alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
+        alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
         if (exactRequired && !result.exact) begin
             alu_outputs.control = CONTROL_TRAP;
-        end else begin
-            alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
-            alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
-            //TODO very long critical path here?
-            alu_outputs.val1_cap_not_int = True;
         end
     end
     return alu_outputs;
@@ -1229,7 +1227,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let ct_addr = getAddr(ct_val);
     let ct_sealed = isSealed(ct_val);
 
-    let rd_val = ?; //TODO update this in all cases
+    CapPipe rd_val = ?; //TODO update this in all cases
 
     let alu_outputs = alu_outputs_base;
     alu_outputs.rd = inputs.decoded_instr.rd; //TODO remove this in some cases?
@@ -1261,14 +1259,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                //TODO tag exception
            end else begin
                let result = setOffset(cb_val, rt_val);
-               if (result.exact) begin
-                   rd_val = result.value;
-               end else begin
-                   //TODO wasted computation, as library setOffset already does this
-                   rd_val = nullWithAddr(getBase(cb_val) + rt_val);
-               end
-               alu_outputs.cap_val1 = rd_val;
-               alu_outputs.val1_cap_not_int = True;
+               alu_outputs.cap_val1 = result.value;
+               alu_outputs.val1 = getAddr(result.value);
+               alu_outputs.val1_cap_not_int = result.exact;
            end
        end
        f7_cap_CSeal: begin
@@ -1302,7 +1295,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                    alu_outputs.check_address_high = zeroExtend(ct_addr);
                    alu_outputs.check_inclusive = False;
                    alu_outputs.cap_val1 = result.value;
-                   alu_outputs.val1_cap_not_int = True;
+                   alu_outputs.val1 = getAddr(result.value);
+                   alu_outputs.val1_cap_not_int = result.exact;
                end
            end
        end
@@ -1370,9 +1364,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        default:
            alu_outputs.control = CONTROL_TRAP;
-       endcase /*
-       f3_cap_CSetBoundsImmediate:
-           //TODO */
+       endcase
    end
    default:
        alu_outputs.control = CONTROL_TRAP;
