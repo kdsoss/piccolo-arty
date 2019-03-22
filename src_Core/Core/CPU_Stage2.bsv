@@ -80,7 +80,8 @@ import RISCV_FBox  :: *;
 `endif
 
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 // ================================================================
@@ -208,6 +209,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 				    tval:     0 };
 `endif
 
+`ifdef ISA_CHERI
+   let  trap_info_capbounds = Trap_Info {epc:    rg_stage2.pc,
+                       exc_code: exc_code_CHERI,
+                       tval:    0 }; //TODO ?
+`endif
+
    // ----------------------------------------------------------------
    // BEHAVIOR
 
@@ -223,6 +230,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
    function Output_Stage2 fv_out;
       Output_Stage2 output_stage2 = ?;
 
+`ifdef ISA_CHERI
+     let check_success = rg_stage2.check_enable &&
+                         rg_stage2.check_address_low >= getBase(rg_stage2.check_authority) &&
+                         (rg_stage2.check_inclusive ? (rg_stage2.check_address_high <= getTop(rg_stage2.check_authority)) : (rg_stage2.check_address_high < getTop(rg_stage2.check_authority)));
+`endif
+
       // This stage is empty
       if (! rg_full) begin
 	 output_stage2 = Output_Stage2 {ostatus:         OSTATUS_EMPTY,
@@ -236,7 +249,18 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 					};
       end
       // This stage is just relaying ALU results from previous stage to next stage
-      else if (rg_stage2.op_stage2 == OP_Stage2_ALU) begin
+      else
+`ifdef ISA_CHERI
+     if (rg_stage2.check_enable && !check_success) begin
+         output_stage2 = Output_Stage2 {ostatus: OSTATUS_NONPIPE,
+                                        trap_info: trap_info_capbounds,
+                                        data_to_stage3: ?,
+                                        bypass: no_bypass,
+                                        trace_data: ? //TODO
+                                    };
+     end else
+`endif
+      if (rg_stage2.op_stage2 == OP_Stage2_ALU) begin
 	 let data_to_stage3 = data_to_stage3_base;
 	 data_to_stage3.rd_valid = True;
 
@@ -573,6 +597,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 					trace_data:      trace_data};
       end
 `endif
+`ifdef ISA_CHERI
+      output_stage2.check_success = check_success;
+`endif
       return output_stage2;
    endfunction
 
@@ -615,7 +642,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    else if (x.op_stage2 == OP_Stage2_AMO) cache_op = CACHE_AMO;
 `endif
 
-//TODO cap check goes here
 	    dcache.req (cache_op,
 			instr_funct3 (x.instr),
 `ifdef ISA_A

@@ -40,7 +40,8 @@ import GetPut_Aux :: *;
 
 import ISA_Decls :: *;
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 // ================================================================

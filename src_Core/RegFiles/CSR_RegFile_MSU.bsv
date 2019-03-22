@@ -39,6 +39,11 @@ import CSR_MSTATUS :: *;
 import CSR_MIP     :: *;
 import CSR_MIE     :: *;
 
+`ifdef ISA_CHERI
+import CHERICap     :: *;
+import CHERICC_Fat  :: *;
+`endif
+
 // ================================================================
 
 interface CSR_RegFile_IFC;
@@ -94,7 +99,17 @@ interface CSR_RegFile_IFC;
    method WordXL read_satp;
 
    // CSR trap actions
-   method ActionValue #(Tuple4 #(Addr, Word, Word, Priv_Mode))
+   method ActionValue #(
+`ifdef ISA_CHERI
+                        Tuple5
+`else
+                        Tuple4
+`endif
+                               #(Addr,
+`ifdef ISA_CHERI
+                                 CapReg,
+`endif
+                                 Word, Word, Priv_Mode))
           csr_trap_actions (Priv_Mode  from_priv,
 			    Word       pc,
 			    Bool       interrupt,
@@ -102,7 +117,17 @@ interface CSR_RegFile_IFC;
 			    Word       xtval);
 
    // CSR RET actions (return from exception)
-   method ActionValue #(Tuple3 #(Addr, Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
+   method ActionValue #(
+`ifdef ISA_CHERI
+                        Tuple4
+`else
+                        Tuple3
+`endif
+                               #(Addr,
+`ifdef ISA_CHERI
+                                       CapReg,
+`endif
+   Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
 
    // Read MINSTRET
    (* always_ready *)
@@ -192,6 +217,10 @@ function MISA misa_reset_value;
    ms.mxl = misa_mxl_zero;
 `endif
 
+`ifdef ISA_CHERI
+//TODO CHERI ccsr register, etc.
+`endif
+
 `ifdef ISA_PRIV_U
    // User Mode
    ms.u = 1'b1;
@@ -243,6 +272,10 @@ endfunction
 Word mtvec_reset_value = 'h0000;
 `else
 Word mtvec_reset_value = 'h1000;
+`endif
+
+`ifdef ISA_CHERI
+CapReg mtcc_reset_value = almightyCap; //TODO others
 `endif
 
 // ================================================================
@@ -1047,7 +1080,16 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    endmethod
 
    // CSR Trap actions
-   method ActionValue #(Tuple4 #(Addr,          // new PC
+   method ActionValue #(
+`ifdef ISA_CHERI
+                        Tuple5
+`else
+                        Tuple4
+`endif
+                               #(Addr,          // new PC
+`ifdef ISA_CHERI
+                 CapReg,        // new PCC
+`endif
 				 WordXL,        // new mstatus
 				 WordXL,        // new mcause
 				 Priv_Mode))    // new priv
@@ -1117,14 +1159,33 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 $display ("");
       end
 
-      return tuple4 (exc_pc,                       // New PC
+      return
+`ifdef ISA_CHERI
+             tuple5
+`else
+             tuple4
+`endif
+                    (exc_pc,                       // New PC
+`ifdef ISA_CHERI
+             mtcc_reset_value,             // TODO new PCC
+`endif
 		     new_status,                   // New mstatus/sstatus/ustatus
 		     mcause_to_word  (xcause),     // New mcause
 		     new_priv);                    // New priv
    endmethod: csr_trap_actions
 
    // CSR RET actions (return from exception)
-   method ActionValue #(Tuple3 #(Addr, Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
+   method ActionValue #(
+`ifdef ISA_CHERI
+                        Tuple4
+`else
+                        Tuple3
+`endif
+                              #(Addr,
+`ifdef ISA_CHERI
+                                      CapReg,
+`endif
+                                      Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
       match { .new_mstatus, .to_priv } = fv_new_mstatus_on_ret (misa, csr_mstatus.fv_read, from_priv);
       csr_mstatus.fa_write (misa, new_mstatus);
       WordXL next_pc = rg_mepc;
@@ -1132,7 +1193,17 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       if (from_priv != m_Priv_Mode)
 	 next_pc = rg_sepc;
 `endif
-      return tuple3 (next_pc, to_priv, new_mstatus);
+      return
+`ifdef ISA_CHERI
+             tuple4
+`else
+             tuple3
+`endif
+                    (next_pc,
+`ifdef ISA_CHERI
+                              ?,  //TODO new PCC
+`endif
+                              to_priv, new_mstatus);
    endmethod
 
    // Read MINSTRET

@@ -43,7 +43,8 @@ import ISA_Decls   :: *;
 import CPU_Globals :: *;
 import TV_Info     :: *;
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 // ================================================================
@@ -51,6 +52,9 @@ import CHERICC128Cap :: *;
 
 typedef struct {
    Priv_Mode      cur_priv;
+`ifdef ISA_CHERI
+   CapPipe        pcc;
+`endif
    Addr           pc;
    Bool           is_i32_not_i16;
    Instr          instr;
@@ -103,6 +107,12 @@ typedef struct {
    RegName    rd;
    Addr       addr;     // Branch, jump: newPC
 		        // Mem ops and AMOs: mem addr
+
+`ifdef ISA_CHERI
+   Bool    pcc_changed;
+   CapPipe pcc;
+`endif
+
 `ifdef ISA_D
    WordFL     val1;     // OP_Stage2_FD: arg1
    WordFL     val2;     // OP_Stage2_FD: arg2
@@ -127,6 +137,12 @@ typedef struct {
    CapPipe    cap_val2;
    Bool       val1_cap_not_int;
    Bool       val2_cap_not_int;
+
+   Bool       check_enable;
+   CapPipe    check_authority;
+   Bit#(XLEN)     check_address_low;
+   Bit#(TAdd#(XLEN,2))     check_address_high;
+   Bool check_inclusive;
 `endif
 
    Trace_Data trace_data;
@@ -151,6 +167,15 @@ ALU_Outputs alu_outputs_base
 	       cap_val2  : ?,
 	       val1_cap_not_int: False,
 	       val2_cap_not_int: False,
+
+           pcc_changed : False,
+           pcc : ?,
+
+           check_enable       : False,
+           check_authority    : ?,
+           check_address_low  : ?,
+           check_address_high : ?,
+           check_inclusive    : ?,
 `endif
 	       trace_data: ?};
 
@@ -287,6 +312,14 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
    alu_outputs.val2      = branch_target;    // For tandem verifier only
 `endif
 
+`ifdef ISA_CHERI
+   alu_outputs.check_enable = branch_taken;
+   alu_outputs.check_authority = inputs.pcc;
+   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
+   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
+   alu_outputs.check_inclusive = False;
+`endif
+
    // Normal trace output (if no trap)
    alu_outputs.trace_data = mkTrace_OTHER (next_pc,
 					   fv_trace_isize (inputs),
@@ -323,6 +356,14 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
    alu_outputs.val1      = extend (ret_pc);
 `else
    alu_outputs.val1      = ret_pc;
+`endif
+
+`ifdef ISA_CHERI
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = inputs.pcc;
+   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
+   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
+   alu_outputs.check_inclusive = False;
 `endif
 
    // Normal trace output (if no trap)
@@ -368,6 +409,14 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    alu_outputs.val1      = extend (ret_pc);
 `else
    alu_outputs.val1      = ret_pc;
+`endif
+
+`ifdef ISA_CHERI
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = inputs.pcc;
+   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
+   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
+   alu_outputs.check_inclusive = False;
 `endif
 
    // Normal trace output (if no trap)
@@ -670,7 +719,14 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
 `ifdef ISA_D
    alu_outputs.val1      = extend (rd_val);
 `else
+`ifdef ISA_CHERI
+   let result = setOffset(inputs.pcc, rd_val); //TODO Factor this out.
+   alu_outputs.cap_val1 = result.value;
+   alu_outputs.val1 = getAddr(result.value);
+   alu_outputs.val1_cap_not_int = result.exact;
+`else
    alu_outputs.val1      = rd_val;
+`endif
 `endif
 
    // Normal trace output (if no trap)
@@ -1071,6 +1127,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let funct7  = inputs.decoded_instr.funct7;
 
     let rt_val = inputs.rs2_val;
+
     let cb_val = inputs.cap_rs1_val;
     let cb_tag = isValidCap(inputs.cap_rs1_val);
     let cb_addr = getAddr(cb_val);

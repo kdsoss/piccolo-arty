@@ -38,7 +38,8 @@ import RVFI_DII :: *;
 import ISA_Decls   :: *;
 import CPU_Globals :: *;
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 `ifdef RVFI

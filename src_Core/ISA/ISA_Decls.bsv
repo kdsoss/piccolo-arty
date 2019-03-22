@@ -41,7 +41,8 @@ import GetPut       :: *;
 import RVFI_DII     :: *;
 `endif
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap     :: *;
+import CHERICC_Fat  :: *;
 `endif
 
 // ================================================================

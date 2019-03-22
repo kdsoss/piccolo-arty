@@ -34,7 +34,8 @@ package CPU_Globals;
 import ISA_Decls :: *;
 
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 import TV_Info   :: *;
@@ -197,6 +198,10 @@ typedef struct {
    // feedback
    WordXL                 next_pc;
 
+`ifdef ISA_CHERI
+   CapPipe                next_pcc;
+`endif
+
    // feedforward data
    Data_Stage1_to_Stage2  data_to_stage2;
    } Output_Stage1
@@ -293,6 +298,20 @@ typedef struct {
                         // OP_Stage2_M and OP_Stage2_FD: arg2
 `endif
 
+`ifdef ISA_CHERI
+   // Bounds check: if check_enable, will test
+   // address_low >= authority.base && address_high <? authority.top (?: strictness determined by check_inclusive value TODO)
+   // TODO behaviour if address_low > address_high?
+   // Does not check that authority is tagged, so only generates
+   // Bounds exceptions
+   CapPipe    check_authority;
+   Bit#(XLEN)     check_address_low;
+   Bit#(TAdd#(XLEN,2))     check_address_high;
+   Bool       check_enable;
+   Bool check_inclusive;
+`endif
+
+
 `ifdef ISA_F
    WordFL     val3;     // OP_Stage2_FD: arg3
    Bool       rd_in_fpr;// The rd should update into FPR
@@ -357,6 +376,11 @@ endinstance
 typedef struct {
    Stage_OStatus          ostatus;
    Trap_Info              trap_info;    // relevant if ostatus == OSTATUS_NONPIPE
+
+`ifdef ISA_CHERI
+   // Whether a capability bounds check succeeded
+   Bool                   check_success;
+`endif
 
    // feedback
    Bypass                 bypass;

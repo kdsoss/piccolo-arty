@@ -96,7 +96,8 @@ import Debug_Module :: *;
 `endif
 
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 // System address map and pc_reset value
@@ -193,6 +194,12 @@ module mkCPU (CPU_IFC);
    // Major CPU states
    Reg #(CPU_State)  rg_state    <- mkReg (CPU_RESET1);
    Reg #(Priv_Mode)  rg_cur_priv <- mkRegU;
+
+`ifdef ISA_CHERI
+   // ----------------
+   // PCC: Offset is kept constant (same as installed) and changed when reported. TODO something more sophisticated?
+   Reg#(CapReg) rg_pcc <- mkRegU;
+`endif
 
    // Save next_pc across split-phase FENCE.I and other split-phase ops
    Reg #(WordXL) rg_next_pc <- mkRegU;
@@ -345,6 +352,9 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                                  , UInt#(SEQ_LEN) next_seq
 `endif
+`ifdef ISA_CHERI
+                                                                 , CapReg pcc
+`endif
                                                                                           );
       action
 	 // Initiate the fetch
@@ -360,6 +370,9 @@ module mkCPU (CPU_IFC);
 		     csr_regfile.read_satp
 `ifdef RVFI_DII
            , next_seq
+`endif
+`ifdef ISA_CHERI
+           , pcc
 `endif
                      );
 
@@ -399,11 +412,18 @@ module mkCPU (CPU_IFC);
    // Actions to restart from Debug Mode (e.g., GDB 'continue' after a breakpoint)
    // We re-initialize CPI_instrs and CPI_cycles.
 
-   function Action fa_restart (Addr resume_pc);
+   function Action fa_restart (Addr resume_pc
+`ifdef ISA_CHERI
+                                             , CapReg resume_pcc
+`endif
+                                                                );
       action
 	 fa_start_ifetch (resume_pc, rg_cur_priv
 `ifdef RVFI_DII
                                                 , 0
+`endif
+`ifdef ISA_CHERI
+                                                , resume_pcc
 `endif
                                                    );
 	 stage1.set_full (True);
@@ -529,8 +549,15 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity != 0)
 	 $display ("    CPU entering DEBUG_MODE");
 `else
+`ifdef ISA_CHERI
+      CapReg dpcc = almightyCap;
+`endif
       WordXL dpc = truncate (soc_map.m_pc_reset_value);
-      fa_restart (dpc);
+      fa_restart (dpc
+`ifdef ISA_CHERI
+                     , dpcc
+`endif
+                           );
 `endif
    endrule: rl_reset_complete
 
@@ -594,6 +621,17 @@ module mkCPU (CPU_IFC);
    // is stalled until downstream stages are empty. Then, we delay for
    // a cycle before restarting the pipe by re-fetching the next
    // instr, since the fetch may need the just-written CSR value.
+
+`ifdef ISA_CHERI
+   rule rl_dmem_commit (stage2.out.check_success);
+       near_mem.dmem.commit;
+   endrule
+
+   //TODO remove
+   rule rl_imem_commit (True);
+       imem.commit;
+   endrule
+`endif
 
 `ifdef ISA_C
    // TODO: analyze this carefully; added to resolve a blockage
@@ -664,7 +702,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                                 , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                                         );
+`ifdef ISA_CHERI
+                         , cast(stage1.out.next_pcc)
+`endif
+                                                    );
 	    stage1_full = True;
 	 end
 
@@ -689,6 +730,9 @@ module mkCPU (CPU_IFC);
 
       // Take trap
       match {.next_pc,
+`ifdef ISA_CHERI
+         .new_pcc,
+`endif
 	     .new_mstatus,
 	     .mcause,
 	     .new_priv}    <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
@@ -702,7 +746,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                         , stage2.out.data_to_stage3.instr_seq + 1
 `endif
-                                                                                 );
+`ifdef ISA_CHERI
+                                        , new_pcc
+`endif
+                                                 );
       stage1.set_full (True);
       stage2.set_full (False);
 
@@ -939,7 +986,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                       , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                               );
+`ifdef ISA_CHERI
+                      , cast(stage1.out.next_pcc)
+`endif
+                                                 );
       stage1.set_full (True);
       rg_state <= CPU_RUNNING;
       if (cur_verbosity > 1)
@@ -964,13 +1014,20 @@ module mkCPU (CPU_IFC);
       Priv_Mode from_priv = ((stage1.out.control == CONTROL_MRET) ?
 			     m_Priv_Mode : ((stage1.out.control == CONTROL_SRET) ?
 					    s_Priv_Mode : u_Priv_Mode));
-      match { .next_pc, .new_priv, .new_mstatus } <- csr_regfile.csr_ret_actions (from_priv);
+      match { .next_pc,
+`ifdef ISA_CHERI
+      .new_pcc,
+`endif
+      .new_priv, .new_mstatus } <- csr_regfile.csr_ret_actions (from_priv);
       rg_cur_priv <= new_priv;
 
       // Redirect PC
       fa_start_ifetch (next_pc, new_priv
 `ifdef RVFI_DII
                                         , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+`ifdef ISA_CHERI
+                                        , new_pcc
 `endif
                                                                                  );
       stage1.set_full (True);
@@ -1009,6 +1066,9 @@ module mkCPU (CPU_IFC);
 
       // Save stage1.out.next_pc since it will be destroyed by FENCE.I op
       rg_next_pc <= stage1.out.next_pc;
+`ifdef ISA_CHERI
+      rg_pcc <= cast(stage1.out.next_pcc);
+`endif
       near_mem.server_fence_i.request.put (?);
       rg_state <= CPU_FENCE_I;
 
@@ -1042,7 +1102,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                       , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                               );
+`ifdef ISA_CHERI
+                       , rg_pcc
+`endif
+                               );
       stage1.set_full (True);
 `ifdef RVFI
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
@@ -1066,6 +1129,9 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1) $display ("%0d:  CPU.rl_stage1_FENCE", mcycle);
 
       rg_next_pc <= stage1.out.next_pc;
+`ifdef ISA_CHERI
+      rg_pcc <= cast(stage1.out.next_pcc);
+`endif
       near_mem.server_fence.request.put (?);
       rg_state <= CPU_FENCE;
 
@@ -1099,7 +1165,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                       , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                               );
+`ifdef ISA_CHERI
+                      , rg_pcc
+`endif
+                                              );
       stage1.set_full (True);
 `ifdef RVFI
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
@@ -1128,6 +1197,9 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1) $display ("%0d:  CPU.rl_stage1_SFENCE_VMA", mcycle);
 
       rg_next_pc <= stage1.out.next_pc;
+`ifdef ISA_CHERI
+      rg_pcc <= cast(stage1.out.next_pcc);
+`endif
       // Tell Near_Mem to do its SFENCE_VMA
       near_mem.sfence_vma;
       rg_state <= CPU_SFENCE_VMA;
@@ -1161,7 +1233,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                       , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                               );
+`ifdef ISA_CHERI
+                      , rg_pcc
+`endif
+                                              );
       stage1.set_full (True);
 `ifdef RVFI
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
@@ -1186,6 +1261,9 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1) $display ("%0d:  CPU.rl_stage1_WFI", mcycle);
 
       rg_next_pc <= stage1.out.next_pc;
+`ifdef ISA_CHERI
+      rg_pcc <= cast(stage1.out.next_pcc);
+`endif
       rg_state   <= CPU_WFI_PAUSED;
 
       // Accounting
@@ -1218,7 +1296,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                                       , stage1.out.data_to_stage2.instr_seq + 1
 `endif
-                                                                                               );
+`ifdef ISA_CHERI
+                       , rg_pcc
+`endif
+                                               );
       stage1.set_full (True);
 `ifdef RVFI
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
@@ -1263,6 +1344,7 @@ module mkCPU (CPU_IFC);
 
       // Take trap
       match {.next_pc,
+         .new_pcc,
 	     .new_mstatus,
 	     .mcause,
 	     .new_priv}    <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
@@ -1274,6 +1356,9 @@ module mkCPU (CPU_IFC);
       fa_start_ifetch (next_pc, new_priv
 `ifdef RVFI_DII
                                          , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+`ifdef ISA_CHERI
+                                         , new_pcc
 `endif
                                                                                   );
       stage1.set_full (True);
@@ -1390,6 +1475,9 @@ module mkCPU (CPU_IFC);
 
       // Take trap
       match {.next_pc,
+`ifdef ISA_CHERI
+         .new_pcc,
+`endif
 	     .new_mstatus,
 	     .mcause,
 	     .new_priv}    <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
@@ -1409,6 +1497,9 @@ module mkCPU (CPU_IFC);
 		  csr_regfile.read_satp
 `ifdef RVFI_DII
 		, stage1.out.data_to_stage2.instr_seq + 1
+`endif
+`ifdef ISA_CHERI
+        , new_pcc
 `endif
                                                  );
       stage1.set_full (True);

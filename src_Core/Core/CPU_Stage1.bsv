@@ -54,7 +54,8 @@ import FPR_RegFile      :: *;
 import CSR_RegFile      :: *;
 import EX_ALU_functions :: *;
 `ifdef ISA_CHERI
-import CHERICC128Cap :: *;
+import CHERICap :: *;
+import CHERICC_Fat :: *;
 `endif
 
 `ifdef ISA_C
@@ -81,6 +82,9 @@ interface CPU_Stage1_IFC;
    method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp
 `ifdef RVFI_DII
                                                                                                            , UInt#(SEQ_LEN) seq_req
+`endif
+`ifdef ISA_CHERI
+                                                                                                           , CapReg pcc
 `endif
                                                                                                                                    );
 
@@ -110,6 +114,12 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    Reg #(Bool) rg_full  <- mkReg (False);
 
+`ifdef ISA_CHERI
+   Reg #(CapReg) rg_pcc <- mkRegU;
+   CapPipe rg_pcc_unpacked = cast(rg_pcc);
+`endif
+
+
    MISA misa   = csr_regfile.read_misa;
    Bit #(2) xl = ((xlen == 32) ? misa_mxl_32 : misa_mxl_64);
 
@@ -125,7 +135,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    // ----------------
    // ALU
 
-   let   pc             = imem.pc;
+   let   pc             = imem.pc - getBase(rg_pcc_unpacked); //TODO latch pc instead?
    let   is_i32_not_i16 = imem.is_i32_not_i16;
 `ifdef RVFI_DII
    Instr instr          = tpl_1(imem.instr);
@@ -193,6 +203,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    let alu_inputs = ALU_Inputs {
         cur_priv        : cur_priv
       , pc              : pc
+`ifdef ISA_CHERI
+      , pcc             : rg_pcc_unpacked
+`endif
       , is_i32_not_i16  : imem.is_i32_not_i16
       , instr           : instr
 `ifdef ISA_C
@@ -237,8 +250,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                        rs1_data:       rs1_val_bypassed,
                        rs2_data:       rs2_val_bypassed,
 `endif
-                       pc_rdata:       pc,
-                       pc_wdata:       next_pc,
+                       pc_rdata:       getBase(rg_pcc_unpacked) + pc,
+                       pc_wdata:       getBase(alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked) + next_pc, //TODO what should get reported? This or offset into pcc?
                        mem_wdata:      alu_outputs.val2,
                        rd_addr:        alu_outputs.rd,
                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
@@ -268,6 +281,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , val3            : alu_outputs.val3
       , rd_in_fpr       : alu_outputs.rd_in_fpr
       , rounding_mode   : alu_outputs.rm
+`endif
+`ifdef ISA_CHERI
+      , check_enable       : alu_outputs.check_enable
+      , check_inclusive    : alu_outputs.check_inclusive
+      , check_authority    : alu_outputs.check_authority
+      , check_address_low  : alu_outputs.check_address_low
+      , check_address_high : alu_outputs.check_address_high
 `endif
 `ifdef INCLUDE_TANDEM_VERIF
       , trace_data      : alu_outputs.trace_data
@@ -333,6 +353,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.control        = alu_outputs.control;
 	 output_stage1.trap_info      = trap_info;
 	 output_stage1.next_pc        = next_pc;
+     output_stage1.next_pcc       = alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked;
 	 output_stage1.data_to_stage2 = data_to_stage2;
 
       end
@@ -359,12 +380,29 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef RVFI_DII
                                                                                                             , UInt#(SEQ_LEN) seq_req
 `endif
+`ifdef ISA_CHERI
+                                                                                                            , CapReg pcc
+`endif
                                                                                                                                     );
-      imem.req (f3_LW, next_pc, priv, sstatus_SUM, mstatus_MXR, satp
+      //TODO fetch bounds check
+`ifdef ISA_CHERI
+      CapPipe pccPipe = cast(pcc);
+`endif
+      imem.req (f3_LW,
+`ifdef ISA_CHERI
+                      getBase(pccPipe) + next_pc, //TODO cast should be unnecessary.
+`else
+                      next_pc,
+`endif
+                               priv, sstatus_SUM, mstatus_MXR, satp
 `ifdef RVFI_DII
                                                                     , seq_req
 `endif
                                                                              );
+
+`ifdef ISA_CHERI
+      rg_pcc <= pcc;
+`endif
 
       if (verbosity > 1)
 	 $display ("    CPU_Stage_1.enq: 0x%08x", next_pc);
