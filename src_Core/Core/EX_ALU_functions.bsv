@@ -1295,8 +1295,42 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                    alu_outputs.check_address_high = zeroExtend(ct_addr);
                    alu_outputs.check_inclusive = False;
                    alu_outputs.cap_val1 = result.value;
-                   alu_outputs.val1 = getAddr(result.value);
-                   alu_outputs.val1_cap_not_int = result.exact;
+                   alu_outputs.val1_cap_not_int = True;
+               end
+           end
+       end
+       f7_cap_CUnseal: begin
+           if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (!ct_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (getKind(cb_val) != SEALED_WITH_TYPE) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing excption
+           end else if (ct_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else if (ct_addr != zeroExtend(getType(cb_val))) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO type violation
+           end else if (!getHardPerms(ct_val).permitUnseal) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO permit unseal violation
+           end else begin
+               let result = setType(cb_val, -1);
+               if (!result.exact) begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO inexact bounds exception
+               end else begin
+                   alu_outputs.check_enable = True;
+                   alu_outputs.check_authority = ct_val;
+                   alu_outputs.check_address_low = ct_addr;
+                   alu_outputs.check_address_high = zeroExtend(ct_addr);
+                   alu_outputs.check_inclusive = False;
+                   alu_outputs.cap_val1 = result.value;
+                   alu_outputs.val1_cap_not_int = True;
                end
            end
        end
