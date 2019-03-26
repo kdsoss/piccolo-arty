@@ -534,7 +534,11 @@ endfunction
 
 // Exception Codes in mcause
 
+`ifdef ISA_CHERI
+typedef Bit #(6) Exc_Code;
+`else
 typedef Bit #(4) Exc_Code;
+`endif
 
 // When Interrupt = 1 (interrupt)
 

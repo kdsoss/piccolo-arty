@@ -43,6 +43,36 @@ function Instr mkInstr_Cap_Mod_type (Bit #(7) funct7, Bit #(5) imm5, RegName rs1
     return inst;
 endfunction
 
+// Exception codes
+
+Exc_Code exc_code_CHERI = 32;
+
+typedef Bit #(5) CHERI_Exc_Code;
+
+Exc_Code exc_code_CHERI_None         = 0;
+Exc_Code exc_code_CHERI_Length       = 1;
+Exc_Code exc_code_CHERI_Tag          = 2;
+Exc_Code exc_code_CHERI_Seal         = 3;
+Exc_Code exc_code_CHERI_Type         = 4;
+Exc_Code exc_code_CHERI_Call         = 5;
+Exc_Code exc_code_CHERI_Return       = 6;
+Exc_Code exc_code_CHERI_Underflow    = 7;
+Exc_Code exc_code_CHERI_Software     = 8;
+Exc_Code exc_code_CHERI_TLB          = 9;
+Exc_Code exc_code_CHERI_Precision    = 10;
+Exc_Code exc_code_CHERI_Global       = 16;
+Exc_Code exc_code_CHERI_XPerm        = 17;
+Exc_Code exc_code_CHERI_RPerm        = 18;
+Exc_Code exc_code_CHERI_WPerm        = 19;
+Exc_Code exc_code_CHERI_LCPerm       = 20;
+Exc_Code exc_code_CHERI_SCPerm       = 21;
+Exc_Code exc_code_CHERI_SCLocalPerm  = 22;
+Exc_Code exc_code_CHERI_SealPerm     = 23;
+Exc_Code exc_code_CHERI_SysRegsPerm  = 24;
+Exc_Code exc_code_CHERI_CCallPerm    = 25;
+Exc_Code exc_code_CHERI_CCallIDCPerm = 26;
+Exc_Code exc_code_CHERI_UnsealPerm   = 27;
+
 // Instruction field encodings
 
 // Top-level opcodes
