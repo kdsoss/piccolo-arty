@@ -1208,8 +1208,13 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
         let result = setBounds(cap, length);
         alu_outputs.cap_val1 = result.value;
         alu_outputs.val1_cap_not_int = True;
-        alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
-        alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
+        //Since the result of the setBounds is smaller than the original pointer, and the rounding
+        //of the top and bottom does not depend on the other, this is safe, i.e. the result of
+        //rounding cannot take you outside of the authorising capability if the request was not.
+        //alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
+        alu_outputs.check_address_low = getAddr(cap); //TODO repeated computation
+        //alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
+        alu_outputs.check_address_high = zeroExtend(getAddr(cap)) + zeroExtend(length); //TODO much repeated computation
         if (exactRequired && !result.exact) begin
             alu_outputs.control = CONTROL_TRAP;
         end
