@@ -85,6 +85,7 @@ interface CPU_Stage1_IFC;
 `endif
 `ifdef ISA_CHERI
                                                                                                            , CapReg pcc
+                                                                                                           , CapReg ddc
 `endif
                                                                                                                                    );
 
@@ -116,7 +117,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
 `ifdef ISA_CHERI
    Reg #(CapReg) rg_pcc <- mkRegU;
+   Reg #(CapReg) rg_ddc <- mkRegU; //TODO should this be state here?
    CapPipe rg_pcc_unpacked = cast(rg_pcc);
+   CapPipe rg_ddc_unpacked = cast(rg_ddc);
 `endif
 
 
@@ -205,6 +208,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , pc              : pc
 `ifdef ISA_CHERI
       , pcc             : rg_pcc_unpacked
+      , ddc             : rg_ddc_unpacked
 `endif
       , is_i32_not_i16  : imem.is_i32_not_i16
       , instr           : instr
@@ -354,6 +358,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.trap_info      = trap_info;
 	 output_stage1.next_pc        = next_pc;
      output_stage1.next_pcc       = alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked;
+     output_stage1.next_ddc       = alu_outputs.ddc_changed ? alu_outputs.ddc : rg_ddc_unpacked;
 	 output_stage1.data_to_stage2 = data_to_stage2;
 
       end
@@ -382,6 +387,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
 `ifdef ISA_CHERI
                                                                                                             , CapReg pcc
+                                                                                                            , CapReg ddc
 `endif
                                                                                                                                     );
       //TODO fetch bounds check
@@ -402,6 +408,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
 `ifdef ISA_CHERI
       rg_pcc <= pcc;
+      rg_ddc <= ddc;
 `endif
 
       if (verbosity > 1)

@@ -199,6 +199,7 @@ module mkCPU (CPU_IFC);
    // ----------------
    // PCC: Offset is kept constant (same as installed) and changed when reported. TODO something more sophisticated?
    Reg#(CapReg) rg_pcc <- mkRegU;
+   Reg#(CapReg) rg_ddc <- mkRegU;
 `endif
 
    // Save next_pc across split-phase FENCE.I and other split-phase ops
@@ -354,6 +355,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                                                                  , CapReg pcc
+                                                                 , CapReg ddc
 `endif
                                                                                           );
       action
@@ -373,6 +375,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
            , pcc
+           , ddc
 `endif
                      );
 
@@ -415,6 +418,7 @@ module mkCPU (CPU_IFC);
    function Action fa_restart (Addr resume_pc
 `ifdef ISA_CHERI
                                              , CapReg resume_pcc
+                                             , CapReg resume_ddc
 `endif
                                                                 );
       action
@@ -424,6 +428,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                                                 , resume_pcc
+                                                , resume_ddc
 `endif
                                                    );
 	 stage1.set_full (True);
@@ -432,6 +437,11 @@ module mkCPU (CPU_IFC);
 `ifdef INCLUDE_GDB_CONTROL
 	 // Notify debugger that we've started running
 	 f_run_halt_rsps.enq (True);
+`endif
+
+`ifdef ISA_CHERI
+     rg_pcc <= resume_pcc;
+     rg_ddc <= resume_ddc;
 `endif
 
 	 rg_start_CPI_cycles <= mcycle;
@@ -551,11 +561,13 @@ module mkCPU (CPU_IFC);
 `else
 `ifdef ISA_CHERI
       CapReg dpcc = almightyCap;
+      CapReg dddc = almightyCap;
 `endif
       WordXL dpc = truncate (soc_map.m_pc_reset_value);
       fa_restart (dpc
 `ifdef ISA_CHERI
                      , dpcc
+                     , dddc
 `endif
                            );
 `endif
@@ -704,6 +716,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                          , cast(stage1.out.next_pcc)
+                         , cast(stage1.out.next_ddc)
 `endif
                                                     );
 	    stage1_full = True;
@@ -748,6 +761,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                                         , new_pcc
+                                        , rg_ddc
 `endif
                                                  );
       stage1.set_full (True);
@@ -988,6 +1002,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                       , cast(stage1.out.next_pcc)
+                      , cast(stage1.out.next_ddc)
 `endif
                                                  );
       stage1.set_full (True);
@@ -1028,6 +1043,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                                         , new_pcc
+                                        , rg_ddc
 `endif
                                                                                  );
       stage1.set_full (True);
@@ -1068,6 +1084,7 @@ module mkCPU (CPU_IFC);
       rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
       rg_pcc <= cast(stage1.out.next_pcc);
+      rg_ddc <= cast(stage1.out.next_ddc);
 `endif
       near_mem.server_fence_i.request.put (?);
       rg_state <= CPU_FENCE_I;
@@ -1104,6 +1121,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                        , rg_pcc
+                       , rg_ddc
 `endif
                                );
       stage1.set_full (True);
@@ -1131,6 +1149,7 @@ module mkCPU (CPU_IFC);
       rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
       rg_pcc <= cast(stage1.out.next_pcc);
+      rg_ddc <= cast(stage1.out.next_ddc);
 `endif
       near_mem.server_fence.request.put (?);
       rg_state <= CPU_FENCE;
@@ -1167,6 +1186,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                       , rg_pcc
+                      , rg_ddc
 `endif
                                               );
       stage1.set_full (True);
@@ -1199,6 +1219,7 @@ module mkCPU (CPU_IFC);
       rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
       rg_pcc <= cast(stage1.out.next_pcc);
+      rg_ddc <= cast(stage1.out.next_ddc);
 `endif
       // Tell Near_Mem to do its SFENCE_VMA
       near_mem.sfence_vma;
@@ -1235,6 +1256,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                       , rg_pcc
+                      , rg_ddc
 `endif
                                               );
       stage1.set_full (True);
@@ -1263,6 +1285,7 @@ module mkCPU (CPU_IFC);
       rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
       rg_pcc <= cast(stage1.out.next_pcc);
+      rg_ddc <= cast(stage1.out.next_ddc);
 `endif
       rg_state   <= CPU_WFI_PAUSED;
 
@@ -1298,6 +1321,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                        , rg_pcc
+                       , rg_ddc
 `endif
                                                );
       stage1.set_full (True);
@@ -1359,6 +1383,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
                                          , new_pcc
+                                         , rg_ddc
 `endif
                                                                                   );
       stage1.set_full (True);
@@ -1500,6 +1525,7 @@ module mkCPU (CPU_IFC);
 `endif
 `ifdef ISA_CHERI
         , new_pcc
+        , rg_ddc
 `endif
                                                  );
       stage1.set_full (True);

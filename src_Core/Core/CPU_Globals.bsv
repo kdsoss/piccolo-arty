@@ -200,6 +200,7 @@ typedef struct {
 
 `ifdef ISA_CHERI
    CapPipe                next_pcc;
+   CapPipe                next_ddc;
 `endif
 
    // feedforward data

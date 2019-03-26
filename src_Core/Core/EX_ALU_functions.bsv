@@ -54,6 +54,7 @@ typedef struct {
    Priv_Mode      cur_priv;
 `ifdef ISA_CHERI
    CapPipe        pcc;
+   CapPipe        ddc;
 `endif
    Addr           pc;
    Bool           is_i32_not_i16;
@@ -111,6 +112,8 @@ typedef struct {
 `ifdef ISA_CHERI
    Bool    pcc_changed;
    CapPipe pcc;
+   Bool    ddc_changed;
+   CapPipe ddc;
 `endif
 
 `ifdef ISA_D
@@ -170,6 +173,8 @@ ALU_Outputs alu_outputs_base
 
            pcc_changed : False,
            pcc : ?,
+           ddc_changed : False,
+           ddc : ?,
 
            check_enable       : False,
            check_authority    : ?,
