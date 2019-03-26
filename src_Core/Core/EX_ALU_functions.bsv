@@ -138,11 +138,11 @@ typedef struct {
    Bool       val1_cap_not_int;
    Bool       val2_cap_not_int;
 
-   Bool       check_enable;
-   CapPipe    check_authority;
-   Bit#(XLEN)     check_address_low;
-   Bit#(TAdd#(XLEN,2))     check_address_high;
-   Bool check_inclusive;
+   Bool                check_enable;
+   CapPipe             check_authority;
+   Bit#(XLEN)          check_address_low;
+   Bit#(TAdd#(XLEN,1)) check_address_high;
+   Bool                check_inclusive;
 `endif
 
    Trace_Data trace_data;

@@ -306,7 +306,7 @@ typedef struct {
    // Bounds exceptions
    CapPipe    check_authority;
    Bit#(XLEN)     check_address_low;
-   Bit#(TAdd#(XLEN,2))     check_address_high;
+   Bit#(TAdd#(XLEN,1))     check_address_high;
    Bool       check_enable;
    Bool check_inclusive;
 `endif
