@@ -82,6 +82,12 @@ import RVFI_DII  :: *;
                 instr[1] <= Invalid;
             endmethod
 
+`ifdef ISA_CHERI
+            method Action commit;
+                //do nothing
+            endmethod
+`endif
+
             method Bool valid = isValid (fake_addr) && isValid (instr[1]);
             method Bool is_i32_not_i16 = True;
             method WordXL pc = fake_addr.Valid;

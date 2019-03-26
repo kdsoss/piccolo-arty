@@ -117,6 +117,12 @@ interface MMU_Cache_IFC;
 		       Bit #(1)   mstatus_MXR,
 		       WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
 
+`ifdef ISA_CHERI
+   // CPU interface: commit previous request
+   (* always_ready *)
+   method Action commit;
+`endif
+
    // CPU interface: response
    (* always_ready *)  method Bool       valid;
    (* always_ready *)  method WordXL     addr;        // req addr for which this is a response
@@ -442,6 +448,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // - m_is_IO_addr to distinguish mem (cached) and IO (non-cached) addrs
    // - m_is_near_mem_IO_addr to identify near-mem I/O addresses
    SoC_Map_IFC soc_map <- mkSoC_Map;
+
+`ifdef ISA_CHERI
+   Wire #(Bool) dw_commit <- mkDWire(False);
+`endif
 
    // Reset request/response: REQUESTOR_RESET_IFC, REQUESTOR_FLUSH_IFC
    FIFOF #(Requestor) f_reset_reqs <- mkFIFOF;
@@ -837,6 +847,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       if (cfg_verbosity > 1)
 	 $display ("    TLB result: ", fshow (vm_xlate_result));
 
+`ifdef ISA_CHERI
+      // ---- Cancelled by Cap exception
+      if (!dw_commit) begin
+     rg_state <= MODULE_READY;
+      end else
+`endif
       // ---- TLB miss
       if (vm_xlate_result.outcome == VM_XLATE_TLB_MISS) begin
 	 rg_state <= PTW_START;
@@ -1904,6 +1920,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	 fa_req_ram_B (addr);
       end
    endmethod
+
+`ifdef ISA_CHERI
+   method Action commit;
+      dw_commit <= True;
+   endmethod
+`endif
 
    method Bool  valid;
       return dw_valid;

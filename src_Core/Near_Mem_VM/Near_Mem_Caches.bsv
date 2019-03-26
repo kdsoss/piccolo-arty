@@ -165,6 +165,12 @@ module mkNear_Mem (Near_Mem_IFC);
 		     addr, store_value, priv, sstatus_SUM, mstatus_MXR, satp);
       endmethod
 
+`ifdef ISA_CHERI
+      method Action commit;
+          icache.commit;
+      endmethod
+`endif
+
       // CPU side: IMem response
       method Bool     valid          = icache.valid;
       method Bool     is_i32_not_i16 = True;
@@ -206,6 +212,12 @@ module mkNear_Mem (Near_Mem_IFC);
 `endif
 		     addr, store_value, priv, sstatus_SUM, mstatus_MXR, satp);
       endmethod
+
+`ifdef ISA_CHERI
+      method Action commit;
+          dcache.commit;
+      endmethod
+`endif
 
       // CPU side: DMem response
       method Bool       valid      = dcache.valid;

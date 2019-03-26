@@ -119,6 +119,10 @@ interface IMem_IFC;
 `endif
                               );    // { VM_Mode, ASID, PPN_for_page_table }
 
+`ifdef ISA_CHERI
+   (* always_ready *)  method Action commit;
+`endif
+
    // CPU side: IMem response
    (* always_ready *)  method Bool     valid;
    (* always_ready *)  method Bool     is_i32_not_i16;
@@ -152,6 +156,10 @@ interface DMem_IFC;
 		       Bit #(1)   sstatus_SUM,
 		       Bit #(1)   mstatus_MXR,
 		       WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
+
+`ifdef ISA_CHERI
+   (* always_ready *)  method Action commit;
+`endif
 
    // CPU side: DMem response
    (* always_ready *)  method Bool       valid;
