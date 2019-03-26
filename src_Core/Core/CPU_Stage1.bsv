@@ -219,6 +219,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       , cap_rs1_val     : rs1_val_bypassed
       , cap_rs2_val     : rs2_val_bypassed
+      , rs1_idx_0       : rs1 == 0
+      , rs2_idx_0       : rs2 == 0
       , rs1_val         : getAddr(rs1_val_bypassed)
       , rs2_val         : getAddr(rs2_val_bypassed)
 `else

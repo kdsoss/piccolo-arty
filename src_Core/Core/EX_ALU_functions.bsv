@@ -55,6 +55,8 @@ typedef struct {
 `ifdef ISA_CHERI
    CapPipe        pcc;
    CapPipe        ddc;
+   Bool           rs1_idx_0;
+   Bool           rs2_idx_0;
 `endif
    Addr           pc;
    Bool           is_i32_not_i16;
@@ -1349,6 +1351,43 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else begin
                alu_outputs.cap_val1 = setPerms(cb_val, pack(getPerms(cb_val)) & truncate(rt_val));
                alu_outputs.val1_cap_not_int = True;
+           end
+       end
+       f7_cap_CToPtr: begin
+           if (inputs.rs2_idx_0) begin
+               ct_val = inputs.ddc;
+               ct_tag = isValidCap(ct_val);
+               //TODO think about alternatives for this
+           end
+           if (!ct_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (cb_tag && cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else begin
+               alu_outputs.val1 = cb_tag ? getAddr(cb_val) - getBase(ct_val) : 0; //TODO long critical path
+           end
+       end
+       f7_cap_CFromPtr: begin
+           if (inputs.rs1_idx_0) begin
+               cb_val = inputs.ddc;
+               cb_tag = isValidCap(cb_val);
+               //TODO think about alternatives for this
+           end
+           if (rt_val == 0) begin
+               alu_outputs.val1 = 0;
+           end else if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else begin
+               let result = setOffset(cb_val, rt_val);
+               alu_outputs.cap_val1 = result.value;
+               alu_outputs.val1 = getAddr(result.value);
+               alu_outputs.val1_cap_not_int = result.exact;
            end
        end
        f7_cap_TwoOp: begin
