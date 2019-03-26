@@ -1411,6 +1411,34 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = result.exact;
            end
        end
+       f7_cap_CBuildCap: begin
+           //TODO factor into subset test
+           if (inputs.rs1_idx_0) begin
+               cb_val = inputs.ddc;
+               cb_tag = isValidCap(cb_val);
+               cb_sealed = isSealed(cb_val);
+               //TODO think about alternatives for this
+           end
+           if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO tag exception
+           end else if (cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else if ((getPerms(cb_val) & getPerms(ct_val)) != getPerms(ct_val)) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO UserDef violation?
+           end else begin
+               alu_outputs.check_enable = True;
+               alu_outputs.check_authority = cb_val;
+               alu_outputs.check_address_low = getBase(ct_val);
+               alu_outputs.check_address_high = getTop(ct_val);
+               alu_outputs.check_inclusive = True;
+               let result = setValidCap(ct_val, True); //TODO pretend to do representability check?
+               alu_outputs.cap_val1 = setType(result, -1).value;
+               alu_outputs.val1_cap_not_int = True;
+           end
+       end
        f7_cap_TwoOp: begin
            case (funct5c)
            f5c_cap_CGetLen: begin
