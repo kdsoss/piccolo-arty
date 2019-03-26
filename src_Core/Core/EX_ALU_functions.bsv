@@ -1476,15 +1476,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            f5c_cap_CJALR: begin
                alu_outputs = fv_CJALR(inputs);
            end
-/* TODO: this instruction may be garbage collected. If not, it should be re-encoded since RISC-V is very consistent about which operands are which. This would use the destination register address as a source register address, as would CCheckType
-           f5c_cap_CCheckPerm: begin
-               if (!cb_tag) begin
-                   alu_outputs.control = CONTROL_TRAP;
-               end else if ((rt_val & zeroExtend(getPerms(cb_val))) != rt_val) begin
-                   alu_outputs.control = CONTROL_TRAP;
-               end
+           f5c_cap_CGetType: begin
+               //TODO check behaviour on sentries etc?
+               alu_outputs.val1 = getKind(cb_val) == SEALED_WITH_TYPE ? zeroExtend(getType(cb_val)) : -1;
            end
-*/
            default:
                alu_outputs.control = CONTROL_TRAP;
            endcase
