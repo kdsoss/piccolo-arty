@@ -8,7 +8,7 @@ help:
 	@echo '                           NOTE: needs Bluespec bsc compiler'
 	@echo ''
 	@echo '    make  clean        Remove intermediate build-files'
-	@echo '    make  full_clean   Restore to pristine state (pre-building anything)'
+	@echo '    make  full_clean   Restore this directory to pristine state'
 
 .PHONY: all
 all: compile
@@ -35,7 +35,7 @@ BSC_COMPILATION_FLAGS += \
 # ================================================================
 # Search path for bsc for .bsv files
 
-CORE_DIRS = $(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
+CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
 
 TESTBENCH_DIRS  = $(REPO)/src_Testbench/Fabrics/AXI4
 
@@ -51,7 +51,7 @@ TOPMODULE = mkP1_Core
 # bsc compilation flags
 
 BSC_COMPILATION_FLAGS += \
-	-keep-fires -aggressive-conditions -no-warn-action-shadowing    \
+	-keep-fires -aggressive-conditions -no-warn-action-shadowing -no-show-timestamps \
 	-suppress-warnings G0020    \
 	+RTS -K128M -RTS  -show-range-conflict
 

@@ -30,6 +30,7 @@ import GetPut_Aux :: *;
 // Project imports
 
 import ISA_Decls :: *;
+import SoC_Map   :: *;
 
 `ifdef INCLUDE_GDB_CONTROL
 import DM_Common :: *;    // Debug Module defs
@@ -82,7 +83,7 @@ interface CSR_RegFile_IFC;
    method WordXL read_satp;
 
    // CSR trap actions
-   method ActionValue #(Tuple4 #(Addr, Word, Word, Priv_Mode))
+   method ActionValue #(Trap_Info)
           csr_trap_actions (Priv_Mode  from_priv,
 			    Word       pc,
 			    Bool       interrupt,
@@ -146,9 +147,9 @@ interface CSR_RegFile_IFC;
    // Read dcsr.step
    method Bool read_dcsr_step ();
 
-   // Update 'cause' in DCSR
+   // Update 'cause' and 'priv' in DCSR
    (* always_ready *)
-   method Action write_dcsr_cause (DCSR_Cause cause);
+   method Action write_dcsr_cause_priv (DCSR_Cause  cause, Priv_Mode  priv);
 
 `endif
 
@@ -212,15 +213,6 @@ function MISA misa_reset_value;
 endfunction
 
 // ================================================================
-// mtvec reset value    TODO: still relevant? No longer part of the spec?
-
-`ifdef RVFI_DII
-Word mtvec_reset_value = 'h0000;
-`else
-Word mtvec_reset_value = 'h1000;    // TODO: this is no longer standard?
-`endif
-
-// ================================================================
 // Major states of mkCSR_RegFile module
 
 typedef enum { RF_RESET_START, RF_RUNNING } RF_State
@@ -233,6 +225,8 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
    Reg #(RF_State) rg_state      <- mkReg (RF_RESET_START);
+
+   SoC_Map_IFC soc_map <- mkSoC_Map;
 
    FIFOF #(Bool) f_ei_reqs   <- mkFIFOF;   // External interrupt requested
    FIFOF #(Bool) f_ti_reqs   <- mkFIFOF;   // Timer    interrupt requests
@@ -314,7 +308,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    // Debug
    Reg #(Bit #(32)) rg_dcsr      <- mkRegU;    // Is 32b even in RV64
-   Reg #(WordXL)    rg_dpc       <- mkReg(mtvec_reset_value);
+   Reg #(WordXL)    rg_dpc       <- mkRegU;
    Reg #(WordXL)    rg_dscratch0 <- mkRegU;
    Reg #(WordXL)    rg_dscratch1 <- mkRegU;
 
@@ -335,7 +329,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
       // Supervisor-level CSRs
 `ifdef ISA_PRIV_S
-      rg_stvec    <= word_to_mtvec (mtvec_reset_value);
+      rg_stvec    <= word_to_mtvec (truncate (soc_map.m_mtvec_reset_value));
       rg_scause   <= word_to_mcause (0);    // Supposed to be the cause of the reset.
       rg_satp     <= 0;
       //rg_scounteren <= mcounteren_reset_value;
@@ -344,7 +338,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       // Machine-level CSRs
       rg_mstatus    <= mstatus_reset_value;
       rg_mie        <= mie_reset_value;
-      rg_mtvec      <= word_to_mtvec (mtvec_reset_value);
+      rg_mtvec      <= word_to_mtvec (truncate (soc_map.m_mtvec_reset_value));
       rg_mcause     <= word_to_mcause (0);    // Supposed to be the cause of the reset.
       rg_mip        <= mip_reset_value;
 `ifdef ISA_PRIV_S
@@ -356,20 +350,22 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       rw_minstret.wset (0);
 
 `ifdef INCLUDE_GDB_CONTROL
-      // rg_dpc  <= pc_reset_value;    // Should be set by GDB
-      rg_dcsr <= zeroExtend ({4'h4,    // xdebugver
-			      12'h0,   // reserved
-			      1'h1,    // ebreakm
-			      1'h0,    // reserved
-			      1'h1,    // ebreaks
-			      1'h1,    // ebreaku
-			      1'h0,    // stepie
-			      1'h0,    // stepcount
-			      1'h0,    // steptime
-			      3'h0,    // cause    // WARNING: 0 is non-standard
-			      3'h0,    // reserved
-			      1'h0,    // step
-			      2'h0}    // prv
+      rg_dpc  <= truncate (soc_map.m_pc_reset_value);
+      rg_dcsr <= zeroExtend ({4'h4,    // [31:28]  xdebugver
+			      12'h0,   // [27:16]  reserved
+			      1'h1,    // [15]     ebreakm
+			      1'h0,    // [14]     reserved
+			      1'h1,    // [13]     ebreaks
+			      1'h1,    // [12]     ebreaku
+			      1'h0,    // [11]     stepie
+			      1'h0,    // [10]     stopcount
+			      1'h0,    // [9]      stoptime
+			      3'h0,    // [8:7]    cause    // WARNING: 0 is non-standard
+			      1'h0,    // [5]      reserved
+			      1'h1,    // [4]      mprven
+			      1'h0,    // [3]      nmip
+			      1'h0,    // [2]      step
+			      2'h3}    // [1:0]    prv (machine mode)
 			     );
 `endif
 
@@ -648,15 +644,21 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	       csr_addr_tdata3:   rg_tdata3  <= word;
 
 `ifdef INCLUDE_GDB_CONTROL
-	       csr_addr_dcsr:       rg_dcsr <= zeroExtend ({// xdebugver: read-only
-							    rg_dcsr [31:28],
-							    // ebreakm/s/u, stepie, stopcount, stoptime
-							    word [27:9],
-							    // cause: read-only
-							    rg_dcsr [8:6],
-							    // step, prv
-							    word [5:0]}
-							   );
+	       csr_addr_dcsr:       begin
+				       Bit #(32) new_dcsr
+				       = {rg_dcsr [31:28],   // xdebugver: read-only
+					  rg_dcsr [27:16],   // reserved
+					  wordxl  [15:12],   // ebreakm/s/u,
+					  wordxl  [11:9],    // stepie, stopcount, stoptime
+					  rg_dcsr [8:6],     // cause: read-only
+					  rg_dcsr [5],       // reserved
+					  wordxl  [4],       // mprvn
+					  rg_dcsr [3],       // nmip: read-only
+					  wordxl  [2],       // step
+					  wordxl  [1:0]};    // prv
+				       result   = zeroExtend (new_dcsr);
+				       rg_dcsr <= new_dcsr;
+				    end
 	       csr_addr_dpc:        rg_dpc  <= word;
 	       csr_addr_dscratch0:  rg_dscratch0  <= word;
 	       csr_addr_dscratch1:  rg_dscratch1  <= word;
@@ -842,7 +844,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    endmethod
 
    // CSR Trap actions
-   method ActionValue #(Tuple4 #(Addr, Word, Word, Priv_Mode))
+   method ActionValue #(Trap_Info)
           csr_trap_actions (Priv_Mode  from_priv,
 			    Word       pc,
 			    Bool       interrupt,
@@ -905,10 +907,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 $display ("");
       end
 
-      return tuple4 (exc_pc,                             // New PC
-		     mstatus_to_word (new_mstatus),      // New mstatus
-		     mcause_to_word  (xcause),           // New mcause
-		     new_priv);                          // New priv
+      return (Trap_Info {pc       : exc_pc,                        // New PC
+			 mstatus  : mstatus_to_word (new_mstatus), // New mstatus
+			 mcause   : mcause_to_word  (xcause),      // New mcause
+			 priv     : new_priv});                    // New priv
    endmethod
 
    // CSR RET actions (return from exception)
@@ -1026,10 +1028,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       return unpack (rg_dcsr [2]);
    endmethod
 
-   // Update 'cause' in DCSR
-   method Action write_dcsr_cause (DCSR_Cause cause);
+   // Update 'cause' and 'priv' in DCSR
+   method Action write_dcsr_cause_priv (DCSR_Cause  cause, Priv_Mode  priv);
       Bit #(3) b3 = pack (cause);
-      rg_dcsr <= { rg_dcsr [31:9], b3, rg_dcsr [5:0] };
+      rg_dcsr <= { rg_dcsr [31:9], b3, rg_dcsr [5:2], priv };
    endmethod
 
 `endif

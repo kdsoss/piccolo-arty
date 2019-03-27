@@ -51,6 +51,8 @@ import Mem_Controller :: *;
 import Mem_Model      :: *;
 import Fabric_Defs    :: *;
 
+import PLIC :: *;
+
 `ifndef IVERILOG
 import C_Imports      :: *;
 `endif
