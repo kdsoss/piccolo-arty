@@ -58,6 +58,8 @@ import RVFI_DII  :: *;
         FIFO#(RVFI_DII_Execution #(XLEN)) reports <- mkFIFO;
         Reg#(Maybe#(UInt#(SEQ_LEN))) seq_req[2] <- mkCReg(2, Invalid);
 
+        Bit#(32) nop = 'h00000013;
+
         interface Piccolo_RVFI_DII_Server rvfi_dii_server;
             method Maybe#(UInt#(SEQ_LEN)) getSeqReq;
                 return seq_req[0];
@@ -79,7 +81,9 @@ import RVFI_DII  :: *;
                 UInt#(SEQ_LEN) seq_request);
                 fake_addr <= Valid(addr);
                 seq_req[1] <= Valid(seq_request);
-                instr[1] <= Invalid;
+                if (isValid(instr[1])) begin
+                    instr[1] <= Valid(tuple2(nop, seq_request));
+                end
             endmethod
 
             method Bool valid = isValid (fake_addr) && isValid (instr[1]);
