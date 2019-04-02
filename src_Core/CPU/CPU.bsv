@@ -738,7 +738,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef RVFI_DII
-      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 2;
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq;
 `endif
       rg_state    <= CPU_SPLIT_FETCH;
 
@@ -762,7 +762,6 @@ module mkCPU (CPU_IFC);
       trace_data.word4 = tval;
       f_trace_data.enq (trace_data);
 `elsif RVFI
-      $display("next_pc: %h, trap", next_pc);
       let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
                                 minstret, True, exc_code, rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;

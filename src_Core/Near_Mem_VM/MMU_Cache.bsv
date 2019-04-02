@@ -1858,6 +1858,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ADDR_MISALIGNED : exc_code_STORE_AMO_ADDR_MISALIGNED);
       end
+`ifdef RVFI_DII
+      else if (addr < 'h80000000 || addr >= 'h80010000) begin
+	 // We detect accesses outside of the assigned RVFI_DII range and trap on them
+	 rg_state    <= MODULE_EXCEPTION_RSP;
+	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ACCESS_FAULT : exc_code_STORE_AMO_ACCESS_FAULT); //TODO check exception codes, deal with unaligned accesses that exceed range?
+      end
+`endif
       else begin
 	 rg_state <= MODULE_RUNNING;
 	 fa_req_ram_B (addr);

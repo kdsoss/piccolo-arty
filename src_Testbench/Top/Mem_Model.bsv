@@ -45,7 +45,11 @@ module mkMem_Model (Mem_Model_IFC);
 
    Raw_Mem_Addr alloc_size = 'h_80_0000;    // 8M raw mem words, or 256MB
                    
+`ifdef RVFI_DII
+   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, alloc_size - 1);
+`else
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
+`endif
 
    FIFOF #(MemoryResponse #(Bits_per_Raw_Mem_Word))  f_raw_mem_rsps <- mkFIFOF;
 
@@ -61,14 +65,24 @@ module mkMem_Model (Mem_Model_IFC);
 	       $finish (1);    // Assertion failure: address out of bounds
 	    end
 	    else if (req.write) begin
-	       rf.upd (req.address, req.data);
+`ifdef RVFI_DII
+        // XOR writes with ? so that we get back what we wrote after the XOR with ? on load
+        rf.upd (req.address, unpack(pack(req.data ^ ?)));
+`else
+        rf.upd (req.address, req.data);
+`endif
 	       if (verbosity != 0)
 		  $display ("%0d: Mem_Model write [0x%0h] <= 0x%0h", cur_cycle, req.address, req.data);
 	    end
 	    else begin
 	       let x = rf.sub (req.address);
 	       let rsp = MemoryResponse {data: x};
+`ifdef RVFI_DII
+           //By default, memory is ? on reset, so XOR with ? to make it 0 on reset
+	       f_raw_mem_rsps.enq (unpack(pack(rsp) ^ ?));
+`else
 	       f_raw_mem_rsps.enq (rsp);
+`endif
 	       if (verbosity != 0)
 		  $display ("%0d: Mem_Model read  [0x%0h] => 0x%0h", cur_cycle, req.address, x);
 	    end
