@@ -46,7 +46,9 @@ module mkMem_Model (Mem_Model_IFC);
    Raw_Mem_Addr alloc_size = 'h_80_0000;    // 8M raw mem words, or 256MB
                    
 `ifdef RVFI_DII
-   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, alloc_size - 1);
+   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, 'h20_000 - 1);
+   //zeroes register allows quick resetting of memory. If bit of zeroes is 0 then corresponding entry of rf is 0.
+   Reg#(Bit#(TDiv#('h80000, Bits_per_Raw_Mem_Word))) zeroes <- mkReg(0);
 `else
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
 `endif
@@ -66,23 +68,26 @@ module mkMem_Model (Mem_Model_IFC);
 	    end
 	    else if (req.write) begin
 `ifdef RVFI_DII
-        // XOR writes with ? so that we get back what we wrote after the XOR with ? on load
-        rf.upd (req.address, unpack(pack(req.data ^ ?)));
-`else
-        rf.upd (req.address, req.data);
+            if (zeroes[req.address] == 0) begin
+                for (Integer byteidx = 0; 8 * byteidx < valueOf(Bits_per_Raw_Mem_Word); byteidx = byteidx + 1) begin
+                    req.data[byteidx] = req.byteen[byteidx] == 1 ? req.data[byteidx] : 0;
+                    req.byteen[byteidx] = 1;
+                end
+                zeroes[req.address] <= 1;
+            end else begin
 `endif
+            rf.upd (req.address, req.data);
+            end
 	       if (verbosity != 0)
 		  $display ("%0d: Mem_Model write [0x%0h] <= 0x%0h", cur_cycle, req.address, req.data);
 	    end
 	    else begin
 	       let x = rf.sub (req.address);
-	       let rsp = MemoryResponse {data: x};
 `ifdef RVFI_DII
-           //By default, memory is ? on reset, so XOR with ? to make it 0 on reset
-	       f_raw_mem_rsps.enq (unpack(pack(rsp) ^ ?));
-`else
-	       f_raw_mem_rsps.enq (rsp);
+           if (zeroes[req.address] == 0) x = 0;
 `endif
+	       let rsp = MemoryResponse {data: x};
+	       f_raw_mem_rsps.enq (rsp);
 	       if (verbosity != 0)
 		  $display ("%0d: Mem_Model read  [0x%0h] => 0x%0h", cur_cycle, req.address, x);
 	    end
