@@ -783,6 +783,14 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    alu_outputs.rd_in_fpr = (opcode == op_LOAD_FP);
 `endif
 
+`ifdef ISA_CHERI
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = inputs.ddc; //TODO mode bit
+   alu_outputs.check_address_low = eaddr;
+   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << funct3); //TODO
+   alu_outputs.check_inclusive = False;
+`endif
+
    // Normal trace output (if no trap)
 `ifdef ISA_F
    if (alu_outputs.rd_in_fpr)
@@ -839,6 +847,14 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
+
+`ifdef ISA_CHERI
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = inputs.ddc; //TODO mode bit
+   alu_outputs.check_address_low = eaddr;
+   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << funct3); //TODO
+   alu_outputs.check_inclusive = False;
+`endif
 
    // The rs2_val would depend on the combination F/D-RV32/64 when FD is enabled
 `ifdef ISA_F

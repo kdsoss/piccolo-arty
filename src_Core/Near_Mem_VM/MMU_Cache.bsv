@@ -918,7 +918,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `ifdef ISA_CHERI
       // ---- Cancelled by Cap exception
       if (!dw_commit) begin
-     rg_state <= MODULE_READY;
+     rg_state <= MODULE_EXCEPTION_RSP;
+     //TODO exc code
       end else
 `endif
       // ---- TLB miss
