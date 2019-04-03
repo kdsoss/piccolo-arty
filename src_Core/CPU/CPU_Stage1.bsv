@@ -79,15 +79,15 @@ interface CPU_Stage1_IFC;
 
    // ---- Input
    (* always_ready *)
-   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp
+   method Action enq (Addr next_pc, Priv_Mode priv
 `ifdef RVFI_DII
-                                                                                                           , UInt#(SEQ_LEN) seq_req
+                                                  , UInt#(SEQ_LEN) seq_req
 `endif
 `ifdef ISA_CHERI
-                                                                                                           , CapReg pcc
-                                                                                                           , CapReg ddc
+                                                  , CapReg pcc
+                                                  , CapReg ddc
 `endif
-                                                                                                                                   );
+                                                  , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
 
    (* always_ready *)
    method Action set_full (Bool full);
@@ -98,15 +98,15 @@ endinterface
 
 module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		      GPR_RegFile_IFC  gpr_regfile,
-		      CSR_RegFile_IFC  csr_regfile,
-		      IMem_IFC         imem,
+		      Bypass           bypass_from_stage2,
+		      Bypass           bypass_from_stage3,
 `ifdef ISA_F
 		      FPR_RegFile_IFC  fpr_regfile,
 		      FBypass          fbypass_from_stage2,
 		      FBypass          fbypass_from_stage3,
 `endif
-		      Bypass           bypass_from_stage2,
-		      Bypass           bypass_from_stage3,
+		      CSR_RegFile_IFC  csr_regfile,
+		      IMem_IFC         imem,
 		      Priv_Mode        cur_priv)
                     (CPU_Stage1_IFC);
 
@@ -234,8 +234,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , fcsr_frm        : csr_regfile.read_frm
 `endif
       , mstatus         : csr_regfile.read_mstatus
-      , misa            : csr_regfile.read_misa
-   }; 
+      , misa            : csr_regfile.read_misa };
+
    let alu_outputs = fv_ALU (alu_inputs);
 
    let fall_through_pc = pc + (imem.is_i32_not_i16 ? 4 : 2);
@@ -267,8 +267,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
 
    let data_to_stage2 = Data_Stage1_to_Stage2 {
-        priv            : cur_priv
-      , pc              : pc
+        pc              : pc
       , instr           : instr
 `ifdef RVFI_DII
       , instr_seq       : tpl_2(imem.instr)
@@ -301,7 +300,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef RVFI
       , info_RVFI_s1    : info_RVFI
 `endif
-   };
+      , priv            : cur_priv };
 
    // ----------------
    // Combinational output function
@@ -326,11 +325,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Trap on IMem exception
       else if (imem.exc) begin
-	 output_stage1.ostatus    = OSTATUS_NONPIPE;
-	 output_stage1.control    = CONTROL_TRAP;
-	 output_stage1.trap_info  = Trap_Info {epc:      pc,
-					       exc_code: imem.exc_code,
-					       tval:     imem.tval};
+	 output_stage1.ostatus   = OSTATUS_NONPIPE;
+	 output_stage1.control   = CONTROL_TRAP;
+	 output_stage1.trap_info = Trap_Info {epc:      pc,
+					      exc_code: imem.exc_code,
+					      tval:     imem.tval};
 	 output_stage1.data_to_stage2 = data_to_stage2;
       end
 
@@ -345,11 +344,17 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 // Compute MTVAL in case of traps
 	 let tval = 0;
 	 if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION)
-	    tval = zeroExtend (instr);  // The instruction
+`ifdef ISA_C
+	    tval = (is_i32_not_i16
+		    ? zeroExtend (instr)
+		    : zeroExtend (instr_C));                   // The instruction
+`else
+        tval = zeroExtend(instr);
+`endif
 	 else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
-	    tval = alu_outputs.addr;    // The branch target pc
+	    tval = alu_outputs.addr;                           // The branch target pc
 	 else if (alu_outputs.exc_code == exc_code_BREAKPOINT)
-	    tval = pc;                  // The faulting virtual address
+	    tval = pc;                                         // The faulting virtual address
 
 	 let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
@@ -383,15 +388,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    // ---- Input
-   method Action enq (Addr next_pc, Priv_Mode priv, Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp
+   method Action enq (Addr next_pc, Priv_Mode priv
 `ifdef RVFI_DII
-                                                                                                            , UInt#(SEQ_LEN) seq_req
+                                                  , UInt#(SEQ_LEN) seq_req
 `endif
 `ifdef ISA_CHERI
-                                                                                                            , CapReg pcc
-                                                                                                            , CapReg ddc
+                                                  , CapReg pcc
+                                                  , CapReg ddc
 `endif
-                                                                                                                                    );
+                                                  , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
       //TODO fetch bounds check
 `ifdef ISA_CHERI
       CapPipe pccPipe = cast(pcc);
@@ -414,7 +419,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
 
       if (verbosity > 1)
-	 $display ("    CPU_Stage_1.enq: 0x%08x", next_pc);
+	 $display ("    CPU_Stage1.enq: 0x%08h", next_pc);
    endmethod
 
    method Action set_full (Bool full);

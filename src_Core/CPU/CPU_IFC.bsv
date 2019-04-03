@@ -17,14 +17,21 @@ package CPU_IFC;
 // ================================================================
 // BSV library imports
 
-import Memory       :: *;
 import GetPut       :: *;
 import ClientServer :: *;
+import AXI4         :: *;
 
 // ================================================================
 // Project imports
 
 import ISA_Decls       :: *;
+
+import AXI4_Types  :: *;
+import Fabric_Defs :: *;
+
+`ifdef INCLUDE_GDB_CONTROL
+import DM_CPU_Req_Rsp :: *;
+`endif
 
 `ifdef INCLUDE_TANDEM_VERIF
 import Verifier  :: *;
@@ -35,7 +42,6 @@ import Verifier  :: *;
 import RVFI_DII    :: *;
 `endif
 
-import AXI4_Types  :: *;
 import Fabric_Defs :: *;
 
 // ================================================================
@@ -49,19 +55,36 @@ interface CPU_IFC;
    // SoC fabric connections
 
    // IMem to Fabric master interface
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  imem_master;
+   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User)  imem_master;
 
    // DMem to Fabric master interface
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  dmem_master;
-
-   // Back-door slave interface from fabric into Near_Mem
-   interface AXI4_Slave_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  near_mem_slave;
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User)  dmem_master;
 
    // ----------------
    // External interrupts
 
    (* always_ready, always_enabled *)
-   method Action  external_interrupt_req (Bool set_not_clear);
+   method Action  m_external_interrupt_req (Bool set_not_clear);
+
+   (* always_ready, always_enabled *)
+   method Action  s_external_interrupt_req (Bool set_not_clear);
+
+   // ----------------
+   // Software and timer interrupts (from Near_Mem_IO/CLINT)
+
+   (* always_ready, always_enabled *)
+   method Action  software_interrupt_req (Bool set_not_clear);
+
+   (* always_ready, always_enabled *)
+   method Action  timer_interrupt_req    (Bool set_not_clear);
+
+   // ----------------
+   // Non-maskable interrupt
+
+   (* always_ready, always_enabled *)
+   method Action  non_maskable_interrupt_req (Bool set_not_clear);
 
    // ----------------
    // Set core's verbosity
@@ -91,15 +114,15 @@ interface CPU_IFC;
    interface Put #(Bit #(4))       hart0_put_other_req;
 
    // GPR access
-   interface MemoryServer #(5,  XLEN)  hart0_gpr_mem_server;
+   interface Server #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN)) hart0_gpr_mem_server;
 
 `ifdef ISA_F
    // FPR access
-   interface MemoryServer #(5,  FLEN)  hart0_fpr_mem_server;
+   interface Server #(DM_CPU_Req #(5,  FLEN), DM_CPU_Rsp #(FLEN)) hart0_fpr_mem_server;
 `endif
 
    // CSR access
-   interface MemoryServer #(12, XLEN)  hart0_csr_mem_server;
+   interface Server #(DM_CPU_Req #(12, XLEN), DM_CPU_Rsp #(XLEN)) hart0_csr_mem_server;
 `endif
 
 endinterface

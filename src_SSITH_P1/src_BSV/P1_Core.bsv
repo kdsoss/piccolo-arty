@@ -9,7 +9,7 @@ package P1_Core;
 //    - Piccolo CPU, including
 //        - Near_Mem (ICache and DCache)
 //        - Near_Mem_IO (Timer, Software-interrupt, and other mem-mapped-locations)
-//        - External interrupt request line
+//        - External interrupt request lines
 //        - 2 x AXI4 Master interfaces (from DM and ICache, and from DCache)
 //    - RISC-V Debug Module (DM)
 //    - JTAG TAP interface for DM
@@ -18,6 +18,7 @@ package P1_Core;
 // ================================================================
 // BSV library imports
 
+import Vector        :: *;
 import FIFO          :: *;
 import GetPut        :: *;
 import ClientServer  :: *;
@@ -28,24 +29,27 @@ import Bus           :: *;
 // BSV additional libs
 
 import GetPut_Aux :: *;
+import Semi_FIFOF :: *;
 
 // ================================================================
 // Project imports
+
+import SoC_Map  :: *;
 
 // The basic core
 import Core_IFC :: *;
 import Core     :: *;
 
-// Main Fabric
-import AXI4_Types   :: *;
-import AXI4_Fabric  :: *;
-import Fabric_Defs  :: *;
+// External interrupt request interface
+import PLIC :: *;    // for PLIC_Source_IFC type which is exposed at P2_Core interface
 
-// 2x1 AXI4 fabric to mux IMem and Debug Module masters into a single master
-import IMem_DM_Mux_Fabric :: *;
+// Main Fabric
+import AXI4         :: *;
+import Fabric_Defs  :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info :: *;
+import AXI4_Stream ::*;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -62,23 +66,25 @@ interface P1_Core_IFC;
    // ----------------------------------------------------------------
    // Core CPU interfaces
 
-   // CPU IMem and DM to Fabric master interface
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master0;
+   // CPU IMem to Fabric master interface
+   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master0;
 
-   // CPU DMem to Fabric master interface
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master1;
+   // CPU DMem (incl. I/O) to Fabric master interface
+   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master1;
 
-   // External interrupts
-   (* always_ready, always_enabled *)
-   method Action cpu_external_interrupt (Bool req);
+   // External interrupt sources
+   (* always_ready, always_enabled, prefix="" *)
+   method  Action interrupt_reqs ((* port="cpu_external_interrupt_req" *) Bit #(N_External_Interrupt_Sources)  reqs);
 
 `ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------
-   // Optional Tandem Verifier interface output tuples (n,vb),
-   // where 'vb' is a vector of bytes
-   // with relevant bytes in locations [0]..[n-1]
+   // Optional Tandem Verifier interface.  The data signal is
+   // packed output tuples (n,vb),/ where 'vb' is a vector of
+   // bytes with relevant bytes in locations [0]..[n-1]
 
-   interface Get #(Info_CPU_to_Verifier)  tv_verifier_info_get;
+      interface AXI4_Stream_Master_IFC #(Wd_SId, Wd_SDest, Wd_SData, Wd_SUser)  tv_verifier_info_tx;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
@@ -96,15 +102,11 @@ endinterface
 (* synthesize *)
 module mkP1_Core (P1_Core_IFC);
 
-   // CPU + Debug module
-   Core_IFC::Core_IFC  core <- mkCore;
+   // Core: CPU + Near_Mem_IO (CLINT) + PLIC + Debug module (optional) + TV (optional)
+   Core_IFC::Core_IFC #(N_External_Interrupt_Sources)  core <- mkCore;
 
    // ================================================================
    // Tie-offs (not used in SSITH GFE)
-
-   // CPU Back-door slave interface from fabric
-   AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) axi_master_stub = dummy_AXI4_Master_ifc;
-   mkConnection (axi_master_stub, core.cpu_slave);
 
    // Set core's verbosity
    rule rl_never (False);
@@ -130,21 +132,6 @@ module mkP1_Core (P1_Core_IFC);
       let tmp <- core.dm_ndm_reset_req_get.get;
       rg_once <= False;
    endrule
-
-   // ================================================================
-   // Merge IMem and Debug Module AXI4 Masters
-   // since Piccolo uses 3 masters (IMem, DMem and Debug Module)
-   // but SSITH GFE only has 2 masters
-
-`ifdef INCLUDE_GDB_CONTROL
-   Fabric_2x1_IFC  fabric_2x1 <- mkFabric_2x1;
-
-   mkConnection (core.cpu_imem_master, fabric_2x1.v_from_masters [0]);
-   mkConnection (core.dm_master,       fabric_2x1.v_from_masters [1]);
-   let imem_dm_master = fabric_2x1.v_to_slaves [0];
-`else
-   let imem_dm_master = core.cpu_imem_master;
-`endif
 
    // ================================================================
 `ifdef INCLUDE_GDB_CONTROL
@@ -208,33 +195,40 @@ module mkP1_Core (P1_Core_IFC);
 
 `endif
 
+`ifdef INCLUDE_TANDEM_VERIF
+   let tv_xactor <- mkTV_Xactor;
+   mkConnection (core.tv_verifier_info_get, tv_xactor.tv_in);
+`endif
+
    // ================================================================
    // INTERFACE
 
    // CPU IMem to Fabric master interface
-   interface AXI4_Master_IFC master0 = imem_dm_master;
+   interface AXI4_Master_IFC master0 = core.cpu_imem_master;
 
    // CPU DMem to Fabric master interface
    interface AXI4_Master_IFC master1 = core.cpu_dmem_master;
 
    // External interrupts
-   method Action cpu_external_interrupt (req) = core.cpu_external_interrupt_req (req);
+   method  Action interrupt_reqs (Bit #(N_External_Interrupt_Sources) reqs);
+      for (Integer j = 0; j < valueOf (N_External_Interrupt_Sources); j = j + 1) begin
+	 Bool req_j = unpack (reqs [j]);
+	 core.core_external_interrupt_sources [j].m_interrupt_req (req_j);
+      end
+   endmethod
 
 `ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------
-   // Optional Tandem Verifier interface output tuples (n,vb),
-   // where 'vb' is a vector of bytes
-   // with relevant bytes in locations [0]..[n-1]
+   // Optional Tandem Verifier interface.  The data signal is
+   // packed output tuples (n,vb),/ where 'vb' is a vector of
+   // bytes with relevant bytes in locations [0]..[n-1]
 
-   interface Get tv_verifier_info_get = core.tv_verifier_info_get;
+   interface tv_verifier_info_tx = tv_xactor.axi_out;
 `endif
 
 `ifdef INCLUDE_GDB_CONTROL
    // ----------------------------------------------------------------
    // Optional Debug Module interfaces
-
-   // ----------------
-   // TODO: JTAG interface
 
 `ifdef JTAG_TAP
    interface JTAG_IFC jtag = jtagtap.jtag;
@@ -242,6 +236,51 @@ module mkP1_Core (P1_Core_IFC);
 
 `endif
 endmodule
+
+// ================================================================
+// The TV to AXI4 Stream transactor
+
+`ifdef INCLUDE_TANDEM_VERIF
+
+// ================================================================
+// TV AXI4 Stream Parameters
+
+typedef SizeOf #(Info_CPU_to_Verifier)Wd_SData;
+typedef 0 Wd_SDest;
+typedef 0 Wd_SUser;
+typedef 0 Wd_SId;
+
+// ================================================================
+
+interface TV_Xactor;
+   interface Put #(Info_CPU_to_Verifier) tv_in;
+   interface AXI4_Stream_Master_IFC #(Wd_SId, Wd_SDest, Wd_SData, Wd_SUser)  axi_out;
+endinterface
+
+function AXI4_Stream #(Wd_SId, Wd_SDest, Wd_SData, Wd_SUser) fn_TVToAxiS (Info_CPU_to_Verifier x);
+   return AXI4_Stream {tid: ?,
+		       tdata: pack(x),
+		       tstrb: '1,
+		       tkeep: '1,
+		       tlast: True,
+		       tdest: ?,
+		       tuser: ? };
+endfunction
+
+(*synthesize*)
+module mkTV_Xactor (TV_Xactor);
+   AXI4_Stream_Master_Xactor_IFC #(Wd_SId, Wd_SDest, Wd_SData, Wd_SUser)
+                               tv_xactor <- mkAXI4_Stream_Master_Xactor;
+
+   interface Put tv_in;
+      method Action put(x);
+	 toPut(tv_xactor.i_stream).put(fn_TVToAxiS(x));
+      endmethod
+   endinterface
+
+   interface axi_out = tv_xactor.axi_side;
+endmodule
+`endif
 
 // ================================================================
 

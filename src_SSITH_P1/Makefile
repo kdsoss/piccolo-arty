@@ -8,7 +8,7 @@ help:
 	@echo '                           NOTE: needs Bluespec bsc compiler'
 	@echo ''
 	@echo '    make  clean        Remove intermediate build-files'
-	@echo '    make  full_clean   Restore to pristine state (pre-building anything)'
+	@echo '    make  full_clean   Restore this directory to pristine state'
 
 .PHONY: all
 all: compile
@@ -30,16 +30,24 @@ BSC_COMPILATION_FLAGS += \
 	-D Near_Mem_Caches    \
 	-D FABRIC64    \
 	-D INCLUDE_GDB_CONTROL \
+	-D INCLUDE_TANDEM_VERIF \
+	-D BRVF_TRACE \
 	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP
 
 # ================================================================
 # Search path for bsc for .bsv files
 
-CORE_DIRS = $(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
+CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
 
 TESTBENCH_DIRS  = $(REPO)/src_Testbench/Fabrics/AXI4
 
-BSC_PATH = -p $(CORE_DIRS):src_BSV:$(TESTBENCH_DIRS):+:%/Libraries/TLM3:%/Libraries/Axi:%/Libraries/Axi4
+# XXX
+# Specify the path to the BlueStuff library (https://github.com/CTSRD-CHERI/BlueStuff)
+# What is the best way to distribute this code?
+# XXX
+AXI_DIRS = $(REPO)/../BlueStuff/AXI:$(REPO)/../BlueStuff/BlueBasics:$(REPO)/../BlueStuff/
+
+BSC_PATH = -p $(CORE_DIRS):src_BSV:$(TESTBENCH_DIRS):$(AXI_DIRS):+
 
 # ----------------
 # Top-level file and module
@@ -50,8 +58,15 @@ TOPMODULE = mkP1_Core
 # ================================================================
 # bsc compilation flags
 
+# XXX
+# Using '-no-show-timestamps' with
+# Bluespec Compiler, version 2017.07.A (build 1da80f1, 2017-07-21)
+# results in
+# Error: Command line: (S0008)
+#   Unrecognized flag: -no-show-timestamps
+# XXX
 BSC_COMPILATION_FLAGS += \
-	-keep-fires -aggressive-conditions -no-warn-action-shadowing    \
+	-keep-fires -aggressive-conditions -no-warn-action-shadowing \
 	-suppress-warnings G0020    \
 	+RTS -K128M -RTS  -show-range-conflict
 

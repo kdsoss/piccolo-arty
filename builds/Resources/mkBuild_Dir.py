@@ -270,20 +270,17 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
         arch_flags = arch_flags + "  -D ISA_A"
         arch_flags = arch_flags + "  -D ISA_F"
         arch_flags = arch_flags + "  -D ISA_D"
+        arch_flags = arch_flags + "  -D ISA_FD_DIV"
     else:
         if ("I" in arch_std): arch_flags = arch_flags + "  -D ISA_I"
         if ("I" in arch_std): arch_flags = arch_flags + "  -D ISA_M"
         if ("A" in arch_std): arch_flags = arch_flags + "  -D ISA_A"
         if ("F" in arch_std): arch_flags = arch_flags + "  -D ISA_F"
         if ("D" in arch_std): arch_flags = arch_flags + "  -D ISA_D"
+        if (("F" in arch_std) or ("D" in arch_std)): arch_flags = arch_flags + "  -D ISA_FD_DIV"
     if ("C" in arch_std): arch_flags = arch_flags + "  -D ISA_C"
     arch_flags += "".join(["  -D ISA_" + non_std_ext for non_std_ext in arch_split[1:]])
     fo.write ("\t{0}  \\\n".format (arch_flags.lstrip()))
-
-    # TODO: Uncomment after floating-point DIV is working
-    # HW implementation choice for floating point divide
-    #if (("F" in arch) or ("D" in arch)):
-    #   fo.write ("\t-D ISA_FD_DIV    \\\n")
 
     # Bluespec HW implementation choice for shifter
     # fo.write ("\t-D SHIFT_NONE    \\\n")

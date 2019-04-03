@@ -32,27 +32,27 @@ import GetPut        :: *;
 import ClientServer  :: *;
 import Connectable   :: *;
 import Memory        :: *;
+import Vector        :: *;
 
 // ----------------
 // BSV additional libs
 
 import Cur_Cycle   :: *;
 import GetPut_Aux  :: *;
+import Routable    :: *;
+import AXI4        :: *;
 
 // ================================================================
 // Project imports
 
-// Main fabric
-import AXI4_Types  :: *;
-import AXI4_Fabric :: *;
-
 import Fabric_Defs :: *;
 import SoC_Map     :: *;
-import SoC_Fabric  :: *;
 
 // SoC components (CPU, mem, and IPs)
+
 import Core_IFC :: *;
 import Core     :: *;
+import PLIC     :: *;    // For interface to PLIC interrupt sources, in Core_IFC
 
 import Boot_ROM       :: *;
 import Mem_Controller :: *;
@@ -128,11 +128,8 @@ module mkSoC_Top (SoC_Top_IFC);
    // SoC address map specifying base and limit for memories, IPs, etc.
    SoC_Map_IFC soc_map <- mkSoC_Map;
 
-   // CPU + Debug module
-   Core_IFC  core <- mkCore;
-
-   // SoC Fabric
-   Fabric_AXI4_IFC  fabric <- mkFabric_AXI4;
+   // Core: CPU + Near_Mem_IO (CLINT) + PLIC + Debug module (optional) + TV (optional)
+   Core_IFC #(N_External_Interrupt_Sources)  core <- mkCore;
 
    // SoC Boot ROM
    Boot_ROM_IFC  boot_rom <- mkBoot_ROM;
@@ -152,64 +149,76 @@ module mkSoC_Top (SoC_Top_IFC);
    // SoC fabric master connections
    // Note: see 'SoC_Map' for 'master_num' definitions
 
+   Vector#(Num_Masters, AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                            Wd_User, Wd_User, Wd_User,
+                                            Wd_User, Wd_User))
+                                            master_vector = newVector;
+
    // CPU IMem master to fabric
-   mkConnection (core.cpu_imem_master,  fabric.v_from_masters [imem_master_num]);
+   master_vector[imem_master_num] = core.cpu_imem_master;
 
    // CPU DMem master to fabric
-   mkConnection (core.cpu_dmem_master,  fabric.v_from_masters [dmem_master_num]);
-
-`ifdef INCLUDE_GDB_CONTROL
-   // Debug Module system buf interface (mem interface) to fabric
-   mkConnection (core.dm_master,  fabric.v_from_masters [debug_module_master_num]);
-`else
-   AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) dummy_dm_master = dummy_AXI4_Master_ifc;
-   mkConnection (dummy_dm_master,  fabric.v_from_masters [debug_module_master_num]);
-`endif
+   master_vector[dmem_master_num] = core.cpu_dmem_master;
 
 `ifdef INCLUDE_ACCEL0
    // accel_aes0 to fabric
-   mkConnection (accel_aes0.master,  fabric.v_from_masters [accel0_master_num]);
+   master_vector[accel0_master_num] = accel_aes0.master;
 `endif
 
    // ----------------
    // SoC fabric slave connections
    // Note: see 'SoC_Map' for 'slave_num' definitions
 
-   // Fabric to Boot ROM
-   mkConnection (fabric.v_to_slaves [boot_rom_slave_num], boot_rom.slave);
+   Vector#(Num_Slaves, AXI4_Slave_Synth #(Wd_SId, Wd_Addr, Wd_Data,
+                                          Wd_User, Wd_User, Wd_User,
+                                          Wd_User, Wd_User))
+                                          slave_vector = newVector;
+   Vector#(Num_Slaves, Range#(Wd_Addr))   route_vector = newVector;
 
-   // Fabric to CPU's Near_Mem back door
-   mkConnection (fabric.v_to_slaves [tcm_back_door_slave_num],   core.cpu_slave);
+   // Fabric to Boot ROM
+   slave_vector[boot_rom_slave_num] = boot_rom.slave;
+   route_vector[boot_rom_slave_num] = soc_map.m_boot_rom_addr_range;
 
    // Fabric to Mem Controller
-   mkConnection (fabric.v_to_slaves [mem0_controller_slave_num], mem0_controller.slave);
+   slave_vector[mem0_controller_slave_num] = mem0_controller.slave;
+   route_vector[mem0_controller_slave_num] = soc_map.m_mem0_controller_addr_range;
 
    // Fabric to UART0
-   mkConnection (fabric.v_to_slaves [uart0_slave_num],           uart0.slave);
+   slave_vector[uart0_slave_num] = uart0.slave;
+   route_vector[uart0_slave_num] = soc_map.m_uart0_addr_range;
 
 `ifdef INCLUDE_ACCEL0
    // Fabric to accel_aes0
-   mkConnection (fabric.v_to_slaves [accel0_slave_num],          accel_aes0.slave);
+   slave_vector[accel0_slave_num] = accel_aes0.slave);
+   route_vector[accel0_slave_num] = soc_map.m_accel0_addr_range;
 `endif
 
 `ifdef HTIF_MEMORY
    AXI4_Slave_IFC#(Wd_Id, Wd_Addr, Wd_Data, Wd_User) htif <- mkAxi4LRegFile(bytes_per_htif);
 
-   mkConnection (fabric.v_to_slaves [htif_slave_num], htif);
+   slave_vector[htif_slave_num] = htif;
+   route_vector[htif_slave_num] = soc_map.m_htif_addr_range;
 `endif
+
+   // SoC Fabric
+   let bus <- mkAXI4Bus_Synth (routeFromMappingTable(route_vector),
+                               master_vector, slave_vector);
 
    // ----------------
    // Connect interrupt sources for CPU external interrupt request inputs.
-   // Currently only one source of interrupts: UART
-   // Future: PLIC
 
    // Reg #(Bool) rg_intr_prev <- mkReg (False);    // For debugging only
 
    (* fire_when_enabled, no_implicit_conditions *)
-   rule rl_connect_external_interrupt_request;
+   rule rl_connect_external_interrupt_requests;
       Bool intr = uart0.intr;
 
-      core.cpu_external_interrupt_req (intr);
+      // UART
+      core.core_external_interrupt_sources [irq_num_uart0].m_interrupt_req (intr);
+
+      // Tie off remaining interrupt request lines (1..N)
+      for (Integer j = 1; j < valueOf (N_External_Interrupt_Sources); j = j + 1)
+	 core.core_external_interrupt_sources [j].m_interrupt_req (False);
 
       /* For debugging only
       if ((! rg_intr_prev) && intr)
@@ -229,7 +238,7 @@ module mkSoC_Top (SoC_Top_IFC);
       mem0_controller.server_reset.request.put (?);
       uart0.server_reset.request.put (?);
 
-      fabric.reset;
+      //fabric.reset;
 
       rg_state <= SOC_RESETTING;
 
@@ -313,13 +322,14 @@ module mkSoC_Top (SoC_Top_IFC);
       let uart0_rsp           <- uart0.server_reset.response.get;
 
       // Initialize address maps of slave IPs
-      boot_rom.set_addr_map (soc_map.m_boot_rom_addr_base,
-			     soc_map.m_boot_rom_addr_lim);
+      boot_rom.set_addr_map (rangeBase(soc_map.m_boot_rom_addr_range),
+			     rangeTop(soc_map.m_boot_rom_addr_range));
 
-      mem0_controller.set_addr_map (soc_map.m_mem0_controller_addr_base,
-				    soc_map.m_mem0_controller_addr_lim);
+      mem0_controller.set_addr_map (rangeBase(soc_map.m_mem0_controller_addr_range),
+				    rangeTop(soc_map.m_mem0_controller_addr_range));
 
-      uart0.set_addr_map (soc_map.m_uart0_addr_base, soc_map.m_uart0_addr_lim);
+      uart0.set_addr_map (rangeBase(soc_map.m_uart0_addr_range),
+                          rangeTop(soc_map.m_uart0_addr_range));
 
       rg_state <= SOC_IDLE;
 
@@ -332,14 +342,14 @@ module mkSoC_Top (SoC_Top_IFC);
       if (verbosity != 0) begin
 	 $display ("  SoC address map:");
 	 $display ("  Boot ROM:        0x%0h .. 0x%0h",
-		   soc_map.m_boot_rom_addr_base,
-		   soc_map.m_boot_rom_addr_lim);
+		   rangeBase(soc_map.m_boot_rom_addr_range),
+		   rangeTop(soc_map.m_boot_rom_addr_range));
 	 $display ("  Mem0 Controller: 0x%0h .. 0x%0h",
-		   soc_map.m_mem0_controller_addr_base,
-		   soc_map.m_mem0_controller_addr_lim);
+		   rangeBase(soc_map.m_mem0_controller_addr_range),
+		   rangeTop(soc_map.m_mem0_controller_addr_range));
 	 $display ("  UART0:           0x%0h .. 0x%0h",
-		   soc_map.m_uart0_addr_base,
-		   soc_map.m_uart0_addr_lim);
+		   rangeBase(soc_map.m_uart0_addr_range),
+		   rangeTop(soc_map.m_uart0_addr_range));
       end
    endrule
 

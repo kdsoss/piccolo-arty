@@ -33,6 +33,8 @@ import Connectable  :: *;
 
 import Cur_Cycle  :: *;
 import GetPut_Aux :: *;
+import Routable   :: *;
+import AXI4       :: *;
 
 // ================================================================
 // Project imports
@@ -40,8 +42,6 @@ import GetPut_Aux :: *;
 import ISA_Decls    :: *;
 import Near_Mem_IFC :: *;
 import MMU_Cache    :: *;
-import AXI4_Types   :: *;
-import Near_Mem_IO  :: *;
 import Fabric_Defs  :: *;
 
 // System address map and pc_reset value
@@ -72,10 +72,8 @@ module mkNear_Mem (Near_Mem_IFC);
    // Reset response queue
    FIFOF #(Token) f_reset_rsps <- mkFIFOF;
 
-   MMU_Cache_IFC  icache <- mkMMU_Cache (False);
-   MMU_Cache_IFC  dcache <- mkMMU_Cache (True);
-
-   Near_Mem_IO_IFC  near_mem_io <- mkNear_Mem_IO;
+   MMU_ICache_IFC  icache <- mkMMU_ICache;
+   MMU_DCache_IFC  dcache <- mkMMU_DCache;
 
    // ----------------------------------------------------------------
    // BEHAVIOR
@@ -87,7 +85,6 @@ module mkNear_Mem (Near_Mem_IFC);
    rule rl_reset (rg_state == STATE_RESET);
       icache.server_reset.request.put (?);
       dcache.server_reset.request.put (?);
-      near_mem_io.server_reset.request.put (?);
       rg_state <= STATE_RESETTING;
 
       if (cfg_verbosity > 1)
@@ -97,10 +94,6 @@ module mkNear_Mem (Near_Mem_IFC);
    rule rl_reset_complete (rg_state == STATE_RESETTING);
       let _dummy1 <- icache.server_reset.response.get;
       let _dummy2 <- dcache.server_reset.response.get;
-      let _dummy3 <- near_mem_io.server_reset.response.get;
-
-      near_mem_io.set_addr_map (soc_map.m_near_mem_io_addr_base,
-				soc_map.m_near_mem_io_addr_lim);
 
       f_reset_rsps.enq (?);
       rg_state <= STATE_READY;
@@ -108,17 +101,6 @@ module mkNear_Mem (Near_Mem_IFC);
       if (cfg_verbosity > 1)
 	 $display ("%0d: Near_Mem.rl_reset_complete", cur_cycle);
    endrule
-
-   // ----------------
-   // Stub out icache's near_mem_io interface
-
-   Server #(Near_Mem_IO_Req, Near_Mem_IO_Rsp) ss = server_stub;
-   mkConnection (icache.near_mem_io_client, ss);
-
-   // ----------------
-   // Connect dcache's near_mem_io interface to near_mem_io
-
-   mkConnection (dcache.near_mem_io_client, near_mem_io.server);
 
    // ----------------------------------------------------------------
    // INTERFACE
@@ -275,22 +257,6 @@ module mkNear_Mem (Near_Mem_IFC);
       icache.tlb_flush;
       dcache.tlb_flush;
    endmethod
-
-   // ----------------
-   // Interrupts from nearby memory-mapped IO (timer, SIP, ...)
-
-   // Timer interrupt
-   // True/False = set/clear interrupt-pending in CPU's MTIP
-   interface Get  get_timer_interrupt_req = near_mem_io.get_timer_interrupt_req;
-
-   // Software interrupt
-   interface Get  get_sw_interrupt_req = near_mem_io.get_sw_interrupt_req;
-
-   // ----------------
-   // Back-door slave interface from fabric into Near_Mem
-   // There is no back-door into the caches.
-
-   interface near_mem_slave = dummy_AXI4_Slave_ifc;
 endmodule
 
 // ================================================================

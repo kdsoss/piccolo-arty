@@ -19,40 +19,43 @@ import FIFOF         :: *;
 import GetPut        :: *;
 import ClientServer  :: *;
 import Connectable   :: *;
-import Memory        :: *;
 
 // ----------------
 // BSV additional libs
 
 import Semi_FIFOF  :: *;
 import GetPut_Aux  :: *;
+import SourceSink  :: *;
+import AXI4        :: *;
 
 // ================================================================
 // Project imports
 
-import ISA_Decls  :: *;
-import TV_Info    :: *;
+import ISA_Decls      :: *;
+import DM_CPU_Req_Rsp :: *;
+import TV_Info        :: *;
 
-import AXI4_Types   :: *;
 import Fabric_Defs  :: *;
 
 // ================================================================
 // DM-to-memory tap
 
 interface DM_Mem_Tap_IFC;
-   interface AXI4_Slave_IFC  #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  slave;
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  master;
-   interface Get #(Trace_Data)                                    trace_data_out;
+   interface AXI4_Slave_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) slave;
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master;
+   interface Get #(Trace_Data) trace_data_out;
 endinterface
 
 (* synthesize *)
 module mkDM_Mem_Tap (DM_Mem_Tap_IFC);
 
    // Transactor facing DM
-   AXI4_Slave_Xactor_IFC  #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) slave_xactor  <- mkAXI4_Slave_Xactor;
+   let slave_xactor  <- mkAXI4_Slave_Xactor;
 
    // Transactor facing memory bus
-   AXI4_Master_Xactor_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master_xactor <- mkAXI4_Master_Xactor;
+   let master_xactor <- mkAXI4_Master_Xactor;
 
    // Tap output
    FIFOF #(Trace_Data)  f_trace_data <- mkFIFOF;
@@ -62,15 +65,12 @@ module mkDM_Mem_Tap (DM_Mem_Tap_IFC);
 
    // Snoop write requests
    rule write_reqs;
-      let wr_addr = slave_xactor.o_wr_addr.first;
-      slave_xactor.o_wr_addr.deq;
-
-      let wr_data = slave_xactor.o_wr_data.first;
-      slave_xactor.o_wr_data.deq;
+      let wr_addr <- get(slave_xactor.master.aw);
+      let wr_data <- get(slave_xactor.master.w);
 
       // Pass-through
-      master_xactor.i_wr_addr.enq (wr_addr);
-      master_xactor.i_wr_data.enq (wr_data);
+      master_xactor.slave.aw.put(wr_addr);
+      master_xactor.slave.w.put(wr_data);
 
       // Tap
       Bit #(64) paddr = ?;
@@ -81,7 +81,7 @@ module mkDM_Mem_Tap (DM_Mem_Tap_IFC);
  	 stval = (wr_data.wdata & 'h_FFFF_FFFF);
       end
       else if (wr_data.wstrb == 'hf0) begin
-	 paddr = zeroExtend (wr_addr.awaddr + 4);
+	 paddr = zeroExtend (wr_addr.awaddr);
 	 stval = ((wr_data.wdata >> 32) & 'h_FFFF_FFFF);
       end
       else
@@ -95,17 +95,17 @@ module mkDM_Mem_Tap (DM_Mem_Tap_IFC);
    endrule
 
    // Read requests, write responses and read responses are not snooped
-   mkConnection (slave_xactor.o_rd_addr, master_xactor.i_rd_addr);
-   mkConnection (slave_xactor.i_wr_resp, master_xactor.o_wr_resp);
-   mkConnection (slave_xactor.i_rd_data, master_xactor.o_rd_data);
+   mkConnection (slave_xactor.master.ar, master_xactor.slave.ar);
+   mkConnection (slave_xactor.master.b, master_xactor.slave.b);
+   mkConnection (slave_xactor.master.r, master_xactor.slave.r);
 
    // ================================================================
    // INTERFACE
 
    // Facing DM
-   interface slave  = slave_xactor.axi_side;
+   interface slave  = slave_xactor.slaveSynth;
    // Facing bus
-   interface master = master_xactor.axi_side;
+   interface master = master_xactor.masterSynth;
    // Tap towards verifier
    interface Get trace_data_out = toGet (f_trace_data);
 
@@ -115,21 +115,21 @@ endmodule: mkDM_Mem_Tap
 // DM-to-CPU GPR tap (for writes to GPRs)
 
 interface DM_GPR_Tap_IFC;
-   interface MemoryClient #(5, XLEN)  client;
-   interface MemoryServer #(5, XLEN)  server;
+   interface Client #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN))  client;
+   interface Server #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN))  server;
    interface Get #(Trace_Data)        trace_data_out;
 endinterface
 
 (* synthesize *)
 module mkDM_GPR_Tap (DM_GPR_Tap_IFC);
    // req from DM
-   FIFOF #(MemoryRequest #(5, XLEN)) f_req_in     <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(5,  XLEN)) f_req_in     <- mkFIFOF;
    // req to CPU
-   FIFOF #(MemoryRequest #(5, XLEN)) f_req_out    <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(5,  XLEN)) f_req_out    <- mkFIFOF;
    // resp CPU->DM
-   FIFOF #(MemoryResponse #(XLEN))   f_rsp        <- mkFIFOF;
+   FIFOF #(DM_CPU_Rsp #(XLEN))     f_rsp        <- mkFIFOF;
    // Tap to TV
-   FIFOF #(Trace_Data)               f_trace_data <- mkFIFOF;
+   FIFOF #(Trace_Data)             f_trace_data <- mkFIFOF;
 
    rule request;
       let req <- pop (f_req_in);
@@ -145,8 +145,8 @@ module mkDM_GPR_Tap (DM_GPR_Tap_IFC);
       end
    endrule
 
-   interface MemoryClient client = toGPClient (f_req_out, f_rsp);
-   interface MemoryServer server = toGPServer (f_req_in,  f_rsp);
+   interface Client client = toGPClient (f_req_out, f_rsp);
+   interface Server server = toGPServer (f_req_in,  f_rsp);
 
    interface Get trace_data_out = toGet (f_trace_data);
 endmodule: mkDM_GPR_Tap
@@ -157,21 +157,21 @@ endmodule: mkDM_GPR_Tap
 `ifdef ISA_F_OR_D
 
 interface DM_FPR_Tap_IFC;
-   interface MemoryClient #(5, FLEN)  client;
-   interface MemoryServer #(5, FLEN)  server;
-   interface Get #(Trace_Data)        trace_data_out;
+   interface Client #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN)) client;
+   interface Server #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN)) server;
+   interface Get #(Trace_Data) trace_data_out;
 endinterface
 
 (* synthesize *)
 module mkDM_FPR_Tap (DM_FPR_Tap_IFC);
    // req from DM
-   FIFOF #(MemoryRequest #(5, FLEN)) f_req_in     <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(5,  XLEN)) f_req_in     <- mkFIFOF;
    // req to CPU
-   FIFOF #(MemoryRequest #(5, FLEN)) f_req_out    <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(5,  XLEN)) f_req_out    <- mkFIFOF;
    // resp CPU->DM
-   FIFOF #(MemoryResponse #(FLEN))   f_rsp        <- mkFIFOF;
+   FIFOF #(DM_CPU_Rsp #(XLEN))     f_rsp        <- mkFIFOF;
    // Tap to TV
-   FIFOF #(Trace_Data)               f_trace_data <- mkFIFOF;
+   FIFOF #(Trace_Data)             f_trace_data <- mkFIFOF;
 
    rule request;
       let req <- pop (f_req_in);
@@ -187,8 +187,8 @@ module mkDM_FPR_Tap (DM_FPR_Tap_IFC);
       end
    endrule
 
-   interface MemoryClient client = toGPClient (f_req_out, f_rsp);
-   interface MemoryServer server = toGPServer (f_req_in,  f_rsp);
+   interface Client client = toGPClient (f_req_out, f_rsp);
+   interface Server server = toGPServer (f_req_in,  f_rsp);
 
    interface Get trace_data_out = toGet (f_trace_data);
 endmodule: mkDM_FPR_Tap
@@ -199,21 +199,21 @@ endmodule: mkDM_FPR_Tap
 // DM-to-CPU CSR tap (for writes to CSRs)
 
 interface DM_CSR_Tap_IFC;
-   interface MemoryClient #(12, XLEN)  client;
-   interface MemoryServer #(12, XLEN)  server;
-   interface Get #(Trace_Data)         trace_data_out;
+   interface Client #(DM_CPU_Req #(12,  XLEN), DM_CPU_Rsp #(XLEN)) client;
+   interface Server #(DM_CPU_Req #(12,  XLEN), DM_CPU_Rsp #(XLEN)) server;
+   interface Get #(Trace_Data)  trace_data_out;
 endinterface
 
 (* synthesize *)
 module mkDM_CSR_Tap (DM_CSR_Tap_IFC);
    // req from DM
-   FIFOF #(MemoryRequest #(12, XLEN)) f_req_in     <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(12,  XLEN)) f_req_in     <- mkFIFOF;
    // req to CPU
-   FIFOF #(MemoryRequest #(12, XLEN)) f_req_out    <- mkFIFOF;
+   FIFOF #(DM_CPU_Req #(12,  XLEN)) f_req_out    <- mkFIFOF;
    // resp CPU->DM
-   FIFOF #(MemoryResponse #(XLEN))    f_rsp        <- mkFIFOF;
+   FIFOF #(DM_CPU_Rsp #(XLEN))      f_rsp        <- mkFIFOF;
    // Tap to TV
-   FIFOF #(Trace_Data)                f_trace_data <- mkFIFOF;
+   FIFOF #(Trace_Data)              f_trace_data <- mkFIFOF;
 
    rule request;
       let req <- pop (f_req_in);
@@ -228,8 +228,8 @@ module mkDM_CSR_Tap (DM_CSR_Tap_IFC);
       end
    endrule
 
-   interface MemoryClient client = toGPClient (f_req_out, f_rsp);
-   interface MemoryServer server = toGPServer (f_req_in,  f_rsp);
+   interface Client client = toGPClient (f_req_out, f_rsp);
+   interface Server server = toGPServer (f_req_in,  f_rsp);
 
    interface Get trace_data_out = toGet (f_trace_data);
 endmodule: mkDM_CSR_Tap

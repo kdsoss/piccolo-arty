@@ -3,14 +3,22 @@
 package Core;
 
 // ================================================================
-// This package defines the Core module that combines:
-// - the core RISC-V CPU
-// - Tandem-Verification (TV) logic (optional: INCLUDE_TANDEM_VERIF)
-// - a RISC-V Debug Module          (optional: INCLUDE_GDB_CONTROL)
+// This package defines:
+//     Core_IFC
+//     mkCore #(Core_IFC)
+//
+// mkCore instantiates:
+//     - mkCPU (the RISC-V CPU)
+//     - mkNear_Mem_IO_AXI4
+//     - mkPLIC_16_2_7
+//     - mkTV_Encode          (Tandem-Verification logic, optional: INCLUDE_TANDEM_VERIF)
+//     - mkDebug_Module       (RISC-V Debug Module, optional: INCLUDE_GDB_CONTROL)
+// and connects them all up.
 
 // ================================================================
 // BSV library imports
 
+import Vector        :: *;
 import FIFOF         :: *;
 import GetPut        :: *;
 import ClientServer  :: *;
@@ -19,21 +27,28 @@ import Connectable   :: *;
 // ----------------
 // BSV additional libs
 
+import Cur_Cycle  :: *;
 import GetPut_Aux :: *;
+import Routable   :: *;
+import AXI4       :: *;
 
 // ================================================================
 // Project imports
 
 // Main fabric
-import AXI4_Types  :: *;
+import Fabric_Defs  :: *;    // for Wd_Id, Wd_Addr, Wd_Data, Wd_User
+import SoC_Map      :: *;
 
 `ifdef INCLUDE_GDB_CONTROL
 import Debug_Module     :: *;
 `endif
 
-import CPU_IFC  :: *;
-import CPU      :: *;
-import Core_IFC :: *;
+import Core_IFC          :: *;
+import CPU_IFC           :: *;
+import CPU               :: *;
+import Near_Mem_IO_AXI4  :: *;
+import PLIC              :: *;
+import PLIC_16_2_7       :: *;
 
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info   :: *;
@@ -51,13 +66,25 @@ import TV_Taps :: *;
 // The Core module
 
 (* synthesize *)
-module mkCore (Core_IFC);
+module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // ================================================================
    // STATE
 
-   // The CPU and queues for reset reqs and rsps from SoC
+   // System address map
+   SoC_Map_IFC  soc_map  <- mkSoC_Map;
+
+   // The CPU
    CPU_IFC  cpu <- mkCPU;
+
+   // AXI4 shim for the default slave
+   let shim <- mkAXI4ShimUGSizedFIFOF4;
+
+   // Near_Mem_IO
+   Near_Mem_IO_AXI4_IFC  near_mem_io <- mkNear_Mem_IO_AXI4;
+
+   // PLIC (Platform-Level Interrupt Controller)
+   PLIC_IFC_16_2_7  plic <- mkPLIC_16_2_7;
 
    // Reset requests from SoC and responses to SoC
    FIFOF #(Bit #(0)) f_reset_reqs <- mkFIFOF;
@@ -94,27 +121,42 @@ module mkCore (Core_IFC);
    rule rl_cpu_hart0_reset_from_soc_start;
       let req <- pop (f_reset_reqs);
 
-      // Reset the hart
-      cpu.hart0_server_reset.request.put (?);
+      cpu.hart0_server_reset.request.put (?);      // CPU
+      near_mem_io.server_reset.request.put (?);    // Near_Mem_IO
+      plic.server_reset.request.put (?);           // PLIC
+
 `ifdef INCLUDE_GDB_CONTROL
       // Remember the requestor, so we can respond to it
       f_reset_requestor.enq (reset_requestor_soc);
 `endif
+      $display ("%0d: Core.rl_cpu_hart0_reset_from_soc_start", cur_cycle);
    endrule
 
 `ifdef INCLUDE_GDB_CONTROL
    // Reset-hart0 from Debug Module
    rule rl_cpu_hart0_reset_from_dm_start;
       let req <- debug_module.hart0_get_reset_req.get;
-      // Reset the hart
-      cpu.hart0_server_reset.request.put (?);
+
+      cpu.hart0_server_reset.request.put (?);      // CPU
+      near_mem_io.server_reset.request.put (?);    // Near_Mem_IO
+      plic.server_reset.request.put (?);           // PLIC
+
       // Remember the requestor, so we can respond to it
       f_reset_requestor.enq (reset_requestor_dm);
+      $display ("%0d: Core.rl_cpu_hart0_reset_from_dm_start", cur_cycle);
    endrule
 `endif
 
    rule rl_cpu_hart0_reset_complete;
-      let rsp <- cpu.hart0_server_reset.response.get;
+      let rsp1 <- cpu.hart0_server_reset.response.get;      // CPU
+      let rsp2 <- near_mem_io.server_reset.response.get;    // Near_Mem_IO
+      let rsp3 <- plic.server_reset.response.get;           // PLIC
+
+      near_mem_io.set_addr_map (rangeBase(soc_map.m_near_mem_io_addr_range),
+			        rangeTop(soc_map.m_near_mem_io_addr_range));
+
+      plic.set_addr_map (rangeBase(soc_map.m_plic_addr_range),
+			 rangeTop(soc_map.m_plic_addr_range));
 
       Bit #(1) requestor = reset_requestor_soc;
 `ifdef INCLUDE_GDB_CONTROL
@@ -122,6 +164,8 @@ module mkCore (Core_IFC);
 `endif
       if (requestor == reset_requestor_soc)
 	 f_reset_rsps.enq (?);
+
+      $display ("%0d: Core.rl_cpu_hart0_reset_complete", cur_cycle);
    endrule
 
    // ================================================================
@@ -139,6 +183,7 @@ module mkCore (Core_IFC);
 
 `ifdef INCLUDE_GDB_CONTROL
 `ifdef INCLUDE_TANDEM_VERIF
+   // BEGIN SECTION: GDB and TV
    // ----------------------------------------------------------------
    // DM and TV both present. We instantiate 'taps' into connections
    // where the DM writes CPU GPRs, CPU FPRs, CPU CSRs, and main memory,
@@ -208,10 +253,11 @@ module mkCore (Core_IFC);
       f_trace_data_merged.enq(tmp);
    endrule
 
+   // END SECTION: GDB and TV
 `else
    // for ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------
-   // DM present, no TV
+   // BEGIN SECTION: GDB and no TV
 
    // Connect DM's GPR interface directly to CPU
    mkConnection (debug_module.hart0_gpr_mem_client, cpu.hart0_gpr_mem_server);
@@ -226,57 +272,129 @@ module mkCore (Core_IFC);
 
    // DM's bus master is directly the bus master
    let dm_master_local = debug_module.master;
+
+   // END SECTION: GDB and no TV
 `endif
    // for ifdef INCLUDE_TANDEM_VERIF
 
 `else
    // for ifdef INCLUDE_GDB_CONTROL
+   // BEGIN SECTION: no GDB
+
+   // No DM, so 'DM bus master' is dummy
+   let dm_master_local = culDeSac;
 
 `ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------
-   // TV present, no DM
+   // BEGIN SECTION: no GDB, TV
 
    // Connect CPU's TV out directly to TV encoder
    mkConnection (cpu.trace_data_out, tv_encode.trace_data_in);
+   // END SECTION: no GDB, TV
 `endif
-
 `endif
    // for ifdef INCLUDE_GDB_CONTROL
 
    // ================================================================
+   // Connect the local 2x3 fabric
+
+   // Masters on the local 2x3 fabric
+   Vector#(Num_Masters_2x3, AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                                Wd_User, Wd_User, Wd_User,
+                                                Wd_User, Wd_User))
+                                                master_vector = newVector;
+   master_vector[cpu_dmem_master_num]         = cpu.dmem_master;
+   master_vector[debug_module_sba_master_num] = dm_master_local;
+
+   // Slaves on the local 2x3 fabric
+   // default slave is forwarded out directly to the Core interface
+   Vector#(Num_Slaves_2x3, AXI4_Slave_Synth #(Wd_SId_2x3, Wd_Addr, Wd_Data,
+                                              Wd_User, Wd_User, Wd_User,
+                                              Wd_User, Wd_User))
+                                              slave_vector = newVector;
+   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(shim.slave);
+   slave_vector[near_mem_io_slave_num] = near_mem_io.axi4_slave;
+   slave_vector[plic_slave_num]        = plic.axi4_slave;
+
+   function Vector#(Num_Slaves_2x3, Bool) route_2x3 (Bit#(Wd_Addr) addr);
+      Vector#(Num_Slaves_2x3, Bool) res = replicate(False);
+      if (inRange(soc_map.m_near_mem_io_addr_range, addr))
+        res[near_mem_io_slave_num] = True;
+      else if (inRange(soc_map.m_plic_addr_range, addr))
+        res[plic_slave_num] = True;
+      else
+        res[default_slave_num] = True;
+      return res;
+   endfunction
+
+   mkAXI4Bus_Synth (route_2x3, master_vector, slave_vector);
+
+   // ================================================================
+   // Connect interrupt lines from near_mem_io and PLIC to CPU
+
+   rule rl_relay_sw_interrupts;    // from Near_Mem_IO (CLINT)
+      Bool x <- near_mem_io.get_sw_interrupt_req.get;
+      cpu.software_interrupt_req (x);
+      // $display ("%0d: Core.rl_relay_sw_interrupts: relaying: %d", cur_cycle, pack (x));
+   endrule
+
+   rule rl_relay_timer_interrupts;    // from Near_Mem_IO (CLINT)
+      Bool x <- near_mem_io.get_timer_interrupt_req.get;
+      cpu.timer_interrupt_req (x);
+
+      // $display ("%0d: Core.rl_relay_timer_interrupts: relaying: %d", cur_cycle, pack (x));
+   endrule
+
+   rule rl_relay_external_interrupts;    // from PLIC
+      Bool meip = plic.v_targets [0].m_eip;
+      cpu.m_external_interrupt_req (meip);
+
+      Bool seip = plic.v_targets [1].m_eip;
+      cpu.s_external_interrupt_req (seip);
+
+      // $display ("%0d: Core.rl_relay_external_interrupts: relaying: %d", cur_cycle, pack (x));
+   endrule
+
+   // TODO: fixup.  Need to combine NMIs from multiple sources (cache, fabric, devices, ...)
+   rule rl_relay_non_maskable_interrupt;
+      cpu.non_maskable_interrupt_req (False);
+
+      // $display ("%0d: Core.rl_relay_non_maskable_interrupts: relaying: %d", cur_cycle, pack (x));
+   endrule
+
+   // ================================================================
    // INTERFACE
 
-   // Reset
-   interface Server  cpu_reset_server = toGPServer (f_reset_reqs, f_reset_rsps);
-
-   // ----------------
-   // SoC fabric connections
-
-   // IMem to Fabric master interface
-   interface AXI4_Master_IFC  cpu_imem_master = cpu.imem_master;
-
-   // DMem to Fabric master interface
-   interface AXI4_Master_IFC  cpu_dmem_master = cpu.dmem_master;
-
-   // Back-door slave interface from fabric
-   interface AXI4_Slave_IFC  cpu_slave = cpu.near_mem_slave;
-
-   // ----------------
-   // External interrupts
-
-   method Action  cpu_external_interrupt_req (x) = cpu.external_interrupt_req (x);
-
    // ----------------------------------------------------------------
-   // Set core's verbosity
+   // Debugging: set core's verbosity
 
    method Action  set_verbosity (Bit #(4)  verbosity, Bit #(64)  logdelay);
       cpu.set_verbosity (verbosity, logdelay);
    endmethod
 
-`ifdef INCLUDE_TANDEM_VERIF
-   // ----------------
+   // ----------------------------------------------------------------
+   // Soft reset
+
+   interface Server  cpu_reset_server = toGPServer (f_reset_reqs, f_reset_rsps);
+
+   // ----------------------------------------------------------------
+   // AXI4 Fabric interfaces
+
+   // IMem to Fabric master interface
+   interface cpu_imem_master = cpu.imem_master;
+
+   // DMem to Fabric master interface
+   interface cpu_dmem_master = toAXI4_Master_Synth(shim.master);
+
+   // ----------------------------------------------------------------
+   // External interrupt sources
+
+   interface core_external_interrupt_sources = plic.v_sources;
+
+   // ----------------------------------------------------------------
    // Optional TV interface
 
+`ifdef INCLUDE_TANDEM_VERIF
    interface Get tv_verifier_info_get;
       method ActionValue #(Info_CPU_to_Verifier) get();
          match { .n, .v } <- tv_encode.tv_vb_out.get;
@@ -289,10 +407,10 @@ module mkCore (Core_IFC);
    interface Piccolo_RVFI_DII_Server rvfi_dii_server = cpu.rvfi_dii_server;
 `endif
 
-`ifdef INCLUDE_GDB_CONTROL
    // ----------------------------------------------------------------
    // Optional DM interfaces
 
+`ifdef INCLUDE_GDB_CONTROL
    // ----------------
    // DMI (Debug Module Interface) facing remote debugger
 
@@ -303,10 +421,26 @@ module mkCore (Core_IFC);
 
    // Non-Debug-Module Reset (reset all except DM)
    interface Get  dm_ndm_reset_req_get = debug_module.get_ndm_reset_req;
-   interface AXI4_Master_IFC  dm_master = dm_master_local;
 `endif
 
-endmodule
+endmodule: mkCore
+
+// ================================================================
+// 2x3 Fabric for this Core
+// Masters: CPU DMem, Debug Module System Bus Access, External access
+
+// ----------------
+// Fabric port numbers for masters
+
+Master_Num_2x3  cpu_dmem_master_num         = 0;
+Master_Num_2x3  debug_module_sba_master_num = 1;
+
+// ----------------
+// Fabric port numbers for slaves
+
+Slave_Num_2x3  default_slave_num     = 0;
+Slave_Num_2x3  near_mem_io_slave_num = 1;
+Slave_Num_2x3  plic_slave_num        = 2;
 
 // ================================================================
 

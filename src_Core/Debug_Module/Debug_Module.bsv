@@ -62,15 +62,16 @@ import SpecialFIFOs :: *;
 
 import Semi_FIFOF :: *;
 import Cur_Cycle  :: *;
+import AXI4       :: *;
 
 // ================================================================
 // Project imports
 
 import ISA_Decls    :: *;
-import AXI4_Types   :: *;
 import Fabric_Defs  :: *;
 
 import DM_Common            :: *;
+import DM_CPU_Req_Rsp       :: *;
 import DM_Run_Control       :: *;
 import DM_Abstract_Commands :: *;
 import DM_System_Bus        :: *;
@@ -100,10 +101,15 @@ interface Debug_Module_IFC;
    interface Get #(Bit #(4))      hart0_get_other_req;
 
    // GPR access
-   interface MemoryClient #(5,  XLEN) hart0_gpr_mem_client;
+   interface Client #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN)) hart0_gpr_mem_client;
+
+   // FPR access
+`ifdef ISA_F
+   interface Client #(DM_CPU_Req #(5,  FLEN), DM_CPU_Rsp #(FLEN)) hart0_fpr_mem_client;
+`endif
 
    // CSR access
-   interface MemoryClient #(12, XLEN) hart0_csr_mem_client;
+   interface Client #(DM_CPU_Req #(12, XLEN), DM_CPU_Rsp #(XLEN)) hart0_csr_mem_client;
 
    // ----------------
    // Facing Platform
@@ -112,7 +118,8 @@ interface Debug_Module_IFC;
    interface Get #(Token) get_ndm_reset_req;
 
    // Read/Write RISC-V memory
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master;
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master;
 endinterface
 
 // ================================================================
@@ -267,10 +274,15 @@ module mkDebug_Module (Debug_Module_IFC);
    interface Get    hart0_get_other_req   = dm_run_control.hart0_get_other_req;
 
    // GPR access
-   interface MemoryClient hart0_gpr_mem_client = dm_abstract_commands.hart0_gpr_mem_client;
+   interface Client hart0_gpr_mem_client = dm_abstract_commands.hart0_gpr_mem_client;
+
+   // FPR access
+`ifdef ISA_F
+   interface Client hart0_fpr_mem_client = dm_abstract_commands.hart0_fpr_mem_client;
+`endif
 
    // CSR access
-   interface MemoryClient hart0_csr_mem_client = dm_abstract_commands.hart0_csr_mem_client;
+   interface Client hart0_csr_mem_client = dm_abstract_commands.hart0_csr_mem_client;
 
    // ----------------
    // Facing Platform

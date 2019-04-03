@@ -6,12 +6,9 @@
 // On the CPU side it directly services instruction fetches and DMem
 // reads and writes.
 
-// On the Fabric side it has two Master sub-interfaces and one Slave
-// sub-interface.  The Master sub-interfaces are used for memory and
-// memory-mapped I/O requests/responses from the CPU to the fabric.
-// There are two Master interfaces, for concurrent IMem and DMem
-// access.  The Slave sub-interface is used in the TCM variant for
-// back-door access from the fabric to the TCM.
+// On the Fabric side it has two Master sub-interfaces.
+// One master sub-interface is used for instruction-memory access.
+// The other master sub-interface is used for data-memory and I/O access.
 
 // It can have various implementations:
 //  - As an almost empty pass-through to the fabric
@@ -32,13 +29,13 @@ import ClientServer :: *;
 // BSV additional libs
 
 import Cur_Cycle :: *;
+import AXI4      :: *;
 
 // ================================================================
 // Project imports
 
-import ISA_Decls       :: *;
+import ISA_Decls   :: *;
 
-import AXI4_Types  :: *;
 import Fabric_Defs :: *;
 
 // ================================================================
@@ -54,7 +51,8 @@ interface Near_Mem_IFC;
    interface IMem_IFC  imem;
 
    // Fabric side
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) imem_master;
+   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) imem_master;
 
    // ----------------
    // DMem
@@ -63,7 +61,8 @@ interface Near_Mem_IFC;
    interface DMem_IFC  dmem;
 
    // Fabric side
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) dmem_master;
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) dmem_master;
 
    // ----------------
    // Fences
@@ -74,20 +73,6 @@ interface Near_Mem_IFC;
 
    // SFENCE_VMA
    method Action sfence_vma;
-
-   // ----------------
-   // Interrupts from nearby memory-mapped IO (timer, SIP, ...)
-
-   // Timer interrupt
-   // True/False = set/clear interrupt-pending in CPU's MTIP
-   interface Get #(Bool)  get_timer_interrupt_req;
-
-   // Software interrupt
-   interface Get #(Bool)  get_sw_interrupt_req;
-
-   // ----------------
-   // Back-door slave interface from fabric into Near_Mem
-   interface AXI4_Slave_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) near_mem_slave;
 endinterface
    
 // ================================================================
