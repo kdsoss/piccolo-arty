@@ -59,6 +59,8 @@ import Cur_Cycle     :: *;
 import GetPut_Aux    :: *;
 import Semi_FIFOF    :: *;
 import CreditCounter :: *;
+import AXI4          :: *;
+import SourceSink    :: *;
 
 // ================================================================
 // Project imports
@@ -77,17 +79,18 @@ import Cache_Decls_RV64 :: *;
 `endif
 
 import SoC_Map      :: *;
-import AXI4_Types   :: *;
 import Fabric_Defs  :: *;
 
 // ================================================================
 
-export  MMU_Cache_IFC (..),  mkMMU_Cache;
+export  MMU_Cache_IFC (..);
+export  MMU_ICache_IFC (..),  mkMMU_ICache;
+export  MMU_DCache_IFC (..),  mkMMU_DCache;
 
 // ================================================================
 // MMU_Cache interface
 
-interface MMU_Cache_IFC;
+interface MMU_Cache_IFC#(numeric type mID);
    method Action set_verbosity (Bit #(4) verbosity);
 
    // Reset request/response
@@ -123,8 +126,12 @@ interface MMU_Cache_IFC;
    method Action tlb_flush;
 
    // Fabric master interface
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) mem_master;
+   interface AXI4_Master_Synth #(mID, Wd_Addr, Wd_Data,
+                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) mem_master;
 endinterface
+
+typedef MMU_Cache_IFC#(Wd_MId_2x3) MMU_DCache_IFC;
+typedef MMU_Cache_IFC#(Wd_MId) MMU_ICache_IFC;
 
 // ****************************************************************
 // ****************************************************************
@@ -213,10 +220,10 @@ endfunction
 function AXI4_Size fn_funct3_to_AXI4_Size (Bit #(3) funct3);
    Bit #(2)   x = funct3 [1:0];
    AXI4_Size  result;
-   if      (x == f3_SIZE_B)        result = axsize_1;
-   else if (x == f3_SIZE_H)        result = axsize_2;
-   else if (x == f3_SIZE_W)        result = axsize_4;
-   else /* if (x == f3_SIZE_D) */  result = axsize_8;
+   if      (x == f3_SIZE_B)        result = 1;
+   else if (x == f3_SIZE_H)        result = 2;
+   else if (x == f3_SIZE_W)        result = 4;
+   else /* if (x == f3_SIZE_D) */  result = 8;
    return result;
 endfunction
 
@@ -238,27 +245,27 @@ function Tuple4 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
    Bit #(3)   shift_bytes = addr [2:0];
    Bit #(6)   shift_bits  = { shift_bytes, 3'b0 };
    Bit #(64)  addr64      = zeroExtend (addr);
-   AXI4_Size  axsize      = axsize_128;    // Will be updated in 'case' below
+   AXI4_Size  axsize      = 128;    // Will be updated in 'case' below
 
    case (f3 [1:0])
       f3_SIZE_B: begin
 		    word64   = (word64 << shift_bits);
 		    strobe64 = ('b_1   << shift_bytes);
-		    axsize   = axsize_1;
+		    axsize   = 1;
 		 end
       f3_SIZE_H: begin
 		    word64   = (word64 << shift_bits);
 		    strobe64 = ('b_11  << shift_bytes);
-		    axsize   = axsize_2;
+		    axsize   = 2;
 		 end
       f3_SIZE_W: begin
 		    word64   = (word64  << shift_bits);
 		    strobe64 = ('b_1111 << shift_bytes);
-		    axsize   = axsize_4;
+		    axsize   = 4;
 		 end
       f3_SIZE_D: begin
 		    strobe64 = 'b_1111_1111;
-		    axsize   = axsize_8;
+		    axsize   = 8;
 		 end
    endcase
 
@@ -415,7 +422,17 @@ endfunction
 // The module implementation
 
 (* synthesize *)
-module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
+module mkMMU_ICache(MMU_ICache_IFC);
+  let cache <- mkMMU_Cache(False, fabric_default_mid);
+  return cache;
+endmodule
+(* synthesize *)
+module mkMMU_DCache(MMU_DCache_IFC);
+  let cache <- mkMMU_Cache(True, fabric_2x3_default_mid);
+  return cache;
+endmodule
+module mkMMU_Cache  #(parameter Bool dmem_not_imem,
+                      parameter Bit#(mID) default_mid)  (MMU_Cache_IFC#(mID));
 
    String d_or_i = (dmem_not_imem ? "D_MMU_Cache" : "I_MMU_Cache");
 
@@ -435,7 +452,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    FIFOF #(Requestor) f_reset_rsps <- mkFIFOF;
 
    // Fabric request/response
-   AXI4_Master_Xactor_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master_xactor <- mkAXI4_Master_Xactor_2;
+   AXI4_Master_Xactor#(mID, Wd_Addr, Wd_Data,
+                       Wd_User, Wd_User, Wd_User, Wd_User, Wd_User)
+                       master_xactor <- mkAXI4_Master_Xactor;
 
 `ifdef ISA_PRIV_S
    // The TLB
@@ -655,19 +674,19 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // Send a read-request into the fabric
    function Action fa_fabric_send_read_req (Fabric_Addr  addr, AXI4_Size  size);
       action
-	 let mem_req_rd_addr = AXI4_Rd_Addr {arid:     fabric_default_id,
-					     araddr:   addr,
-					     arlen:    0,           // burst len = arlen+1
-					     arsize:   size,
-					     arburst:  fabric_default_burst,
-					     arlock:   fabric_default_lock,
-					     arcache:  fabric_default_arcache,
-					     arprot:   fabric_default_prot,
-					     arqos:    fabric_default_qos,
-					     arregion: fabric_default_region,
-					     aruser:   fabric_default_user};
+	 let mem_req_rd_addr = AXI4_ARFlit {arid:     default_mid,
+				            araddr:   addr,
+					    arlen:    0,           // burst len = arlen+1
+					    arsize:   size,
+					    arburst:  fabric_default_burst,
+					    arlock:   fabric_default_lock,
+					    arcache:  fabric_default_arcache,
+					    arprot:   fabric_default_prot,
+					    arqos:    fabric_default_qos,
+					    arregion: fabric_default_region,
+					    aruser:   fabric_default_user};
 
-	 master_xactor.i_rd_addr.enq (mem_req_rd_addr);
+	 master_xactor.slave.ar.put(mem_req_rd_addr);
 
 	 // Debugging
 	 if (cfg_verbosity > 1) begin
@@ -684,26 +703,25 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 		.fabric_strb,
 		.fabric_size} = fn_to_fabric_write_fields (f3, pa, st_val);
 
-	 let mem_req_wr_addr = AXI4_Wr_Addr {awid:     fabric_default_id,
-					     awaddr:   fabric_addr,
-					     awlen:    0,           // burst len = awlen+1
-					     awsize:   fabric_size,
-					     awburst:  fabric_default_burst,
-					     awlock:   fabric_default_lock,
-					     awcache:  fabric_default_awcache,
-					     awprot:   fabric_default_prot,
-					     awqos:    fabric_default_qos,
-					     awregion: fabric_default_region,
-					     awuser:   fabric_default_user};
+	 let mem_req_wr_addr = AXI4_AWFlit {awid:     default_mid,
+					    awaddr:   fabric_addr,
+					    awlen:    0,           // burst len = awlen+1
+					    awsize:   fabric_size,
+					    awburst:  fabric_default_burst,
+					    awlock:   fabric_default_lock,
+					    awcache:  fabric_default_awcache,
+					    awprot:   fabric_default_prot,
+					    awqos:    fabric_default_qos,
+					    awregion: fabric_default_region,
+					    awuser:   fabric_default_user};
 
-	 let mem_req_wr_data = AXI4_Wr_Data {wid:    fabric_default_id,
-					     wdata:  fabric_data,
-					     wstrb:  fabric_strb,
-					     wlast:  True,
-					     wuser:  fabric_default_user};
+	 let mem_req_wr_data = AXI4_WFlit {wdata:  fabric_data,
+					   wstrb:  fabric_strb,
+					   wlast:  True,
+					   wuser:  fabric_default_user};
 
-	 master_xactor.i_wr_addr.enq (mem_req_wr_addr);
-	 master_xactor.i_wr_data.enq (mem_req_wr_data);
+	 master_xactor.slave.aw.put(mem_req_wr_addr);
+	 master_xactor.slave.w.put(mem_req_wr_data);
 
 	 // Expect a fabric response
 	 ctr_wr_rsps_pending.incr;
@@ -768,7 +786,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 `endif
 
       if (f_reset_reqs.first == REQUESTOR_RESET_IFC) begin
-	 master_xactor.reset;
+	 master_xactor.clear;
 	 ctr_wr_rsps_pending.clear;
       end
 
@@ -1111,7 +1129,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       PA           lev_1_pte_pa        = satp_pa + vpn_1_pa;
       PA           lev_1_pte_pa_w64    = { lev_1_pte_pa [pa_sz - 1 : 3], 3'b0 };    // 64b-aligned addr
       Fabric_Addr  lev_1_pte_pa_w64_fa = fn_PA_to_Fabric_Addr (lev_1_pte_pa_w64);
-      fa_fabric_send_read_req (lev_1_pte_pa_w64_fa, axsize_4);
+      fa_fabric_send_read_req (lev_1_pte_pa_w64_fa, 4);
 
       rg_pte_pa <= lev_1_pte_pa;
       rg_state  <= PTW_LEVEL_1;
@@ -1126,7 +1144,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       PA           lev_2_pte_pa        = satp_pa + vpn_2_pa;
       PA           lev_2_pte_pa_w64    = { lev_2_pte_pa [pa_sz - 1 : 3], 3'b0 };    // 64b-aligned addr
       Fabric_Addr  lev_2_pte_pa_w64_fa = fn_PA_to_Fabric_Addr (lev_2_pte_pa_w64);
-      fa_fabric_send_read_req (lev_2_pte_pa_w64_fa, axsize_8);
+      fa_fabric_send_read_req (lev_2_pte_pa_w64_fa, 8);
 
       rg_pte_pa <= lev_2_pte_pa;
       rg_state  <= PTW_LEVEL_2;
@@ -1140,7 +1158,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 `ifdef SV39
    rule rl_ptw_level_2 (rg_state == PTW_LEVEL_2);
       // Memory read-response is a level 1 PTE
-      let  mem_rsp <- pop_o (master_xactor.o_rd_data);
+      let mem_rsp <- get(master_xactor.slave.r);
 
       Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
       WordXL pte;
@@ -1151,7 +1169,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       pte = mem_rsp.rdata;
 
       // Bus error
-      if (mem_rsp.rresp != axi4_resp_okay) begin
+      if (mem_rsp.rresp != OKAY) begin
 	 rg_exc_code <= access_exc_code;
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 if (cfg_verbosity > 1)
@@ -1183,7 +1201,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	 PA           lev_1_pte_pa        = lev_1_PTN_pa + vpn_1_pa;
 	 PA           lev_1_pte_pa_w64    = { lev_1_pte_pa [pa_sz - 1 : 3], 3'b0 };    // 64b-aligned addr
 	 Fabric_Addr  lev_1_pte_pa_w64_fa = fn_PA_to_Fabric_Addr (lev_1_pte_pa_w64);
-	 fa_fabric_send_read_req (lev_1_pte_pa_w64_fa, axsize_8);
+	 fa_fabric_send_read_req (lev_1_pte_pa_w64_fa, 8);
 
 	 rg_pte_pa <= lev_1_pte_pa;
 	 rg_state  <= PTW_LEVEL_1;
@@ -1227,7 +1245,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
    rule rl_ptw_level_1 (rg_state == PTW_LEVEL_1);
       // Memory read-response is a level 1 PTE
-      let  mem_rsp <- pop_o (master_xactor.o_rd_data);
+      let mem_rsp <- get(master_xactor.slave.r);
 
       Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
       WordXL pte;
@@ -1244,7 +1262,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 `endif      // ifndef RV32
 
       // Bus error
-      if (mem_rsp.rresp != axi4_resp_okay) begin
+      if (mem_rsp.rresp != OKAY) begin
 	 rg_exc_code <= access_exc_code;
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 if (cfg_verbosity > 1)
@@ -1277,9 +1295,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 	 PA           lev_0_pte_pa_w64    = { lev_0_pte_pa [pa_sz - 1 : 3], 3'b0 };    // 64b-aligned addr
 	 Fabric_Addr  lev_0_pte_pa_w64_fa = fn_PA_to_Fabric_Addr (lev_0_pte_pa_w64);
 `ifdef Sv32
-	 AXI4_Size    axi4_size           = axsize_4;
+	 AXI4_Size    axi4_size           = 4;
 `else
-	 AXI4_Size    axi4_size           = axsize_8;
+	 AXI4_Size    axi4_size           = 8;
 `endif
 	 fa_fabric_send_read_req (lev_0_pte_pa_w64_fa, axi4_size);
 
@@ -1325,7 +1343,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
    rule rl_ptw_level_0 (rg_state == PTW_LEVEL_0);
       // Memory read-response is a level 0 PTE
-      let mem_rsp <- pop_o (master_xactor.o_rd_data);
+      let mem_rsp <- get(master_xactor.slave.r);
 
       Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
       WordXL pte;
@@ -1342,7 +1360,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 `endif      // ifndef RV32
 
       // Bus error
-      if (mem_rsp.rresp != axi4_resp_okay) begin
+      if (mem_rsp.rresp != OKAY) begin
 	 rg_exc_code <= access_exc_code;
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 if (cfg_verbosity > 1)
@@ -1403,7 +1421,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       // Send request into fabric for first fabric-word of cache line
       PA             cline_addr        = fn_align_Addr_to_CLine (rg_pa);
       Fabric_Addr    cline_fabric_addr = fn_PA_to_Fabric_Addr (cline_addr);
-      AXI4_Size      axi4_size         = ((bytes_per_fabric_data == 4) ? axsize_4 : axsize_8);
+      AXI4_Size      axi4_size         = ((bytes_per_fabric_data == 4) ? 4 : 8);
       fa_fabric_send_read_req (cline_fabric_addr, axi4_size);
 
       rg_requesting_cline  <= True;
@@ -1450,7 +1468,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       // Send request into fabric for next fabric-word of cache line
       PA          cline_addr        = fn_align_Addr_to_CLine (rg_pa);
       Fabric_Addr cline_fabric_addr = (fn_PA_to_Fabric_Addr (cline_addr) | rg_req_byte_in_cline);
-      AXI4_Size   axi4_size         = ((bytes_per_fabric_data == 4) ? axsize_4 : axsize_8);
+      AXI4_Size   axi4_size         = ((bytes_per_fabric_data == 4) ? 4 : 8);
       fa_fabric_send_read_req (cline_fabric_addr, axi4_size);
 
       // Check if end of refill loop (req_byte_in_cline is last one)
@@ -1486,14 +1504,14 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    //         (for set read-modify-write; not relevant for direct-mapped)
 
    rule rl_cache_refill_rsps_loop (rg_state == CACHE_REFILL);
-      let mem_rsp <- pop_o (master_xactor.o_rd_data);
+      let mem_rsp <- get(master_xactor.slave.r);
       if (cfg_verbosity > 2) begin
 	 $display ("%0d: %s.rl_cache_refill_rsps_loop:", cur_cycle, d_or_i);
 	 $display ("        ", fshow (mem_rsp));
       end
 
       // Bus errors; remember it, and raise exception after all the refill responses
-      Bool err_rsp = (mem_rsp.rresp != axi4_resp_okay);
+      Bool err_rsp = (mem_rsp.rresp != OKAY);
       if (err_rsp) begin
 	 rg_error_during_refill <= True;
 	 rg_exc_code            <= access_exc_code;
@@ -1611,7 +1629,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
    rule rl_io_read_rsp ((rg_state == IO_AWAITING_READ_RSP));
 
-      let rd_data <- pop_o (master_xactor.o_rd_data);
+      let rd_data <- get(master_xactor.slave.r);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.rl_io_read_rsp: vaddr 0x%0h  paddr 0x%0h", cur_cycle, d_or_i, rg_addr, rg_pa);
 	 $display ("    ", fshow (rd_data));
@@ -1621,7 +1639,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       rg_ld_val <= ld_val;
 
       // Successful read
-      if (rd_data.rresp == axi4_resp_okay) begin
+      if (rd_data.rresp == OKAY) begin
 	 fa_drive_IO_read_rsp (rg_f3, rg_addr, ld_val);
 	 rg_state <= IO_READ_RSP;
       end
@@ -1713,7 +1731,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 `endif
 
    rule rl_io_AMO_read_rsp (rg_state == IO_AWAITING_AMO_READ_RSP);
-      let rd_data <- pop_o (master_xactor.o_rd_data);
+      let rd_data <- get(master_xactor.slave.r);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.rl_io_AMO_read_rsp: vaddr 0x%0h  paddr 0x%0h", cur_cycle, d_or_i, rg_addr, rg_pa);
 	 $display ("    ", fshow (rd_data));
@@ -1722,7 +1740,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
       let ld_val = fn_extract_and_extend_bytes(rg_f3, rg_addr, zeroExtend (rd_data.rdata));
 
       // Bus error for AMO read
-      if (rd_data.rresp != axi4_resp_okay) begin
+      if (rd_data.rresp != OKAY) begin
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 rg_exc_code <= exc_code_STORE_AMO_ACCESS_FAULT;
 	 if (cfg_verbosity > 1)
@@ -1757,7 +1775,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    // NOTE: assuming in-order responses from fabric
 
    rule rl_discard_write_rsp;
-      let wr_resp <- pop_o (master_xactor.o_wr_resp);
+      let wr_resp <- get(master_xactor.slave.b);
 
       if (ctr_wr_rsps_pending.value == 0) begin
 	 $display ("%0d: ERROR: %s.rl_discard_write_rsp: unexpected W response (ctr_wr_rsps_pending.value == 0)",
@@ -1768,7 +1786,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
 
       ctr_wr_rsps_pending.decr;
 
-      if (wr_resp.bresp != axi4_resp_okay) begin
+      if (wr_resp.bresp != OKAY) begin
 	 // TODO: need to raise a non-maskable interrupt (NMI) here
 	 $display ("%0d: %s.rl_discard_write_rsp: fabric response error: exit", cur_cycle, d_or_i);
 	 $display ("    ", fshow (wr_resp));
@@ -1923,7 +1941,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem)  (MMU_Cache_IFC);
    endmethod
 
    // Fabric interface
-   interface mem_master = master_xactor.axi_side;
+   interface mem_master = master_xactor.masterSynth;
 endmodule: mkMMU_Cache
 
 // ================================================================
