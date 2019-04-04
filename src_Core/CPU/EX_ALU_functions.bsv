@@ -112,6 +112,8 @@ typedef struct {
 		        // Mem ops and AMOs: mem addr
 
 `ifdef ISA_CHERI
+   Bit#(3) mem_width_code;
+
    Bool    pcc_changed;
    CapPipe pcc;
    Bool    ddc_changed;
@@ -183,6 +185,8 @@ ALU_Outputs alu_outputs_base
            check_address_low  : ?,
            check_address_high : ?,
            check_inclusive    : ?,
+
+           mem_width_code     : ?,
 `endif
 	       trace_data: ?};
 
@@ -779,6 +783,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = eaddr;
+   alu_outputs.mem_width_code = funct3;
 `ifdef ISA_F
    alu_outputs.rd_in_fpr = (opcode == op_LOAD_FP);
 `endif
@@ -847,6 +852,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
+   alu_outputs.mem_width_code = funct3;
 
 `ifdef ISA_CHERI
    alu_outputs.check_enable = True;
@@ -1276,6 +1282,28 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
     return alu_outputs;
 endfunction
 
+function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool unsigned_not_signed, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, CapPipe data);
+   let eaddr = getAddr(addr) + (useDDC ? getBase(ddc) : 0);
+
+   //TODO signal unsigned
+
+   //width code must be checked externally
+
+   alu_outputs.op_stage2      = isStoreNotLoad ? OP_Stage2_ST : OP_Stage2_LD;
+   alu_outputs.addr           = eaddr;
+   alu_outputs.mem_width_code = widthCode;
+   alu_outputs.val2           = getAddr(data); //for stores
+   alu_outputs.cap_val2       = data;
+//   alu_outputs.val2_is_cap_not_int = widthCode == SIZE_Q; //TODO
+
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = useDDC ? ddc : addr;
+   alu_outputs.check_address_low = eaddr;
+   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << widthCode);
+   alu_outputs.check_inclusive = False;
+   return alu_outputs;
+endfunction
+
 function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, Bit#(XLEN) increment, Bool allowSealed);
     if (tag && sealed && !allowSealed) begin //TODO special case?
         alu_outputs.control = CONTROL_TRAP;
@@ -1291,7 +1319,8 @@ endfunction
 
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let funct3  = inputs.decoded_instr.funct3;
-    let funct5c = inputs.decoded_instr.funct5c;
+    let funct5rs2 = inputs.decoded_instr.funct5rs2;
+    let funct5rd = inputs.decoded_instr.funct5rd;
     let funct7  = inputs.decoded_instr.funct7;
 
     let rt_val = inputs.rs2_val;
@@ -1320,10 +1349,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
         end
     f3_cap_ThreeOp: begin
-        case (funct7) /*
-        f7_cap_Mem:
-            alu_outputs.op_stage2 = OP_Stage2_Mem;
-            //TODO
+        case (funct7)
+       /*
        f7_cap_CSpecialRW:
            //TODO */
        f7_cap_CSetBounds: begin
@@ -1493,44 +1520,73 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = True;
            end
        end
+       f7_cap_Loads: begin
+           Bit#(3) widthCode = ?;
+           alu_outputs.control = CONTROL_STRAIGHT;
+           if (funct5rs2[4] == 1) begin
+               if (funct5rs2[2:0] == 3'b111) begin
+                   widthCode = 3'b100;
+               end else begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO illegal instr
+               end
+           end else begin
+               widthCode = zeroExtend(funct5rs2[1:0]);
+               if (funct5rs2[2:0] == 3'b111) begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO illegal instr
+               end
+           end
+           alu_outputs = memCommon(alu_outputs, False, funct5rs2[2] == cap_mem_unsigned, funct5rs2[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, ?);
+       end
+       f7_cap_Stores: begin
+           let widthCode = funct5rd[2:0];
+           alu_outputs.control = CONTROL_STRAIGHT;
+           if (funct5rd[4] == 1) alu_outputs.control = CONTROL_TRAP;
+           if (widthCode >= 3'b101) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO illegal instr
+           end
+           alu_outputs = memCommon(alu_outputs, True, ?, funct5rd[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.cap_rs2_val);
+       end
        f7_cap_TwoOp: begin
-           case (funct5c)
-           f5c_cap_CGetLen: begin
+           case (funct5rs2)
+           f5rs2_cap_CGetLen: begin
                //TODO needs thinking about behaviour when wrapping round addr space
                let length = getTop(cb_val) - zeroExtend(getBase(cb_val));
                Bit #(XLEN) maxLength = -1;
                alu_outputs.val1 = length > zeroExtend(maxLength) ? -1 : truncate(length);
            end
-           f5c_cap_CGetBase: begin
+           f5rs2_cap_CGetBase: begin
                alu_outputs.val1 = getBase(cb_val);
            end
-           f5c_cap_CGetTag: begin
+           f5rs2_cap_CGetTag: begin
                alu_outputs.val1 = zeroExtend(pack(isValidCap(cb_val)));
            end
-           f5c_cap_CGetSealed: begin
+           f5rs2_cap_CGetSealed: begin
                alu_outputs.val1 = zeroExtend(pack(isSealed(cb_val)));
            end
-           f5c_cap_CMove: begin
+           f5rs2_cap_CMove: begin
                alu_outputs.cap_val1 = cb_val;
                alu_outputs.val1_cap_not_int = True;
            end
-           f5c_cap_CClearTag: begin
+           f5rs2_cap_CClearTag: begin
                alu_outputs.cap_val1 = setValidCap(cb_val, False);
                alu_outputs.val1_cap_not_int = True;
            end
-           f5c_cap_CGetAddr: begin
+           f5rs2_cap_CGetAddr: begin
                alu_outputs.val1 = getAddr(cb_val);
            end
-           f5c_cap_CGetOffset: begin
+           f5rs2_cap_CGetOffset: begin
                alu_outputs.val1 = getOffset(cb_val);
            end
-           f5c_cap_CGetPerm: begin
+           f5rs2_cap_CGetPerm: begin
                alu_outputs.val1 = zeroExtend(getPerms(cb_val));
            end
-           f5c_cap_CJALR: begin
+           f5rs2_cap_CJALR: begin
                alu_outputs = fv_CJALR(inputs);
            end
-           f5c_cap_CGetType: begin
+           f5rs2_cap_CGetType: begin
                //TODO check behaviour on sentries etc?
                alu_outputs.val1 = getKind(cb_val) == SEALED_WITH_TYPE ? zeroExtend(getType(cb_val)) : -1;
            end

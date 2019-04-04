@@ -406,10 +406,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 != f5_AMO_LR) begin
             // For most AMOs we can just go ahead and do it
             if (rg_f5 != f5_AMO_SC) begin
-                info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+                info_RVFI_s2.mem_wmask = getMemMask(rg_stage2.mem_width_code,rg_stage2.addr);
             // For SC however we do need to check that it was successful, otherwise we've not written.
             end else begin
-                info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr) : 0);
+                info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
             end
         end
         `endif
@@ -445,7 +445,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 data_to_stage3.rd_val   = 0;
 `endif
 	 let info_RVFI_s2 = info_RVFI_s2_base;
-	 info_RVFI_s2.mem_wmask = getMemMask(instr_funct3(rg_stage2.instr),rg_stage2.addr);
+	 info_RVFI_s2.mem_wmask = getMemMask(rg_stage2.mem_width_code,rg_stage2.addr);
 	 data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `else
 	 data_to_stage3.rd_val   = ?;
@@ -663,7 +663,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
 	    dcache.req (cache_op,
-			instr_funct3 (x.instr),
+			x.mem_width_code,
 `ifdef ISA_A
 			amo_funct7,
 `endif

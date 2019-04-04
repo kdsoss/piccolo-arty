@@ -311,6 +311,8 @@ typedef struct {
    Bit#(TAdd#(XLEN,1))     check_address_high;
    Bool       check_enable;
    Bool check_inclusive;
+
+   Bit#(3)                mem_width_code;
 `endif
 
 

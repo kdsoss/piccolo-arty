@@ -242,8 +242,8 @@ typedef struct {
    Bit #(10) funct10;
 
 `ifdef ISA_CHERI
-   Bit #(5)  funct5c;
-   Bit #(5)  imm5;
+   Bit #(5)  funct5rs2;
+   Bit #(5)  funct5rd;
 `endif
 
    Bit #(12) imm12_I;
@@ -273,8 +273,8 @@ function Decoded_Instr fv_decode (Instr instr);
 			 funct7:    instr_funct7   (instr),
 			 funct10:   instr_funct10  (instr),
 `ifdef ISA_CHERI
-			 funct5c:   instr_cap_funct5c  (instr),
-			 imm5:      instr_cap_imm5     (instr),
+			 funct5rs2: instr_cap_funct5rs2 (instr),
+			 funct5rd:  instr_cap_funct5rd  (instr),
 `endif
 
 			 imm12_I:   instr_I_imm12  (instr),
