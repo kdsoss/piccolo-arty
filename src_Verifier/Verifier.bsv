@@ -157,7 +157,7 @@ endfunction
 
 `endif
 
-function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
+function Bit #(Bytes_per_Addr) getMemMask(Bit #(2) width_code, Bit #(XLEN) addr);
     Bit #(Bytes_per_Addr) result    = 0;
 `ifdef RV64
     Bit #(3)  addr_lsbs = addr [2:0];
@@ -165,8 +165,8 @@ function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
     Bit #(2)  addr_lsbs = addr [1:0];
 `endif
 
-    case (f3)
-        f3_LB: case (addr_lsbs)
+    case (width_code)
+        'b00: case (addr_lsbs)
 		    'h0: result = zeroExtend(4'b0001);
 		    'h1: result = zeroExtend(4'b0010);
 		    'h2: result = zeroExtend(4'b0100);
@@ -178,20 +178,7 @@ function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
 		    'h7: result = 8'b1000_0000;
 `endif
 	        endcase
-        f3_LBU: case (addr_lsbs)
-		    'h0: result = zeroExtend(4'b0001);
-		    'h1: result = zeroExtend(4'b0010);
-		    'h2: result = zeroExtend(4'b0100);
-		    'h3: result = zeroExtend(4'b1000);
-`ifdef RV64
-		    'h4: result = 8'b0001_0000;
-		    'h5: result = 8'b0010_0000;
-		    'h6: result = 8'b0100_0000;
-		    'h7: result = 8'b1000_0000;
-`endif
-	        endcase
-
-        f3_LH: case (addr_lsbs)
+        'b01: case (addr_lsbs)
 		    'h0: result = zeroExtend(4'b0011);
 		    'h2: result = zeroExtend(4'b1100);
 `ifdef RV64
@@ -199,16 +186,7 @@ function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
 		    'h6: result = 8'b1100_0000;
 `endif
 	        endcase
-        f3_LHU: case (addr_lsbs)
-		    'h0: result = zeroExtend(4'b0011);
-		    'h2: result = zeroExtend(4'b1100);
-`ifdef RV64
-		    'h4: result = 8'b0011_0000;
-		    'h6: result = 8'b1100_0000;
-`endif
-	        endcase
-
-        f3_LW: case (addr_lsbs)
+        'b10: case (addr_lsbs)
 		    'h0: result = zeroExtend(4'b1111);
 `ifdef RV64
 		    'h4: result = 8'b1111_0000;
@@ -217,12 +195,7 @@ function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) f3, Bit #(XLEN) addr);
 	     
 	     // LWU and LD only appear in RV64I.
 	    `ifdef RV64
-        f3_LWU: case (addr_lsbs)
-		    'h0: result = 8'b0000_1111;
-		    'h4: result = 8'b1111_0000;
-	        endcase
-
-        f3_LD: case (addr_lsbs)
+        'b11: case (addr_lsbs)
 		    'h0: result = 8'b1111_1111;
 	        endcase
 	    `endif

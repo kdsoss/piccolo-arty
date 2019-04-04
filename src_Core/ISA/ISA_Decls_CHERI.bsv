@@ -156,7 +156,7 @@ MemReqSize cap_mem_SIZE_D = 2'h3;
 Bit #(1) cap_mem_ddc = 1'h0;
 Bit #(1) cap_mem_cap = 1'h1;
 
-Bit #(1) cap_mem_unsigned = 1'h0;
-Bit #(1) cap_mem_signed = 1'h1;
+Bit #(1) cap_mem_unsigned = 1'h1;
+Bit #(1) cap_mem_signed = 1'h0;
 
 `endif

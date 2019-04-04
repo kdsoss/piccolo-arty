@@ -277,6 +277,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , addr            : alu_outputs.addr
 `ifdef ISA_CHERI
       , mem_width_code  : alu_outputs.mem_width_code
+      , mem_unsigned    : alu_outputs.mem_unsigned
       , val1            : alu_outputs.val1_cap_not_int ? alu_outputs.cap_val1 : nullWithAddr(alu_outputs.val1)
       , val2            : alu_outputs.val2_cap_not_int ? alu_outputs.cap_val2 : nullWithAddr(alu_outputs.val2)
 `else

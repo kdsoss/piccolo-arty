@@ -111,9 +111,10 @@ typedef struct {
    Addr       addr;     // Branch, jump: newPC
 		        // Mem ops and AMOs: mem addr
 
-`ifdef ISA_CHERI
-   Bit#(3) mem_width_code;
+   Bit#(2) mem_width_code;
+   Bool    mem_unsigned;
 
+`ifdef ISA_CHERI
    Bool    pcc_changed;
    CapPipe pcc;
    Bool    ddc_changed;
@@ -185,9 +186,11 @@ ALU_Outputs alu_outputs_base
            check_address_low  : ?,
            check_address_high : ?,
            check_inclusive    : ?,
+`endif
 
            mem_width_code     : ?,
-`endif
+           mem_unsigned       : False,
+
 	       trace_data: ?};
 
 // ================================================================
@@ -783,7 +786,8 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = funct3;
+   alu_outputs.mem_width_code = truncate(funct3);
+   alu_outputs.mem_unsigned = unpack(funct3[2]);
 `ifdef ISA_F
    alu_outputs.rd_in_fpr = (opcode == op_LOAD_FP);
 `endif
@@ -852,7 +856,8 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = funct3;
+   alu_outputs.mem_width_code = truncate(funct3);
+   alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
    alu_outputs.check_enable = True;
@@ -1282,7 +1287,7 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
     return alu_outputs;
 endfunction
 
-function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool unsigned_not_signed, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, CapPipe data);
+function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool isUnsignedNotSigned, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, CapPipe data);
    let eaddr = getAddr(addr) + (useDDC ? getBase(ddc) : 0);
 
    //TODO signal unsigned

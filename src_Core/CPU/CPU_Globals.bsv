@@ -312,9 +312,10 @@ typedef struct {
    Bool       check_enable;
    Bool check_inclusive;
 
-   Bit#(3)                mem_width_code;
 `endif
 
+   Bit#(2)    mem_width_code;
+   Bool       mem_unsigned;
 
 `ifdef ISA_F
    WordFL     val3;     // OP_Stage2_FD: arg3
