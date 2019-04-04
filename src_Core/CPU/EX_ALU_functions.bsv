@@ -1304,8 +1304,8 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    return alu_outputs;
 endfunction
 
-function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, Bit#(XLEN) increment, Bool allowSealed);
-    if (tag && sealed && !allowSealed) begin //TODO special case?
+function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, Bit#(XLEN) increment);
+    if (tag && sealed) begin
         alu_outputs.control = CONTROL_TRAP;
         //TODO sealing violation
     end else begin
@@ -1343,7 +1343,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
 
     case (funct3)
     f3_cap_CIncOffsetImmediate: begin
-            alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, signExtend(inputs.decoded_instr.imm12_I), False);
+            alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, signExtend(inputs.decoded_instr.imm12_I));
         end
     f3_cap_CSetBoundsImmediate: begin
         alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
@@ -1371,7 +1371,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
        end
        f7_cap_CIncOffset: begin
-           alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, rt_val == 0);
+           alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val);
        end
        f7_cap_CSeal: begin
            if (!cb_tag) begin
