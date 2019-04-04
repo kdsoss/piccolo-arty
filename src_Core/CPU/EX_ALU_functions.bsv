@@ -1291,13 +1291,25 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
 
    alu_outputs.op_stage2      = isStoreNotLoad ? OP_Stage2_ST : OP_Stage2_LD;
    alu_outputs.addr           = eaddr;
-   alu_outputs.mem_width_code = widthCode;
+   alu_outputs.mem_width_code = truncate(widthCode);
+   alu_outputs.mem_unsigned   = isStoreNotLoad ? False : isUnsignedNotSigned;
    alu_outputs.val2           = getAddr(data); //for stores
    alu_outputs.cap_val2       = data;
 //   alu_outputs.val2_is_cap_not_int = widthCode == SIZE_Q; //TODO
 
+   let authority = useDDC ? ddc : addr;
+
+   if (!isValidCap(authority)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO tag violation
+   end else if ((isStoreNotLoad ? !getHardPerms(authority).permitStore : !getHardPerms(authority).permitLoad)) begin
+       //TODO store cap checks
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO perms violation
+   end
+
    alu_outputs.check_enable = True;
-   alu_outputs.check_authority = useDDC ? ddc : addr;
+   alu_outputs.check_authority = authority;
    alu_outputs.check_address_low = eaddr;
    alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << widthCode);
    alu_outputs.check_inclusive = False;
