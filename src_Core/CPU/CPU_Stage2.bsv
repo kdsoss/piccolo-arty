@@ -310,7 +310,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			   : (  dcache.exc
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
-	    WordXL result = truncate (dcache.word64);
+	    WordXL result = truncate (dcache.word128);
 
             let funct3 = instr_funct3 (rg_stage2.instr);
 
@@ -663,7 +663,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
 	    dcache.req (cache_op,
-			{pack(x.mem_unsigned), x.mem_width_code},
+			zeroExtend(x.mem_width_code),
+            x.mem_unsigned,
 `ifdef ISA_A
 			amo_funct7,
 `endif

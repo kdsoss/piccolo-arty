@@ -99,12 +99,13 @@ interface MMU_Cache_IFC#(numeric type mID);
    // CPU interface: request
    (* always_ready *)
    method Action  req (CacheOp op,
-		       Bit #(3) f3,
+		       Bit #(3) width_code,
+               Bool is_unsigned,
 `ifdef ISA_A
 		       Bit #(7) amo_funct7,
 `endif
 		       WordXL addr,
-		       Bit #(64) st_value,
+		       Bit #(128) st_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -120,8 +121,8 @@ interface MMU_Cache_IFC#(numeric type mID);
    // CPU interface: response
    (* always_ready *)  method Bool       valid;
    (* always_ready *)  method WordXL     addr;        // req addr for which this is a response
-   (* always_ready *)  method Bit #(64)  word64;      // rd_val data for LD, LR, AMO, SC success/fail result)
-   (* always_ready *)  method Bit #(64)  st_amo_val;  // Final stored value for ST, SC, AMO
+   (* always_ready *)  method Bit #(128) word128;     // rd_val data for LD, LR, AMO, SC success/fail result)
+   (* always_ready *)  method Bit #(128) st_amo_val;  // Final stored value for ST, SC, AMO
    (* always_ready *)  method Bool       exc;
    (* always_ready *)  method Exc_Code   exc_code;
 
@@ -154,7 +155,7 @@ typedef struct {
 deriving (Bits, FShow);
 
 typedef Vector #(Ways_per_CSet, State_and_CTag)  State_and_CTag_CSet;
-typedef Vector #(Ways_per_CSet, Bit #(64))       Word64_Set;
+typedef Vector #(Ways_per_CSet, Bit #(128))      Word128_Set;
 
 typedef enum {MODULE_PRERESET,              // After power on reset, before soft reset
               MODULE_RESETTING,             // Clearing all tags to EMPTY state
@@ -212,24 +213,25 @@ deriving (Bits, FShow);
 // ================================================================
 // Check if addr is aligned
 
-function Bool fn_is_aligned (Bit #(3) f3, Bit #(n) addr);
-   return (    (f3 [1:0] == 2'b00)                                // B, BU
-	   || ((f3 [1:0] == 2'b01) && (addr [0] == 1'b0))         // H, HU
-	   || ((f3 [1:0] == 2'b10) && (addr [1:0] == 2'b00))      // W, WU
-	   || ((f3 [1:0] == 2'b11) && (addr [2:0] == 3'b000))     // D
+function Bool fn_is_aligned (Bit #(3) width_code, Bit #(n) addr);
+   return (    (width_code == 3'b000)                                // B, BU
+	   || ((width_code == 3'b001) && (addr [0] == 1'b0))         // H, HU
+	   || ((width_code == 3'b010) && (addr [1:0] == 2'b00))      // W, WU
+	   || ((width_code == 3'b011) && (addr [2:0] == 3'b000))     // D
+       || ((width_code == 3'b100) && (addr [3:0] == 4'b000))     // Q
 	   );
 endfunction
 
 // ================================================================
 // Convert RISC-V funct3 code into AXI4_Size code (number of bytes in a beat)
 
-function AXI4_Size fn_funct3_to_AXI4_Size (Bit #(3) funct3);
-   Bit #(2)   x = funct3 [1:0];
+function AXI4_Size fn_width_code_to_AXI4_Size (Bit #(3) width_code);
    AXI4_Size  result;
-   if      (x == f3_SIZE_B)        result = 1;
-   else if (x == f3_SIZE_H)        result = 2;
-   else if (x == f3_SIZE_W)        result = 4;
-   else /* if (x == f3_SIZE_D) */  result = 8;
+   if      (width_code == 0)        result = 1;
+   else if (width_code == 1)        result = 2;
+   else if (width_code == 2)        result = 4;
+   else if (width_code == 3)        result = 8;
+   else /* if (width_code == 4) */  result = 16;
    return result;
 endfunction
 
@@ -241,103 +243,119 @@ function Tuple4 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
 		  Fabric_Strb,    // strobe
 		  AXI4_Size)      // 8 for 8-byte writes, else 4
 
-   fn_to_fabric_write_fields (Bit #(3)  f3,      // RISC-V size code: B/H/W/D
+   fn_to_fabric_write_fields (Bit #(3)  width_code,      // RISC-V size code: B/H/W/D/Q
 			      Bit #(n)  addr,    // actual byte addr
-			      Bit #(64) word64)  // data is in lsbs
+			      Bit #(128) word128)  // data is in lsbs
    provisos (Add #(_, n, 64));
 
    // First compute addr, data and strobe for a 64b-wide fabric
-   Bit #(8)   strobe64    = 0;
-   Bit #(3)   shift_bytes = addr [2:0];
-   Bit #(6)   shift_bits  = { shift_bytes, 3'b0 };
-   Bit #(64)  addr64      = zeroExtend (addr);
+   Bit #(16)  strobe128    = 0;
+   Bit #(4)   shift_bytes = addr [3:0];
+   Bit #(7)   shift_bits  = { shift_bytes, 3'b0 };
+   Bit #(64)  addr64     = zeroExtend (addr);
    AXI4_Size  axsize      = 128;    // Will be updated in 'case' below
 
-   case (f3 [1:0])
-      f3_SIZE_B: begin
-		    word64   = (word64 << shift_bits);
-		    strobe64 = ('b_1   << shift_bytes);
-		    axsize   = 1;
+   case (width_code)
+      0: begin
+		    word128   = (word128 << shift_bits);
+		    strobe128 = ('b_1   << shift_bytes);
+		    axsize    = 1;
 		 end
-      f3_SIZE_H: begin
-		    word64   = (word64 << shift_bits);
-		    strobe64 = ('b_11  << shift_bytes);
-		    axsize   = 2;
+      1: begin
+		    word128   = (word128 << shift_bits);
+		    strobe128 = ('b_11  << shift_bytes);
+		    axsize    = 2;
 		 end
-      f3_SIZE_W: begin
-		    word64   = (word64  << shift_bits);
-		    strobe64 = ('b_1111 << shift_bytes);
-		    axsize   = 4;
+      2: begin
+		    word128   = (word128  << shift_bits);
+		    strobe128 = ('b_1111 << shift_bytes);
+		    axsize    = 4;
 		 end
-      f3_SIZE_D: begin
-		    strobe64 = 'b_1111_1111;
-		    axsize   = 8;
+      3: begin
+            word128   = (word128 << shift_bits);
+	        strobe128 = ('b_1111_1111 << shift_bytes);
+		    axsize    = 8;
 		 end
+      4: begin
+            word128   = word128;
+            strobe128 = 'b_1111_1111_1111_1111;
+            axsize    = 16;
+         end
    endcase
 
-   // Adjust for 32b fabrics
-   if ((valueOf (Wd_Data) == 32) && (addr [2] == 1'b1)) begin
-      word64   = { 32'h0, word64 [63:32] };
-      strobe64 = { 4'h0, strobe64 [7:4] };
+   // Adjust for 64b fabrics
+   if ((valueOf (Wd_Data) == 64) && (addr [3] == 1'b1)) begin
+      word128   = { 64'h0, word128 [127:64] };
+      strobe128 = { 8'h0, strobe128 [15:8] };
    end
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr64);
-   Fabric_Data  fabric_data   = truncate (word64);
-   Fabric_Strb  fabric_strobe = truncate (strobe64);
+   Fabric_Data  fabric_data   = truncate (word128);
+   Fabric_Strb  fabric_strobe = truncate (strobe128);
 
    return tuple4 (fabric_addr, fabric_data, fabric_strobe, axsize);
 endfunction: fn_to_fabric_write_fields
 
 // ================================================================
-// Update a byte, halfword, word or doubleword in a Word64 at Way in a Word64_Set
+// Update a byte, halfword, word, doubleword or quadword in a Word128 at Way in a Word128_Set
 
-function Word64_Set fn_update_word64_set (Word64_Set   old_word64_set,
+function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
 					  Way_in_CSet  way,
 					  Bit #(n)     addr,
-					  Bit #(3)     f3,
-					  Bit #(64)    word64);
-   let old_word64     = old_word64_set [way];
-   let old_B0         = old_word64 [7:0];
-   let old_B1         = old_word64 [15:8];
-   let old_B2         = old_word64 [23:16];
-   let old_B3         = old_word64 [31:24];
-   let old_B4         = old_word64 [39:32];
-   let old_B5         = old_word64 [47:40];
-   let old_B6         = old_word64 [55:48];
-   let old_B7         = old_word64 [63:56];
+					  Bit #(3)     width_code,
+					  Bit #(128)    word128);
+   let old_word128    = old_word128_set [way];
 
-   let new_word64_set = old_word64_set;
-   let new_word64     = old_word64;
-   Bit #(3) addr_lsbs = addr [2:0];
+   let new_word128_set = old_word128_set;
+   let new_word128     = old_word128;
+   Bit #(4) addr_lsbs  = addr [3:0];
 
-   // Replace relevant bytes in new_word64
-   case (f3)
-      f3_SB:  case (addr_lsbs)
-		 'h0 : new_word64 [ 7:0 ] = word64 [7:0];
-		 'h1 : new_word64 [15:8 ] = word64 [7:0];
-		 'h2 : new_word64 [23:16] = word64 [7:0];
-		 'h3 : new_word64 [31:24] = word64 [7:0];
-		 'h4 : new_word64 [39:32] = word64 [7:0];
-		 'h5 : new_word64 [47:40] = word64 [7:0];
-		 'h6 : new_word64 [55:48] = word64 [7:0];
-		 'h7 : new_word64 [63:56] = word64 [7:0];
+   // Replace relevant bytes in new_word128
+   case (width_code)
+      0:  case (addr_lsbs)
+		 'h0 : new_word128 [ 7:0 ] = word128 [7:0];
+		 'h1 : new_word128 [15:8 ] = word128 [7:0];
+		 'h2 : new_word128 [23:16] = word128 [7:0];
+		 'h3 : new_word128 [31:24] = word128 [7:0];
+		 'h4 : new_word128 [39:32] = word128 [7:0];
+		 'h5 : new_word128 [47:40] = word128 [7:0];
+		 'h6 : new_word128 [55:48] = word128 [7:0];
+		 'h7 : new_word128 [63:56] = word128 [7:0];
+		 'h8 : new_word128 [71:64] = word128 [7:0];
+		 'h9 : new_word128 [79:72] = word128 [7:0];
+		 'ha : new_word128 [87:80] = word128 [7:0];
+		 'hb : new_word128 [95:88] = word128 [7:0];
+		 'hc : new_word128 [103:96] = word128 [7:0];
+		 'hd : new_word128 [111:104] = word128 [7:0];
+		 'he : new_word128 [119:112] = word128 [7:0];
+		 'hf : new_word128 [127:120] = word128 [7:0];
 	      endcase
-      f3_SH:  case (addr_lsbs)
-		 'h0 : new_word64 [15:0 ] = word64 [15:0];
-		 'h2 : new_word64 [31:16] = word64 [15:0];
-		 'h4 : new_word64 [47:32] = word64 [15:0];
-		 'h6 : new_word64 [63:48] = word64 [15:0];
+      1:  case (addr_lsbs)
+		 'h0 : new_word128 [15:0 ] = word128 [15:0];
+		 'h2 : new_word128 [31:16] = word128 [15:0];
+		 'h4 : new_word128 [47:32] = word128 [15:0];
+		 'h6 : new_word128 [63:48] = word128 [15:0];
+		 'h8 : new_word128 [79:64] = word128 [15:0];
+		 'ha : new_word128 [95:80] = word128 [15:0];
+		 'hc : new_word128 [111:96] = word128 [15:0];
+		 'he : new_word128 [127:112] = word128 [15:0];
 	      endcase
-      f3_SW:  case (addr_lsbs)
-		 'h0 : new_word64 [31:0]  = word64 [31:0];
-		 'h4 : new_word64 [63:32] = word64 [31:0];
+      2:  case (addr_lsbs)
+		 'h0 : new_word128 [31:0] = word128 [31:0];
+		 'h4 : new_word128 [63:32] = word128 [31:0];
+		 'h8 : new_word128 [95:64] = word128 [31:0];
+		 'hc : new_word128 [127:96] = word128 [31:0];
 	      endcase
-      f3_SD:  new_word64 = word64;
+      3:  case (addr_lsbs)
+         'h0 : new_word128[63:0] = word128[63:0];
+         'h8 : new_word128[127:64] = word128[63:0];
+          endcase
+      4:  new_word128 = word128;
    endcase
-   new_word64_set [way] = new_word64;
-   return new_word64_set;
-endfunction: fn_update_word64_set
+   new_word128_set [way] = new_word128;
+   return new_word128_set;
+endfunction: fn_update_word128_set
 
 // ================================================================
 // ALU for AMO ops.
@@ -401,13 +419,13 @@ function Action fa_display_state_and_ctag_cset (CSet_in_Cache        cset_in_cac
    endaction
 endfunction
 
-function Action fa_display_word64_set (CSet_in_Cache    cset_in_cache,
-				       Word64_in_CLine  word64_in_cline,
-				       Word64_Set       word64_set);
+function Action fa_display_word128_set (CSet_in_Cache    cset_in_cache,
+				       Word128_in_CLine  word128_in_cline,
+				       Word128_Set       word128_set);
    action
-      $write ("        CSet 0x%0x, Word64 0x%0x: ", cset_in_cache, word64_in_cline);
+      $write ("        CSet 0x%0x, Word128 0x%0x: ", cset_in_cache, word128_in_cline);
       for (Integer j = 0; j < ways_per_cset; j = j + 1) begin
-	 $write (" 0x%0x", word64_set [j]);
+	 $write (" 0x%0x", word128_set [j]);
       end
       $write ("\n");
    endaction
@@ -484,17 +502,18 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 										  config_output_register);
 
    // Data RAM
-   BRAM_DUAL_PORT #(Word64_Set_in_Cache, Word64_Set) ram_word64_set <- mkBRAMCore2 (word64_sets_per_cache,
+   BRAM_DUAL_PORT #(Word128_Set_in_Cache, Word128_Set) ram_word128_set <- mkBRAMCore2 (word128_sets_per_cache,
 										    config_output_register);
 
    // Registers holding incoming request args
    Reg #(CacheOp)    rg_op          <- mkRegU;    // CACHE_LD, CACHE_ST, CACHE_AMO
-   Reg #(Bit #(3))   rg_f3          <- mkRegU;    // rg_f3[1:0] specifies B/H/W/D access size
+   Reg #(Bit #(3))   rg_width_code  <- mkRegU;    // specifies B/H/W/D/Q access size
+   Reg #(Bool)       rg_is_unsigned    <- mkRegU;    // whether to sign extend returned val
 `ifdef ISA_A
    Reg #(Bit #(7))   rg_amo_funct7  <- mkRegU;    // specifies which kind of AMO op
 `endif
    Reg #(WordXL)     rg_addr        <- mkRegU;    // VA or PA
-   Reg #(Bit #(64))  rg_st_amo_val  <- mkRegU;    // Store-value for ST, SC, AMO
+   Reg #(Bit #(128)) rg_st_amo_val  <- mkRegU;    // Store-value for ST, SC, AMO
 
    // The following are needed for VM
 `ifdef ISA_PRIV_S
@@ -532,10 +551,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Offset  offset = fn_Addr_to_Offset (rg_addr);
 `endif
 
-   CSet_in_Cache        cset_in_cache       = fn_Addr_to_CSet_in_Cache   (rg_addr);
-   Word64_Set_in_Cache  word64_set_in_cache = fn_Addr_to_Word64_Set_in_Cache (rg_addr);
-   Word64_in_CLine      word64_in_cline     = fn_Addr_to_Word64_in_CLine (rg_addr);
-   Bit #(3)             byte_in_word64      = fn_Addr_to_Byte_in_Word64  (rg_addr);
+   CSet_in_Cache        cset_in_cache        = fn_Addr_to_CSet_in_Cache   (rg_addr);
+   Word128_Set_in_Cache word128_set_in_cache = fn_Addr_to_Word128_Set_in_Cache (rg_addr);
+   Word128_in_CLine     word128_in_cline     = fn_Addr_to_Word128_in_CLine (rg_addr);
+   Bit #(4)             byte_in_word128       = fn_Addr_to_Byte_in_Word128  (rg_addr);
 
 `ifdef ISA_PRIV_S
    // Derivations from rg_satp
@@ -553,9 +572,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Reg #(Bool)      dw_exc               <- mkDWire (False);
    Reg #(Exc_Code)  rg_exc_code          <- mkRegU;
    Reg #(Exc_Code)  dw_exc_code          <- mkDWire (?);
-   Reg #(Bit #(64)) rg_ld_val            <- mkRegU;         // Load-value for LOAD/LR/AMO, success/fail for SC
-   Reg #(Bit #(64)) dw_output_ld_val     <- mkDWire (?);
-   Reg #(Bit #(64)) dw_output_st_amo_val <- mkDWire (?);    // stored value for ST, SC, AMO (for verification only)
+   Reg #(Bit #(128)) rg_ld_val            <- mkRegU;         // Load-value for LOAD/LR/AMO, success/fail for SC
+   Reg #(Bit #(128)) dw_output_ld_val     <- mkDWire (?);
+   Reg #(Bit #(128)) dw_output_st_amo_val <- mkDWire (?);    // stored value for ST, SC, AMO (for verification only)
 
    // This reg is used during PTWs
    Reg #(PA) rg_pte_pa <- mkRegU;
@@ -569,14 +588,14 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // This reg is used in the reset-loop when resetting all states
    Reg #(CSet_in_Cache)  rg_cset_in_cache   <- mkReg (0);
 
-   // These regs are used in the cache refill loop for ram_Word64_Set
-   Reg #(Bool)                rg_requesting_cline    <- mkReg (False);
-   Reg #(Fabric_Addr)         rg_req_byte_in_cline   <- mkRegU;
-   Reg #(Word64_Set_in_Cache) rg_word64_set_in_cache <- mkRegU;
-   Reg #(Bool)                rg_error_during_refill <- mkRegU;
-   // In 32b fabrics, these hold the lower word32 while we're fetching the upper word32 of a word64
-   Reg #(Bool)      rg_lower_word32_full <- mkReg (False);
-   Reg #(Bit #(32)) rg_lower_word32      <- mkRegU;
+   // These regs are used in the cache refill loop for ram_Word128_Set
+   Reg #(Bool)                 rg_requesting_cline    <- mkReg (False);
+   Reg #(Fabric_Addr)          rg_req_byte_in_cline   <- mkRegU;
+   Reg #(Word128_Set_in_Cache) rg_word128_set_in_cache <- mkRegU;
+   Reg #(Bool)                 rg_error_during_refill <- mkRegU;
+   // In 64b (or lower) fabrics, these hold the lower word64 while we're fetching the upper word64 of a word128
+   Reg #(Bool)      rg_lower_word64_full <- mkReg (False);
+   Reg #(Bit #(64)) rg_lower_word64      <- mkRegU;
 
    // When a CSet is full and we need to replace a cache line due to a refill,
    // the victim is picked 'randomly' according to this register
@@ -593,12 +612,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 ram_state_and_ctag_cset.b.put (bram_cmd_read, cset_in_cache,    ?);
 
 	 // Request data RAM
-	 let word64_set_in_cache = fn_Addr_to_Word64_Set_in_Cache (addr);
-	 ram_word64_set.b.put          (bram_cmd_read, word64_set_in_cache, ?);
+	 let word128_set_in_cache = fn_Addr_to_Word128_Set_in_Cache (addr);
+	 ram_word128_set.b.put          (bram_cmd_read, word128_set_in_cache, ?);
 
 	 if (cfg_verbosity > 1)
-	    $display ("    fa_req_ram_B tagCSet [0x%0x] word64_set [0x%0d]",
-		      cset_in_cache, word64_set_in_cache);
+	    $display ("    fa_req_ram_B tagCSet [0x%0x] word128_set [0x%0d]",
+		      cset_in_cache, word128_set_in_cache);
       endaction
    endfunction
 
@@ -606,20 +625,20 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Outputs of RAM read-ports (B ports)
 
    let state_and_ctag_cset = ram_state_and_ctag_cset.b.read;
-   let word64_set          = ram_word64_set.b.read;
+   let word128_set          = ram_word128_set.b.read;
 
-   // Test cache hit or miss; if hit, return which 'way', and the word64 data
+   // Test cache hit or miss; if hit, return which 'way', and the word128 data
    // ---- This pure function is an ActionValue only for the $display inside
-   function ActionValue #(Tuple3 #(Bool, Way_in_CSet, Bit #(64))) fn_test_cache_hit_or_miss (CTag  pa_ctag);
+   function ActionValue #(Tuple3 #(Bool, Way_in_CSet, Bit #(128))) fn_test_cache_hit_or_miss (CTag  pa_ctag);
       actionvalue
 	 Bool         hit     = False;
 	 Way_in_CSet  way_hit = 0;
-	 Bit #(64)    word64  = 0;
+	 Bit #(128)   word128  = 0;
 
 	 for (Integer way = 0; way < ways_per_cset; way = way + 1) begin
 	    let hit_at_way  = (   (state_and_ctag_cset [way].state != CTAG_EMPTY)
 			       && (state_and_ctag_cset [way].ctag  == pa_ctag));
-	    let word64_at_way = word64_set [way];
+	    let word128_at_way = word128_set [way];
 
 	    // Assertion: cannot have > 1 hit in a set
 	    if (hit && hit_at_way)
@@ -628,10 +647,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	    hit     = hit || hit_at_way;
 	    way_hit = fromInteger (way);
-	    word64  = (word64 | (word64_at_way & pack (replicate (hit_at_way))));
+	    word128  = (word128 | (word128_at_way & pack (replicate (hit_at_way))));
 	 end
 
-	 return tuple3 (hit, way_hit, word64);
+	 return tuple3 (hit, way_hit, word128);
       endactionvalue
    endfunction
 
@@ -656,11 +675,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Functions to drive read-responses (outputs)
 
    // Memory-read responses
-   function Action fa_drive_mem_rsp (Bit #(3) f3, Addr addr, Bit #(64) ld_val, Bit #(64) st_amo_val);
+   function Action fa_drive_mem_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Bit #(128) ld_val, Bit #(128) st_amo_val);
       action
 	 dw_valid             <= True;
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
-	 dw_output_ld_val     <= fn_extract_and_extend_bytes (f3, addr, ld_val);
+	 dw_output_ld_val     <= fn_extract_and_extend_bytes (width_code, is_unsigned, addr, ld_val);
 	 // Value stored into mem (STORE, SC, AMO final value stored)
 	 dw_output_st_amo_val <= st_amo_val;
 	 if (cfg_verbosity > 1)
@@ -670,9 +689,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endfunction
 
    // IO-read responses
-   function Action fa_drive_IO_read_rsp (Bit #(3) f3, Addr addr, Bit #(64) ld_val);
+   function Action fa_drive_IO_read_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Bit #(128) ld_val);
       action
-	 fa_drive_mem_rsp(f3, addr, ld_val, 0);
+	 fa_drive_mem_rsp(width_code, is_unsigned, addr, ld_val, 0);
 	 //dw_valid         <= True;
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
 	 //dw_output_ld_val <= ld_val;
@@ -706,12 +725,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endfunction
 
    // Send a write-request into the fabric
-   function Action fa_fabric_send_write_req (Bit #(3)  f3, PA  pa, Bit #(64)  st_val);
+   function Action fa_fabric_send_write_req (Bit #(3)  width_code, PA  pa, Bit #(128)  st_val);
       action
 	 match {.fabric_addr,
 		.fabric_data,
 		.fabric_strb,
-		.fabric_size} = fn_to_fabric_write_fields (f3, pa, st_val);
+		.fabric_size} = fn_to_fabric_write_fields (width_code, pa, st_val);
 
 	 let mem_req_wr_addr = AXI4_AWFlit {awid:     default_mid,
 					    awaddr:   fabric_addr,
@@ -769,8 +788,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    rule rl_writeback_updated_PTE;
       match { .pa, .pte } <- pop (f_pte_writebacks);
-      let f3 = ((xlen == 32) ? f3_SW : f3_SD);
-      fa_fabric_send_write_req (f3, pa, zeroExtend (pte));
+      let f3 = ((xlen == 32) ? 3'b010 : 3'b011); // TODO ?
+      fa_fabric_send_write_req (width_code, pa, zeroExtend (pte));
    endrule
 `endif
 
@@ -784,7 +803,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_state             <= MODULE_RESETTING;
       rg_cset_in_cache     <= 0;
       rg_requesting_cline  <= False;
-      rg_lower_word32_full <= False;
+      rg_lower_word64_full <= False;
 
       // Flush the TLB
 `ifdef ISA_PRIV_S
@@ -848,9 +867,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Bool load_stall = (   ((rg_op == CACHE_LD) || is_AMO_LR)
 		      && (crg_sb_to_load_delay [1] != 0));
 
-   function Action fa_arm_the_load_stall (Bit #(3) f3);
+   function Action fa_arm_the_load_stall (Bit #(3) width_code);
       action
-	 if ((f3 == f3_SB) || (f3 == f3_SH))
+	 if ((width_code == 3'b000) || (width_code == 3'b001))
+         //TODO now that we have scaled things up, will this bug include SW?
 	    crg_sb_to_load_delay [1] <= '1;
       endaction
    endfunction
@@ -884,13 +904,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		      rg_priv, vm_mode, asid, satp_pa, vpn_1, vpn_0, offset);
 `endif
 `endif
-	 $display ("        eaddr = {CTag 0x%0h  CSet 0x%0h  Word64 0x%0h  Byte 0x%0h}",
+	 $display ("        eaddr = {CTag 0x%0h  CSet 0x%0h  Word128 0x%0h  Byte 0x%0h}",
 		   fn_PA_to_CTag (fn_WordXL_to_PA (rg_addr)),
 		   cset_in_cache,
-		   word64_in_cline,
-		   byte_in_word64);
+		   word128_in_cline,
+		   byte_in_word128);
 	 fa_display_state_and_ctag_cset (cset_in_cache, state_and_ctag_cset);
-	 fa_display_word64_set (cset_in_cache, word64_in_cline, word64_set);
+	 fa_display_word128_set (cset_in_cache, word128_in_cline, word128_set);
       end
 
       // ----------------
@@ -953,16 +973,16 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	 // Memory requests. Note: it's ok that this can go to non-memory space.
 	 else begin
-	    // Compute cache hit/miss. If hit, also compute Way_in_CSet and Word64
+	    // Compute cache hit/miss. If hit, also compute Way_in_CSet and Word128
 	    let pa_ctag = fn_PA_to_CTag (vm_xlate_result.pa);
-	    match { .hit, .way_hit, .word64 } <- fn_test_cache_hit_or_miss (pa_ctag);
+	    match { .hit, .way_hit, .word128 } <- fn_test_cache_hit_or_miss (pa_ctag);
 
 	    // ----------------
 	    // Memory LD and AMO_LR
 	    if ((rg_op == CACHE_LD) || is_AMO_LR) begin
 	       if (hit) begin
 		  // Cache hit; drive response
-		  fa_drive_mem_rsp (rg_f3, rg_addr, word64, 0);
+		  fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, word128, 0);
 
 `ifdef ISA_A
 		  if (is_AMO_LR) begin
@@ -973,7 +993,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		  end
 `endif
 		  if (cfg_verbosity > 1) begin
-		     $display ("        Read-hit: addr 0x%0h word64 0x%0h", rg_addr, word64);
+		     $display ("        Read-hit: addr 0x%0h word128 0x%0h", rg_addr, word128);
 		  end
 	       end
 	       else begin
@@ -1031,26 +1051,26 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		  // ST, or successful SC
 		  if (hit) begin
 		     // Update cache line in cache
-		     let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, rg_st_amo_val);
-		     ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
-		     fa_arm_the_load_stall (rg_f3);
+		     let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, rg_st_amo_val);
+		     ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
+		     fa_arm_the_load_stall (rg_width_code);
 
 		     if (cfg_verbosity > 1) begin
-			$display ("        Write-Cache-Hit: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
-			$write   ("        New Word64_Set:");
-			fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
+			$display ("        Write-Cache-Hit: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+			$write   ("        New Word128_Set:");
+			fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
 		     end
 		  end
 		  else begin
 		     if (cfg_verbosity > 1)
-			$display ("        Write-Cache-Miss: pa 0x%0h word64 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+			$display ("        Write-Cache-Miss: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
 		  end
 
 		  if (cfg_verbosity > 1)
-		     $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word64 0x%0h", rg_addr, rg_st_amo_val);
+		     $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word128 0x%0h", rg_addr, rg_st_amo_val);
 
 		  // For write-hits and write-misses, writeback data to memory (so cache remains clean)
-		  fa_fabric_send_write_req (rg_f3, vm_xlate_result.pa, rg_st_amo_val);
+		  fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, rg_st_amo_val);
 
 		  // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
 		  // in case the next incoming request tries to read from the same SRAM address.
@@ -1061,7 +1081,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	       end
 	       else begin // do_write == False
 		  // SC fail
-		  fa_drive_mem_rsp (rg_f3, rg_addr, 1, 0);
+		  fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, 1, 0);
 		  if (cfg_verbosity > 1)
 		     $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
 	       end
@@ -1079,25 +1099,25 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	       end
 	       else begin
 		  if (cfg_verbosity > 1) begin
-		     $display ("        AMO: addr 0x%0h amo_f7 0x%0h f3 %0d rs2_val 0x%0h",
-			       rg_addr, rg_amo_funct7, rg_f3, rg_st_amo_val);
+		     $display ("        AMO: addr 0x%0h amo_f7 0x%0h width_code %0d is_unsigned %0d rs2_val 0x%0h",
+			       rg_addr, rg_amo_funct7, rg_width_code, rg_is_unsigned, rg_st_amo_val);
 		     $display ("          PA 0x%0h ", vm_xlate_result.pa);
-		     $display ("          Cache word64 0x%0h, load-result 0x%0h", word64, word64);
+		     $display ("          Cache word128 0x%0h, load-result 0x%0h", word128, word128);
 		  end
 
 		  // Do the AMO op on the loaded value and the store value
 		  match {.new_ld_val,
-			 .new_st_val} = fn_amo_op (rg_f3, rg_amo_funct7, rg_addr, word64, rg_st_amo_val);
+			 .new_st_val} = fn_amo_op (rg_width_code, rg_amo_funct7, rg_addr, word128, rg_st_amo_val);
 
 		  // Update cache line in cache
-		  let new_word64_set = fn_update_word64_set (word64_set, way_hit, vm_xlate_result.pa, rg_f3, new_st_val);
-		  ram_word64_set.a.put (bram_cmd_write, word64_set_in_cache, new_word64_set);
-		  fa_arm_the_load_stall (rg_f3);
+		  let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, new_st_val);
+		  ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
+		  fa_arm_the_load_stall (rg_width_code);
 
 		  if (cfg_verbosity > 1) begin
-		     $display ("          0x%0h  op  0x%0h -> 0x%0h", word64, word64, new_st_val);
-		     $write   ("          New Word64_Set:");
-		     fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
+		     $display ("          0x%0h  op  0x%0h -> 0x%0h", word128, word128, new_st_val);
+		     $write   ("          New Word128_Set:");
+		     fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
 		  end
 
 		  // Writeback data to memory (so cache remains clean)
@@ -1134,7 +1154,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // TODO: should this rule be merged into rl_probe_and_immed_rsp, to avoid losing a cycle?
 
    rule rl_start_tlb_refill ((rg_state == PTW_START) && (ctr_wr_rsps_pending.value == 0));
-
+//TODO check if this needs to change for 128?
 `ifdef RV32
       // RV32.Sv32: Page Table top is at Level 1
 
@@ -1442,8 +1462,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       fa_fabric_send_read_req (cline_fabric_addr, axi4_size);
 
       rg_requesting_cline  <= True;
-      rg_req_byte_in_cline <= ((valueOf (Wd_Data) == 32) ? 4 : 8);
-      rg_lower_word32_full <= False;
+      rg_req_byte_in_cline <= ((valueOf (Wd_Data) == 64) ? 8 : 16);
+      rg_lower_word64_full <= False;
 
       // Pick a victim 'way'
       // TODO: prioritize picking an EMPTY slot over a CLEAN slot
@@ -1462,12 +1482,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 								 ctag : fn_PA_to_CTag (rg_pa)};
       ram_state_and_ctag_cset.a.put (bram_cmd_write, cset_in_cache, new_state_and_ctag_cset);
 
-      // Request read of first Word64_Set in CLine (BRAM port B)
+      // Request read of first Word128_Set in CLine (BRAM port B)
       // for set read-modify-write (not relevant for direct-mapped)
-      let word64_in_cline      = 0;
-      let word64_set_in_cache  = { cset_in_cache, word64_in_cline };
-      rg_word64_set_in_cache  <= word64_set_in_cache;
-      ram_word64_set.b.put (bram_cmd_read, word64_set_in_cache, ?);
+      let word128_in_cline      = 0;
+      let word128_set_in_cache  = { cset_in_cache, word128_in_cline };
+      rg_word128_set_in_cache  <= word128_set_in_cache;
+      ram_word128_set.b.put (bram_cmd_read, word128_set_in_cache, ?);
 
       // Enter cache refill loop, awaiting refill responses from mem
       rg_error_during_refill <= False;
@@ -1498,7 +1518,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // ----------------------------------------------------------------
    // TODO (possibly): we complete a cache refill (in rl_cache_refill_loop) and
    // then, in rl_rereq, redo the missing request, just in case the
-   // last word64 of the refill is exactly the word64 we need in which
+   // last word128 of the refill is exactly the word128 we need in which
    // case we'd have a race on ram port A (refill write) and port B
    // (request).
    // An alternative would be to buffer the target word64 during the
@@ -1537,43 +1557,43 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		      cur_cycle, d_or_i, access_exc_code);
       end
 
-      // For 32b fabrics, if this is lower Word32, just register it to hold until upper Word32 arrives
-      if ((valueOf (Wd_Data) == 32) && (! rg_lower_word32_full)) begin
-	 rg_lower_word32      <= truncate (mem_rsp.rdata);
-	 rg_lower_word32_full <= True;
+      // For 64b fabrics, if this is lower Word64, just register it to hold until upper Word64 arrives
+      if ((valueOf (Wd_Data) == 64) && (! rg_lower_word64_full)) begin
+	 rg_lower_word64      <= truncate (mem_rsp.rdata);
+	 rg_lower_word64_full <= True;
 	 if (cfg_verbosity > 2)
-	    $display ("        Recording rdata in rg_lower_word32");
+	    $display ("        Recording rdata in rg_lower_word64");
       end
 
-      // Refill 64b of cache line
+      // Refill 128b of cache line
       else begin
-	 Bit #(64) new_word64 = zeroExtend (mem_rsp.rdata);
-	 if (valueOf (Wd_Data) == 32) begin
-	    // Assert: rg_lower_32_full == True
-	    new_word64 = { new_word64 [31:0], rg_lower_word32 };
-	    rg_lower_word32_full <= False;
+	 Bit #(128) new_word128 = zeroExtend (mem_rsp.rdata);
+	 if (valueOf (Wd_Data) == 64) begin
+	    // Assert: rg_lower_64_full == True
+	    new_word128 = { new_word128 [63:0], rg_lower_word64 };
+	    rg_lower_word64_full <= False;
 	    if (cfg_verbosity > 2)
-	       $display ("        32b fabric: concat with rg_lower_word32: new_word64 0x%0x", new_word64);
+	       $display ("        64b fabric: concat with rg_lower_word64: new_word128 0x%0x", new_word128);
 	 end
 
-	 // Update the Word64_Set (BRAM port A) (if this response was not an error)
-	 let new_word64_set = word64_set;
-	 new_word64_set [rg_victim_way] = new_word64;
+	 // Update the Word128_Set (BRAM port A) (if this response was not an error)
+	 let new_word128_set = word128_set;
+	 new_word128_set [rg_victim_way] = new_word128;
 	 if (! err_rsp)
-	    ram_word64_set.a.put (bram_cmd_write, rg_word64_set_in_cache, new_word64_set);
+	    ram_word128_set.a.put (bram_cmd_write, rg_word128_set_in_cache, new_word128_set);
 
-	 Word64_in_CLine word64_in_cline = truncate (rg_word64_set_in_cache);
+	 Word128_in_CLine word128_in_cline = truncate (rg_word128_set_in_cache);
 
 	 // If more word64_sets in cacheline, initiate RAM read for next word64_set
-	 if (word64_in_cline != fromInteger (word64s_per_cline - 1)) begin
-	    let next_word64_set_in_cache = rg_word64_set_in_cache + 1;
-	    ram_word64_set.b.put (bram_cmd_read, next_word64_set_in_cache, ?);
-	    rg_word64_set_in_cache <= next_word64_set_in_cache;
+	 if (word128_in_cline != fromInteger (word128s_per_cline - 1)) begin
+	    let next_word128_set_in_cache = rg_word128_set_in_cache + 1;
+	    ram_word128_set.b.put (bram_cmd_read, next_word128_set_in_cache, ?);
+	    rg_word128_set_in_cache <= next_word128_set_in_cache;
 	 end
 
-	 // else final Word64 of CLine; raise exception if pending,
+	 // else final Word128 of CLine; raise exception if pending,
 	 // or redo original missing request on port B.
-	 // The word64 we just wrote in port A may be the word64 we request on port B,
+	 // The word128 we just wrote in port A may be the word128 we request on port B,
 	 // so we do it a cycle later, in rl_rereq.
 	 else if (err_rsp || rg_error_during_refill) begin
 	    rg_state    <= MODULE_EXCEPTION_RSP;
@@ -1588,11 +1608,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 end
 
 	 if (cfg_verbosity > 2) begin
-	    $display ("        Updating Cache word64_set 0x%0h, word64_in_cline %0d) old => new",
-		      rg_word64_set_in_cache, word64_in_cline);
+	    $display ("        Updating Cache word128_set 0x%0h, word128_in_cline %0d) old => new",
+		      rg_word128_set_in_cache, word128_in_cline);
 
-	    fa_display_word64_set (cset_in_cache, word64_in_cline, word64_set);
-	    fa_display_word64_set (cset_in_cache, word64_in_cline, new_word64_set);
+	    fa_display_word128_set (cset_in_cache, word128_in_cline, word128_set);
+	    fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
 	 end
       end
    endrule: rl_cache_refill_rsps_loop
@@ -1628,11 +1648,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 			&& (ctr_wr_rsps_pending.value == 0));
 
       if (cfg_verbosity > 1)
-	 $display ("%0d: %s.rl_io_read_req; f3 0x%0h vaddr %0h  paddr %0h",
-		   cur_cycle, d_or_i, rg_f3, rg_addr, rg_pa);
+	 $display ("%0d: %s.rl_io_read_req; width_code 0x%0h vaddr %0h  paddr %0h",
+		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa);
 
       Fabric_Addr fabric_addr = fn_PA_to_Fabric_Addr (rg_pa);
-      fa_fabric_send_read_req (fabric_addr, fn_funct3_to_AXI4_Size (rg_f3));
+      fa_fabric_send_read_req (fabric_addr, fn_width_code_to_AXI4_Size (rg_width_code));
 
 `ifdef ISA_A
       // Invalidate LR/SC reservation if AMO_LR
@@ -1652,12 +1672,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_f3, rg_addr, zeroExtend (rd_data.rdata));
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, zeroExtend (rd_data.rdata));
       rg_ld_val <= ld_val;
 
       // Successful read
       if (rd_data.rresp == OKAY) begin
-	 fa_drive_IO_read_rsp (rg_f3, rg_addr, ld_val);
+	 fa_drive_IO_read_rsp (rg_width_code, rg_is_unsigned, rg_addr, ld_val);
 	 rg_state <= IO_READ_RSP;
       end
 
@@ -1676,7 +1696,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Stays in this state until CPU's next request puts it back into RUNNING state
 
    rule rl_maintain_io_read_rsp (rg_state == IO_READ_RSP);
-      fa_drive_IO_read_rsp (rg_f3, rg_addr, rg_ld_val);
+      fa_drive_IO_read_rsp (rg_width_code, rg_is_unsigned, rg_addr, rg_ld_val);
    endrule
 
    // ----------------------------------------------------------------
@@ -1690,10 +1710,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    rule rl_io_write_req ((rg_state == IO_REQ) && (rg_op == CACHE_ST));
       if (cfg_verbosity > 1)
-	 $display ("%0d: %s: rl_io_write_req; f3 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
-		   cur_cycle, d_or_i, rg_f3, rg_addr, rg_pa, rg_st_amo_val);
+	 $display ("%0d: %s: rl_io_write_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
+		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
 
-      fa_fabric_send_write_req (rg_f3, rg_pa, rg_st_amo_val);
+      fa_fabric_send_write_req (rg_width_code, rg_pa, rg_st_amo_val);
 
       rg_state <= CACHE_ST_AMO_RSP;
 
@@ -1711,8 +1731,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_state  <= CACHE_ST_AMO_RSP;
 
       if (cfg_verbosity > 1) begin
-	 $display ("%0d: %s: rl_io_AMO_SC_req; f3 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
-		   cur_cycle, d_or_i, rg_f3, rg_addr, rg_pa, rg_st_amo_val);
+	 $display ("%0d: %s: rl_io_AMO_SC_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
+		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
 	 $display ("    FAIL due to I/O address.");
 	 $display ("    => rl_ST_AMO_response");
       end
@@ -1727,11 +1747,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `ifdef ISA_A
    rule rl_io_AMO_op_req ((rg_state == IO_REQ) && is_AMO && (! is_AMO_LR) && (! is_AMO_SC));
       if (cfg_verbosity > 1)
-	 $display ("%0d: %s.rl_io_AMO_op_req; f3 0x%0h vaddr %0h  paddr %0h",
-		   cur_cycle, d_or_i, rg_f3, rg_addr, rg_pa);
+	 $display ("%0d: %s.rl_io_AMO_op_req; width_code 0x%0h vaddr %0h  paddr %0h",
+		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa);
 
       Fabric_Addr fabric_addr = fn_PA_to_Fabric_Addr (rg_pa);
-      fa_fabric_send_read_req (fabric_addr, fn_funct3_to_AXI4_Size (rg_f3));
+      fa_fabric_send_read_req (fabric_addr, fn_width_code_to_AXI4_Size (rg_width_code));
 
       rg_state <= IO_AWAITING_AMO_READ_RSP;
 
@@ -1754,7 +1774,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_f3, rg_addr, zeroExtend (rd_data.rdata));
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, zeroExtend (rd_data.rdata));
 
       // Bus error for AMO read
       if (rd_data.rresp != OKAY) begin
@@ -1767,17 +1787,17 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Successful AMO read
       else begin
 	 if (cfg_verbosity > 1)
-	    $display ("%0d: %s: rl_io_AMO_read_rsp; f3 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
-		      cur_cycle, d_or_i, rg_f3, rg_addr, rg_pa, rg_st_amo_val);
+	    $display ("%0d: %s: rl_io_AMO_read_rsp; f3 0x%0h  vaddr %0h  paddr %0h  word128 0x%0h",
+		      cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
 
 	 // Do the AMO op on the loaded value and the store value
 	 match {.new_ld_val,
-		.new_st_val} = fn_amo_op (rg_f3, rg_amo_funct7, rg_addr, ld_val, rg_st_amo_val);
+		.new_st_val} = fn_amo_op (rg_width_code, rg_amo_funct7, rg_addr, ld_val, rg_st_amo_val);
 
 	 // Write back new st_val to fabric
-	 fa_fabric_send_write_req (rg_f3, rg_pa, new_st_val);
+	 fa_fabric_send_write_req (rg_width_code, rg_pa, new_st_val);
 
-	 fa_drive_IO_read_rsp (rg_f3, rg_addr, new_ld_val);
+	 fa_drive_IO_read_rsp (rg_width_code, rg_is_unsigned, rg_addr, new_ld_val);
 	 rg_ld_val <= new_ld_val;
 	 rg_state  <= IO_READ_RSP;
 
@@ -1849,12 +1869,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // NOTE: this has no flow control: CPU should only invoke it when consuming prev output.
    // As soon as this method is called, the module starts working on this new request.
    method Action  req (CacheOp op,
-		       Bit #(3) f3,
+		       Bit #(3) width_code,
+               Bool is_unsigned,
 `ifdef ISA_A
 		       Bit #(7) amo_funct7,
 `endif
 		       Addr addr,
-		       Bit #(64) st_value,
+		       Bit #(128) st_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -1863,8 +1884,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.req: op:", cur_cycle, d_or_i, fshow (op),
-		   " f3:%0d addr:0x%0h st_value:0x%0h priv:",
-		   f3,    addr,      st_value,      fshow_Priv_Mode (priv),
+		   " width_code:%0d addr:0x%0h st_value:0x%0h priv:",
+		   width_code,    addr,      st_value,      fshow_Priv_Mode (priv),
 		   " sstatus_SUM:%0d mstatus_MXR:%0d satp:0x%0h",
 		   sstatus_SUM,    mstatus_MXR,    satp);
 `ifdef ISA_A
@@ -1873,7 +1894,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       end
 
       rg_op          <= op;
-      rg_f3          <= f3;
+      rg_width_code  <= width_code;
+      rg_is_unsigned <= is_unsigned;
 `ifdef ISA_A
       rg_amo_funct7  <= amo_funct7;
 `endif
@@ -1888,7 +1910,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Initial default PA assumes no VM translation
       rg_pa <= fn_WordXL_to_PA (addr);
 
-      if (! fn_is_aligned (f3, addr)) begin
+      if (! fn_is_aligned (width_code, addr)) begin
 	 // We detect misaligned accesses and trap on them
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ADDR_MISALIGNED : exc_code_STORE_AMO_ADDR_MISALIGNED);
@@ -1920,11 +1942,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       return rg_addr;
    endmethod
 
-   method Bit #(64)  word64;
+   method Bit #(128)  word128;
       return dw_output_ld_val;
    endmethod
 
-   method Bit #(64)  st_amo_val;
+   method Bit #(128)  st_amo_val;
       return dw_output_st_amo_val;
    endmethod
 

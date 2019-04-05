@@ -92,7 +92,7 @@ deriving (Bits, Eq, FShow);
 interface IMem_IFC;
    // CPU side: IMem request
    (* always_ready *)
-   method Action  req (Bit #(3) f3,
+   method Action  req (Bit #(3) width_code,
 		       WordXL addr,
 		       // The following  args for VM
 		       Priv_Mode  priv,
@@ -130,12 +130,13 @@ interface DMem_IFC;
    // CPU side: DMem request
    (* always_ready *)
    method Action  req (CacheOp op,
-		       Bit #(3) f3,
+		       Bit #(3) width_code,
+               Bool is_unsigned,
 `ifdef ISA_A
 		       Bit #(7) amo_funct7,
 `endif
 		       WordXL addr,
-		       Bit #(64) store_value,
+		       Bit #(128) store_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -148,8 +149,8 @@ interface DMem_IFC;
 
    // CPU side: DMem response
    (* always_ready *)  method Bool       valid;
-   (* always_ready *)  method Bit #(64)  word64;      // Load-value
-   (* always_ready *)  method Bit #(64)  st_amo_val;  // Final store-value for ST, SC, AMO
+   (* always_ready *)  method Bit #(128)  word128;      // Load-value
+   (* always_ready *)  method Bit #(128)  st_amo_val;  // Final store-value for ST, SC, AMO
    (* always_ready *)  method Bool       exc;
    (* always_ready *)  method Exc_Code   exc_code;
 endinterface
@@ -164,57 +165,56 @@ endinterface
 // result:
 //  - word with correct byte(s) shifted into LSBs and properly extended
 
-function Bit #(64) fn_extract_and_extend_bytes (Bit #(3) f3, WordXL byte_addr, Bit #(64) word64);
-   Bit #(64) result    = 0;
-   Bit #(3)  addr_lsbs = byte_addr [2:0];
+function Bit #(128) fn_extract_and_extend_bytes (Bit #(3) width_code, Bool is_unsigned, WordXL byte_addr, Bit #(128) word128);
+   Bit #(128) result    = 0;
+   Bit #(4)  addr_lsbs = byte_addr [3:0];
 
-   case (f3)
-      f3_LB: case (addr_lsbs)
-		'h0: result = signExtend (word64 [ 7: 0]);
-		'h1: result = signExtend (word64 [15: 8]);
-		'h2: result = signExtend (word64 [23:16]);
-		'h3: result = signExtend (word64 [31:24]);
-		'h4: result = signExtend (word64 [39:32]);
-		'h5: result = signExtend (word64 [47:40]);
-		'h6: result = signExtend (word64 [55:48]);
-		'h7: result = signExtend (word64 [63:56]);
-	     endcase
-      f3_LBU: case (addr_lsbs)
-		'h0: result = zeroExtend (word64 [ 7: 0]);
-		'h1: result = zeroExtend (word64 [15: 8]);
-		'h2: result = zeroExtend (word64 [23:16]);
-		'h3: result = zeroExtend (word64 [31:24]);
-		'h4: result = zeroExtend (word64 [39:32]);
-		'h5: result = zeroExtend (word64 [47:40]);
-		'h6: result = zeroExtend (word64 [55:48]);
-		'h7: result = zeroExtend (word64 [63:56]);
-	     endcase
+   let u_s_extend = is_unsigned ? zeroExtend : signExtend;
 
-      f3_LH: case (addr_lsbs)
-		'h0: result = signExtend (word64 [15: 0]);
-		'h2: result = signExtend (word64 [31:16]);
-		'h4: result = signExtend (word64 [47:32]);
-		'h6: result = signExtend (word64 [63:48]);
-	     endcase
-      f3_LHU: case (addr_lsbs)
-		'h0: result = zeroExtend (word64 [15: 0]);
-		'h2: result = zeroExtend (word64 [31:16]);
-		'h4: result = zeroExtend (word64 [47:32]);
-		'h6: result = zeroExtend (word64 [63:48]);
+   case (width_code)
+      0: case (addr_lsbs)
+		'h0: result = u_s_extend (word128 [ 7: 0]);
+		'h1: result = u_s_extend (word128 [15: 8]);
+		'h2: result = u_s_extend (word128 [23:16]);
+		'h3: result = u_s_extend (word128 [31:24]);
+		'h4: result = u_s_extend (word128 [39:32]);
+		'h5: result = u_s_extend (word128 [47:40]);
+		'h6: result = u_s_extend (word128 [55:48]);
+		'h7: result = u_s_extend (word128 [63:56]);
+		'h8: result = u_s_extend (word128 [71:64]);
+		'h9: result = u_s_extend (word128 [79:72]);
+		'ha: result = u_s_extend (word128 [87:80]);
+		'hb: result = u_s_extend (word128 [95:88]);
+		'hc: result = u_s_extend (word128 [103:96]);
+		'hd: result = u_s_extend (word128 [111:104]);
+		'he: result = u_s_extend (word128 [119:112]);
+		'hf: result = u_s_extend (word128 [127:120]);
 	     endcase
 
-      f3_LW: case (addr_lsbs)
-		'h0: result = signExtend (word64 [31: 0]);
-		'h4: result = signExtend (word64 [63:32]);
-	     endcase
-      f3_LWU: case (addr_lsbs)
-		'h0: result = zeroExtend (word64 [31: 0]);
-		'h4: result = zeroExtend (word64 [63:32]);
+      1: case (addr_lsbs)
+		'h0: result = u_s_extend (word128 [15: 0]);
+		'h2: result = u_s_extend (word128 [31:16]);
+		'h4: result = u_s_extend (word128 [47:32]);
+		'h6: result = u_s_extend (word128 [63:48]);
+		'h8: result = u_s_extend (word128 [79:64]);
+		'ha: result = u_s_extend (word128 [95:80]);
+		'hc: result = u_s_extend (word128 [111:96]);
+		'he: result = u_s_extend (word128 [127:112]);
 	     endcase
 
-      f3_LD: case (addr_lsbs)
-		'h0: result = word64;
+      2: case (addr_lsbs)
+		'h0: result = u_s_extend (word128 [31: 0]);
+		'h4: result = u_s_extend (word128 [63:32]);
+		'h8: result = u_s_extend (word128 [95:64]);
+		'hc: result = u_s_extend (word128 [127:96]);
 	     endcase
+
+      3: case (addr_lsbs)
+		'h0: result = u_s_extend (word128 [63:0]);     
+		'h8: result = u_s_extend (word128 [127:64]);
+	     endcase
+
+      4: result = word128;
    endcase
    return result;
 endfunction
