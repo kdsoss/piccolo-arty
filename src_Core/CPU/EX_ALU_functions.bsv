@@ -1307,6 +1307,10 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    if (!isValidCap(authority)) begin
        alu_outputs.control = CONTROL_TRAP;
        //TODO tag violation
+   end else if (isSealed(authority)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO sealing exception.
+       //TODO sentry
    end else if ((isStoreNotLoad ? !getHardPerms(authority).permitStore : !getHardPerms(authority).permitLoad)) begin
        //TODO store cap checks
        alu_outputs.control = CONTROL_TRAP;
