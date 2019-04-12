@@ -781,6 +781,8 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 
    let alu_outputs = alu_outputs_base;
 
+   let width_code = {0,funct3[1:0]};
+
    alu_outputs.control   = ((legal_LD && legal_FP_LD) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_LD;
@@ -793,11 +795,8 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs.check_enable = True;
-   alu_outputs.check_authority = inputs.ddc; //TODO mode bit
-   alu_outputs.check_address_low = eaddr;
-   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << funct3); //TODO
-   alu_outputs.check_inclusive = False;
+   let authority = inputs.ddc; //TODO mode bit
+   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, False, ?);
 `endif
 
    // Normal trace output (if no trap)
@@ -852,6 +851,9 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 `endif
 
    let alu_outputs = alu_outputs_base;
+
+   let width_code = {0, funct3[1:0]};
+
    alu_outputs.control   = ((legal_ST && legal_FP_ST) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
@@ -860,11 +862,8 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
-   alu_outputs.check_enable = True;
-   alu_outputs.check_authority = inputs.ddc; //TODO mode bit
-   alu_outputs.check_address_low = eaddr;
-   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << funct3); //TODO
-   alu_outputs.check_inclusive = False;
+   let authority = inputs.ddc; //TODO mode bit
+   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, True, nullCap);
 `endif
 
    // The rs2_val would depend on the combination F/D-RV32/64 when FD is enabled
@@ -1287,6 +1286,27 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
     return alu_outputs;
 endfunction
 
+function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe authority, WordXL base, Bit#(3) widthCode, Bool isStoreNotLoad, CapPipe data);
+   if (!isValidCap(authority)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO tag violation
+   end else if (isSealed(authority)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO sealing exception.
+       //TODO sentry
+   end else if ((isStoreNotLoad ? !getHardPerms(authority).permitStore : !getHardPerms(authority).permitLoad)) begin
+       alu_outputs.control = CONTROL_TRAP;
+       //TODO perms violation
+   end
+   alu_outputs.check_enable = True;
+   alu_outputs.check_authority = authority;
+   alu_outputs.check_address_low = base;
+   alu_outputs.check_address_high = zeroExtend(base) + (1 << widthCode);
+   alu_outputs.check_inclusive = False;
+
+   return alu_outputs;
+endfunction
+
 function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool isUnsignedNotSigned, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, CapPipe data);
    let eaddr = getAddr(addr) + (useDDC ? getBase(ddc) : 0);
 
@@ -1304,24 +1324,10 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
 
    let authority = useDDC ? ddc : addr;
 
-   if (!isValidCap(authority)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO tag violation
-   end else if (isSealed(authority)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO sealing exception.
-       //TODO sentry
-   end else if ((isStoreNotLoad ? !getHardPerms(authority).permitStore : !getHardPerms(authority).permitLoad)) begin
-       //TODO store cap checks
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO perms violation
-   end
+   //TODO store cap: also check store cap/store local/global cap permissions
 
-   alu_outputs.check_enable = True;
-   alu_outputs.check_authority = authority;
-   alu_outputs.check_address_low = eaddr;
-   alu_outputs.check_address_high = zeroExtend(eaddr) + (1 << widthCode);
-   alu_outputs.check_inclusive = False;
+   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, widthCode, isStoreNotLoad, data);
+
    return alu_outputs;
 endfunction
 
