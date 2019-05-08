@@ -111,7 +111,7 @@ typedef TLog #(Word64s_per_Raw_Mem_Word)               Bits_per_Word64_in_Raw_Me
 // Type of index of a Word64 in a Raw_Mem_Word seen as a vector of Word64s
 typedef Bit #(Bits_per_Word64_in_Raw_Mem_Word)         Word64_in_Raw_Mem_Word;
 
-typedef TDiv #(Bytes_per_Raw_Mem_Word, Bytes_per_Fabric_Data)  Fabric_Data_per_Raw_Mem_Word;
+typedef TDiv #(Bytes_per_Raw_Mem_Word, Bytes_per_Fabric_Data_Periph)  Fabric_Data_per_Raw_Mem_Word;
 
 // Index of bit that selects a fabric data word in an address
 `ifdef FABRIC32
@@ -197,7 +197,7 @@ interface Mem_Controller_IFC;
 
    // Main Fabric Reqs/Rsps
    interface AXI4_Slave_Synth #(Wd_SId, Wd_Addr, Wd_Data,
-                                Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) slave;
+                                Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave;
 
    // To raw memory (outside the SoC)
    interface MemoryClient #(Bits_per_Raw_Mem_Addr, Bits_per_Raw_Mem_Word)  to_raw_mem;
@@ -230,8 +230,8 @@ typedef struct {Req_Op                     req_op;
 		Bit #(Wd_User)             user;
 
 		// Write data info
-		Bit #(TDiv #(Wd_Data, 8))  wstrb;
-		Fabric_Data                data;
+		Bit #(TDiv #(Wd_Data_Periph, 8))  wstrb;
+		Fabric_Data_Periph         data;
    } Req
 deriving (Bits, FShow);
 
@@ -256,7 +256,9 @@ module mkMem_Controller (Mem_Controller_IFC);
    FIFOF #(Bit #(0)) f_reset_rsps <- mkFIFOF;
 
    // Communication with fabric
-   let slave_xactor <- mkAXI4_Slave_Xactor;
+   AXI4_Slave_Width_Xactor#(Wd_SId, Wd_Addr, Wd_Data_Periph, Wd_Data,
+                              Wd_AW_User_Periph, Wd_W_User_Periph, Wd_B_User_Periph, Wd_AR_User_Periph, Wd_R_User_Periph,
+                              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave_xactor <- mkAXI4_Slave_Widening_Xactor;
 
    // Requests merged from the (WrA, WrD) and RdA channels
    FIFOF #(Req) f_reqs <- mkPipelineFIFOF;
@@ -470,7 +472,7 @@ module mkMem_Controller (Mem_Controller_IFC);
       // We need to select the fabric data word from the raw mem word that contains the target address.
 
       // View the raw mem word as a vector of fabric data words (Wd_Data width words)
-      Vector #(Fabric_Data_per_Raw_Mem_Word, Bit #(Wd_Data)) raw_mem_word_V_fabric_data = unpack (rg_cached_raw_mem_word);
+      Vector #(Fabric_Data_per_Raw_Mem_Word, Bit #(Wd_Data_Periph)) raw_mem_word_V_fabric_data = unpack (rg_cached_raw_mem_word);
 
       // Get the index into this vector of the fabric word containing the target address.
       // For this index, use a generous size (here Bit #(16)), and let zeroExtend pad it automaticallly.
@@ -479,7 +481,7 @@ module mkMem_Controller (Mem_Controller_IFC);
       n = (n >> lo_fabric_data);
 
       // Select the fabric data word of interest
-      Bit #(Wd_Data) rdata = raw_mem_word_V_fabric_data [n];
+      Bit #(Wd_Data_Periph) rdata = raw_mem_word_V_fabric_data [n];
 
       let rdr = AXI4_RFlit {rid:   f_reqs.first.id,
 			    rdata: rdata,
@@ -512,7 +514,7 @@ module mkMem_Controller (Mem_Controller_IFC);
       // Lane-adjust the new word64
       Bit #(64) word64_new = zeroExtend (f_reqs.first.data);
       Bit #(8)  strobe     = zeroExtend (f_reqs.first.wstrb);
-      if ((valueOf (Wd_Data) == 32) && (f_reqs.first.addr [2] == 1'b1)) begin
+      if ((valueOf (Wd_Data_Periph) == 32) && (f_reqs.first.addr [2] == 1'b1)) begin
 	 // Upper 32b only
 	 word64_new = { word64_new [31:0], 0 };
 	 strobe     = { strobe     [3:0],  0 };
@@ -592,7 +594,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    rule rl_invalid_rd_address (   (rg_state == STATE_READY)
 			       && (! fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size))
 			       && (f_reqs.first.req_op == REQ_OP_RD));
-      Fabric_Data rdata = zeroExtend (f_reqs.first.addr);
+      Fabric_Data_Periph rdata = zeroExtend (f_reqs.first.addr);
       let rdr = AXI4_RFlit {rid:   f_reqs.first.id,
 			    rdata: rdata,                 // for debugging only
 			    rresp: SLVERR,

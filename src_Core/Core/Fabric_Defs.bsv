@@ -53,32 +53,40 @@ typedef  TDiv #(Wd_Addr, 8)  Bytes_per_Fabric_Addr;
 Integer  bytes_per_fabric_addr = valueOf (Bytes_per_Fabric_Addr);
 
 // ----------------
-// Width of fabric 'data' buses
-`ifdef FABRIC64
-typedef 64   Wd_Data;
-`else
-typedef 32   Wd_Data;
-`endif
+// Widths of the main bus data are 128 bits. Peripherals each have a shim
+// converting this down to 64 bits (and stripping tags).
+// (caches <==> Bus <==> (tag controller) <==> main memory
+//               |
+//             Periph
 
-typedef  Bit #(Wd_Data)             Fabric_Data;
-typedef  Bit #(TDiv #(Wd_Data, 8))  Fabric_Strb;
+typedef 128  Wd_Data;
+
+// ----------------
+// Width of fabric 'user' datapaths. Carry capability tags on data lines.
+typedef 0 Wd_AW_User;
+typedef 1 Wd_W_User;
+typedef 0 Wd_B_User;
+typedef 0 Wd_AR_User;
+typedef 1 Wd_R_User;
 
 typedef  TDiv #(Wd_Data, 8)         Bytes_per_Fabric_Data;
 Integer  bytes_per_fabric_data = valueOf (Bytes_per_Fabric_Data);
 
-// ----------------
-// Width of fabric 'user' datapaths
-typedef 0 Wd_AW_User;
-typedef 0 Wd_W_User;
-typedef 0 Wd_B_User;
-typedef 0 Wd_AR_User;
-typedef 0 Wd_R_User;
+typedef  Bit #(Wd_Data)             Fabric_Data;
+typedef  Bit #(TDiv #(Wd_Data, 8))  Fabric_Strb;
 
 // ----------------
-// Number of zero LSBs in a fabric address aligned to the fabric data width
+typedef 64   Wd_Data_Periph;
 
-typedef  TLog #(Bytes_per_Fabric_Data)  ZLSBs_Aligned_Fabric_Addr;
-Integer  zlsbs_aligned_fabric_addr = valueOf (ZLSBs_Aligned_Fabric_Addr);
+typedef 0    Wd_AW_User_Periph;
+typedef 0    Wd_W_User_Periph;
+typedef 0    Wd_B_User_Periph;
+typedef 0    Wd_AR_User_Periph;
+typedef 0    Wd_R_User_Periph;
+
+typedef  Bit #(Wd_Data_Periph)             Fabric_Data_Periph;
+typedef  Bit #(TDiv #(Wd_Data_Periph, 8))  Fabric_Strb_Periph;
+typedef  TDiv #(Wd_Data_Periph, 8)         Bytes_per_Fabric_Data_Periph;
 
 // ================================================================
 // AXI4 defaults for this project
@@ -91,11 +99,11 @@ AXI4_Cache       fabric_default_awcache = awcache_dev_nonbuf;
 AXI4_Prot        fabric_default_prot    = axi4Prot(DATA, SECURE, UNPRIV);
 AXI4_QoS         fabric_default_qos     = 0;
 AXI4_Region      fabric_default_region  = 0;
-Bit#(Wd_AW_User) fabric_default_awuser  = ?;
-Bit#(Wd_W_User)  fabric_default_wuser   = ?;
-Bit#(Wd_B_User)  fabric_default_buser   = ?;
-Bit#(Wd_AR_User) fabric_default_aruser  = ?;
-Bit#(Wd_R_User)  fabric_default_ruser   = ?;
+Bit#(Wd_AW_User) fabric_default_awuser  = 0;
+Bit#(Wd_W_User)  fabric_default_wuser   = 0;
+Bit#(Wd_B_User)  fabric_default_buser   = 0;
+Bit#(Wd_AR_User) fabric_default_aruser  = 0;
+Bit#(Wd_R_User)  fabric_default_ruser   = 0;
 
 // ================================================================
 

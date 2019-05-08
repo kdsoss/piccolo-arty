@@ -74,7 +74,9 @@ module mkBoot_ROM (Boot_ROM_IFC);
    // ----------------
    // Connector to fabric
 
-   let slave_xactor <- mkAXI4_Slave_Xactor;
+   AXI4_Slave_Width_Xactor#(Wd_SId, Wd_Addr, Wd_Data_Periph, Wd_Data,
+                              Wd_AW_User_Periph, Wd_W_User_Periph, Wd_B_User_Periph, Wd_AR_User_Periph, Wd_R_User_Periph,
+                              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave_xactor <- mkAXI4_Slave_Widening_Xactor;
 
    // ----------------
 
@@ -124,7 +126,7 @@ module mkBoot_ROM (Boot_ROM_IFC);
 	 data64 = { 0, d1 };
       end
 	 
-      Bit #(Wd_Data) rdata  = truncate (data64);
+      Bit #(Wd_Data_Periph) rdata  = truncate (data64);
       let rdr = AXI4_RFlit {rid:   rda.arid,
 			    rdata: rdata,
 			    rresp: rresp,

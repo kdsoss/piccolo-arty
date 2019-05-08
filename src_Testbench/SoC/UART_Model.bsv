@@ -164,7 +164,9 @@ module mkUART (UART_IFC);
    // ----------------
    // Connector to fabric
 
-   let slave_xactor <- mkAXI4_Slave_Xactor;
+   AXI4_Slave_Width_Xactor#(Wd_SId, Wd_Addr, Wd_Data_Periph, Wd_Data,
+                              Wd_AW_User_Periph, Wd_W_User_Periph, Wd_B_User_Periph, Wd_AR_User_Periph, Wd_R_User_Periph,
+                              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave_xactor <- mkAXI4_Slave_Widening_Xactor;
 
    // ----------------
    // character queues to and from the console
@@ -306,7 +308,7 @@ module mkUART (UART_IFC);
       end
 
       // Send read-response to bus
-      Fabric_Data rdata = zeroExtend (rdata_byte);
+      Fabric_Data_Periph rdata = zeroExtend (rdata_byte);
       let rdr = AXI4_RFlit {rid:   rda.arid,
 			    rdata: rdata,
 			    rresp: rresp,

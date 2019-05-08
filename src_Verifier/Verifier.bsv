@@ -157,49 +157,9 @@ endfunction
 
 `endif
 
-function Bit #(Bytes_per_Addr) getMemMask(Bit #(2) width_code, Bit #(XLEN) addr);
-    Bit #(Bytes_per_Addr) result    = 0;
-`ifdef RV64
-    Bit #(3)  addr_lsbs = addr [2:0];
-`else
-    Bit #(2)  addr_lsbs = addr [1:0];
-`endif
-
-    case (width_code)
-        'b00: case (addr_lsbs)
-		    'h0: result = zeroExtend(4'b0001);
-		    'h1: result = zeroExtend(4'b0010);
-		    'h2: result = zeroExtend(4'b0100);
-		    'h3: result = zeroExtend(4'b1000);
-`ifdef RV64
-		    'h4: result = 8'b0001_0000;
-		    'h5: result = 8'b0010_0000;
-		    'h6: result = 8'b0100_0000;
-		    'h7: result = 8'b1000_0000;
-`endif
-	        endcase
-        'b01: case (addr_lsbs)
-		    'h0: result = zeroExtend(4'b0011);
-		    'h2: result = zeroExtend(4'b1100);
-`ifdef RV64
-		    'h4: result = 8'b0011_0000;
-		    'h6: result = 8'b1100_0000;
-`endif
-	        endcase
-        'b10: case (addr_lsbs)
-		    'h0: result = zeroExtend(4'b1111);
-`ifdef RV64
-		    'h4: result = 8'b1111_0000;
-`endif
-	        endcase
-	     
-	     // LWU and LD only appear in RV64I.
-	    `ifdef RV64
-        'b11: case (addr_lsbs)
-		    'h0: result = 8'b1111_1111;
-	        endcase
-	    `endif
-    endcase
+function Bit #(8) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
+    Bit #(5) width = 5'b1 << width_code;
+    Bit #(8) result = truncate((9'b1 << width) - 9'b1);
     return result;
 endfunction : getMemMask
 

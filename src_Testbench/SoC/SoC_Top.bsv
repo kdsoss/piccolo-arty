@@ -150,8 +150,8 @@ module mkSoC_Top (SoC_Top_IFC);
    // Note: see 'SoC_Map' for 'master_num' definitions
 
    Vector#(Num_Masters, AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                            Wd_User, Wd_User, Wd_User,
-                                            Wd_User, Wd_User))
+                                            Wd_AW_User, Wd_W_User, Wd_B_User,
+                                            Wd_AR_User, Wd_R_User))
                                             master_vector = newVector;
 
    // CPU IMem master to fabric
@@ -170,8 +170,8 @@ module mkSoC_Top (SoC_Top_IFC);
    // Note: see 'SoC_Map' for 'slave_num' definitions
 
    Vector#(Num_Slaves, AXI4_Slave_Synth #(Wd_SId, Wd_Addr, Wd_Data,
-                                          Wd_User, Wd_User, Wd_User,
-                                          Wd_User, Wd_User))
+                                          Wd_AW_User, Wd_W_User, Wd_B_User,
+                                          Wd_AR_User, Wd_R_User))
                                           slave_vector = newVector;
    Vector#(Num_Slaves, Range#(Wd_Addr))   route_vector = newVector;
 

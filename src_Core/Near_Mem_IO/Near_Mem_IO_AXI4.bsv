@@ -120,7 +120,9 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    Reg #(Bit #(64)) rg_addr_lim  <- mkRegU;
 
    // Connector to AXI4 fabric
-   let slave_xactor <- mkAXI4_Slave_Xactor;
+   AXI4_Slave_Width_Xactor#(Wd_SId_2x3, Wd_Addr, Wd_Data_Periph, Wd_Data,
+                              Wd_AW_User_Periph, Wd_W_User_Periph, Wd_B_User_Periph, Wd_AR_User_Periph, Wd_R_User_Periph,
+                              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave_xactor <- mkAXI4_Slave_Widening_Xactor;
 
    // ----------------
    // Timer registers
@@ -261,7 +263,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
       end
 
       // Send read-response to bus
-      Fabric_Data x = truncate (rdata);
+      Fabric_Data_Periph x = truncate (rdata);
       let rdr = AXI4_RFlit {rid:   rda.arid,
 			    rdata: x,
 			    rresp: rresp,
