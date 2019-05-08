@@ -111,10 +111,12 @@ typedef struct {
    Addr       addr;     // Branch, jump: newPC
 		        // Mem ops and AMOs: mem addr
 
-   Bit#(2) mem_width_code;
+   Bit#(3) mem_width_code;
    Bool    mem_unsigned;
 
 `ifdef ISA_CHERI
+   Bool    mem_allow_cap; //Whether load/store is allowed to preserve cap tag
+
    Bool    pcc_changed;
    CapPipe pcc;
    Bool    ddc_changed;
@@ -186,6 +188,8 @@ ALU_Outputs alu_outputs_base
            check_address_low  : ?,
            check_address_high : ?,
            check_inclusive    : ?,
+
+           mem_allow_cap      : False,
 `endif
 
            mem_width_code     : ?,
@@ -788,7 +792,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    alu_outputs.op_stage2 = OP_Stage2_LD;
    alu_outputs.rd        = inputs.decoded_instr.rd;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = truncate(funct3);
+   alu_outputs.mem_width_code = width_code;
    alu_outputs.mem_unsigned = unpack(funct3[2]);
 `ifdef ISA_F
    alu_outputs.rd_in_fpr = (opcode == op_LOAD_FP);
@@ -858,7 +862,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = truncate(funct3);
+   alu_outputs.mem_width_code = {0,funct3[1:0]};
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
@@ -1304,6 +1308,17 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    alu_outputs.check_address_high = zeroExtend(base) + (1 << widthCode);
    alu_outputs.check_inclusive = False;
 
+   if (widthCode == 3'b100) begin //Load Q, so may be loading caps
+       if (isStoreNotLoad) begin
+           if (getHardPerms(authority).permitStoreCap && (getHardPerms(data).global || getHardPerms(authority).permitStoreLocalCap)) begin
+               alu_outputs.mem_allow_cap = True;
+           end
+       end else begin
+           if (getHardPerms(authority).permitLoadCap) begin
+               alu_outputs.mem_allow_cap = True;
+           end
+       end
+   end
    return alu_outputs;
 endfunction
 
@@ -1316,7 +1331,7 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
 
    alu_outputs.op_stage2      = isStoreNotLoad ? OP_Stage2_ST : OP_Stage2_LD;
    alu_outputs.addr           = eaddr;
-   alu_outputs.mem_width_code = truncate(widthCode);
+   alu_outputs.mem_width_code = widthCode;
    alu_outputs.mem_unsigned   = isStoreNotLoad ? False : isUnsignedNotSigned;
    alu_outputs.val2           = getAddr(data); //for stores
    alu_outputs.cap_val2       = data;

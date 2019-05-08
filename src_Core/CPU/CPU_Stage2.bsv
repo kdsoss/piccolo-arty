@@ -310,9 +310,18 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			   : (  dcache.exc
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
-	    WordXL result = truncate (dcache.word128);
+        Bit#(128) mem_val = tpl_1(dcache.word128);
+        Bit#(1) mem_tag = pack(tpl_2(dcache.word128));
+        CapPipe result = ?; //TODO any reason for this to be CapPipe not CapReg/CapMem?
+        if (rg_stage2.mem_width_code == 3'b100) begin
+            CapMem capMem = {pack(rg_stage2.mem_allow_cap) & mem_tag, mem_val};
+            CapReg capReg = cast(capMem);
+            result = cast(capReg);
+        end else begin
+            result = nullWithAddr(truncate(mem_val));
+        end
 
-            let funct3 = instr_funct3 (rg_stage2.instr);
+        let funct3 = instr_funct3 (rg_stage2.instr);
 
 	    let data_to_stage3 = data_to_stage3_base;
 	    data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
@@ -342,11 +351,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 `else
             // A GPR load in a non-FD system
-`ifdef ISA_CHERI
-	    data_to_stage3.rd_val   = nullWithAddr(result);
-`else
 	    data_to_stage3.rd_val   = result;
-`endif
 `endif
 
             // Update the bypass channel, if not trapping (NONPIPE)
@@ -379,11 +384,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                // Bypassing GPR value in a non-FD system. LD result meant for GPR
 	       if (rg_stage2.rd != 0) begin    // TODO: is this test necessary?
 		  bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-`ifdef ISA_CHERI
-		  bypass.rd_val       = nullWithAddr(result);
-`else
 		  bypass.rd_val       = result;
-`endif
 	       end
 `endif
 	    end
@@ -415,7 +416,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         `endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
-	    trace_data.word1 = result;
+        trace_data.word1 = getAddr(result);
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					   trap_info:       trap_info_dmem,
@@ -662,8 +663,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    else if (x.op_stage2 == OP_Stage2_AMO) cache_op = CACHE_AMO;
 `endif
 
+`ifdef ISA_CHERI
+        CapReg capReg = cast(x.val2);
+        CapMem capMem = cast(capReg);//TODO work out where to do these casts
+`endif
+
 	    dcache.req (cache_op,
-			zeroExtend(x.mem_width_code),
+			x.mem_width_code,
             x.mem_unsigned,
 `ifdef ISA_A
 			amo_funct7,
@@ -673,7 +679,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.val2,
 `else
 `ifdef ISA_CHERI
-			zeroExtend (getAddr(x.val2)),
+      tuple2(truncate(capMem), capMem[128]==1'b1 && x.mem_allow_cap),
 `else
 			zeroExtend (x.val2),
 `endif
