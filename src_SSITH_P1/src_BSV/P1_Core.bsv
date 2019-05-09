@@ -68,11 +68,13 @@ interface P1_Core_IFC;
 
    // CPU IMem to Fabric master interface
    interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master0;
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User) master0;
 
    // CPU DMem (incl. I/O) to Fabric master interface
    interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master1;
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User) master1;
 
    // External interrupt sources
    (* always_ready, always_enabled, prefix="" *)
@@ -111,6 +113,12 @@ module mkP1_Core (P1_Core_IFC);
    // Set core's verbosity
    rule rl_never (False);
       core.set_verbosity (?, ?);
+   endrule
+
+   // Tie-offs
+   rule rl_always (True);
+      // Non-maskable interrupt request.
+      core.nmi_req (False);
    endrule
 
    // ================================================================

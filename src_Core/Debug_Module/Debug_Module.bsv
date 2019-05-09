@@ -119,13 +119,17 @@ interface Debug_Module_IFC;
 
    // Read/Write RISC-V memory
    interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
-                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) master;
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User) master;
 endinterface
 
 // ================================================================
 
 (* synthesize *)
 module mkDebug_Module (Debug_Module_IFC);
+
+   // Local verbosity: 0 = quiet; 1 = print DMI transactions
+   Integer verbosity = 0;
 
    // The three parts
    DM_Run_Control_IFC        dm_run_control       <- mkDM_Run_Control;
@@ -153,6 +157,9 @@ module mkDebug_Module (Debug_Module_IFC);
    interface DMI dmi;
       method Action read_addr  (DM_Addr dm_addr);
 	 f_read_addr.enq(dm_addr);
+
+	 if (verbosity != 0)
+	    $display ("%0d: %m.DMI read: dm_addr 0x%0h", cur_cycle, dm_addr);
       endmethod
 
       method ActionValue #(DM_Word) read_data;
@@ -210,6 +217,10 @@ module mkDebug_Module (Debug_Module_IFC);
 	    dm_word = 0;
 	 end
 
+	 if (verbosity != 0)
+	    $display ("%0d: %m.DMI read response: dm_addr 0x%0h, dm_word 0x%0h",
+		      cur_cycle, dm_addr, dm_word);
+
 	 return dm_word;
       endmethod
 
@@ -262,6 +273,10 @@ module mkDebug_Module (Debug_Module_IFC);
 	    // TODO: set error status?
 	    noAction;
 	 end
+
+	 if (verbosity != 0)
+	    $display ("%0d: %m.DMI write: dm_addr 0x%0h, dm_word 0x%0h",
+		      cur_cycle, dm_addr, dm_word);
       endmethod
    endinterface
 

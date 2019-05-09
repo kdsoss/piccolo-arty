@@ -47,7 +47,9 @@ Bits_per_Raw_Mem_Word,
 Raw_Mem_Word,
 
 Mem_Controller_IFC (..),
-mkMem_Controller;
+mkMem_Controller,
+
+status_mem_controller_terminated;
 
 // ================================================================
 // BSV library imports
@@ -175,7 +177,23 @@ typedef enum {STATE_POWER_ON_RESET,
 deriving (Bits, Eq, FShow);
 
 // ================================================================
+// Catch-all status
+
+Integer status_mem_controller_terminated = 1;
+
+// ================================================================
 // Interface
+
+// XXX TODO FIXME XXX
+// This module seems to assume that
+// - user fields will be mirrored from AW to B and from AR to R
+// - the wuser field can be ignored
+// - awuser, buser, aruser, ruser are of the same width
+// We temporarily redefine the Wd_User width to be the same as that of
+// Wd_AW_User as defined in Fabric_Defs.
+typedef Wd_AW_User Wd_User;
+export Wd_User;
+// XXX TODO FIXME XXX
 
 interface Mem_Controller_IFC;
    // Reset
@@ -190,6 +208,10 @@ interface Mem_Controller_IFC;
 
    // To raw memory (outside the SoC)
    interface MemoryClient #(Bits_per_Raw_Mem_Addr, Bits_per_Raw_Mem_Word)  to_raw_mem;
+
+   // Catch-all status; return-value can identify the origin (0 = none)
+   (* always_ready *)
+   method Bit #(8) status;
 
    // For ISA tests: watch memory writes to <tohost> addr
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);
@@ -228,6 +250,8 @@ deriving (Bits, FShow);
 
 (* synthesize *)
 module mkMem_Controller (Mem_Controller_IFC);
+// XXX This module seems to assume the following constraints:
+// provisos(Add #(Wd_AW_User, 0, Wd_B_User), Add #(Wd_AR_User, 0, Wd_R_User));
 
    // verbosity 0: quiet
    // verbosity 1: reset, initialized
@@ -265,6 +289,9 @@ module mkMem_Controller (Mem_Controller_IFC);
    Reg #(Bool)        rg_watch_tohost <- mkReg (False);
    Reg #(Fabric_Addr) rg_tohost_addr  <- mkReg ('h_8000_1000);
 
+   // Catch-all status
+   Reg #(Bit #(8)) rg_status <- mkReg (0);
+
    // ================================================================
    // BEHAVIOR
 
@@ -276,6 +303,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 	 slave_xactor.clear;
 	 f_raw_mem_reqs.clear;
 	 f_raw_mem_rsps.clear;
+	 rg_status <= 0;
       endaction
    endfunction
 
@@ -472,7 +500,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 			    rdata: rdata,
 			    rresp: OKAY,
 			    rlast: True,
-			    ruser: f_reqs.first.user};
+			    ruser: f_reqs.first.user}; // XXX This requires that Wd_AR_User == Wd_R_User
       slave_xactor.master.r.put(rdr);
       f_reqs.deq;
 
@@ -514,7 +542,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 
       let wrr = AXI4_BFlit {bid:   f_reqs.first.id,
 			    bresp: OKAY,
-			    buser: f_reqs.first.user};
+			    buser: f_reqs.first.user}; // XXX This requires that Wd_AW_User == Wd_B_User
       slave_xactor.master.b.put(wrr);
       f_reqs.deq;
 
@@ -537,7 +565,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 	       $display ("PASS");
 	    else
 	       $display ("FAIL %0d", exit_value);
-	    $finish (truncate (exit_value));
+	    rg_status <= fromInteger (status_mem_controller_terminated);
 	 end
    endrule
 
@@ -584,7 +612,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 			    rdata: rdata,                 // for debugging only
 			    rresp: SLVERR,
 			    rlast: True,
-			    ruser: f_reqs.first.user};
+			    ruser: f_reqs.first.user}; // XXX This requires that Wd_AR_User == Wd_R_User
       slave_xactor.master.r.put(rdr);
       f_reqs.deq;
 
@@ -603,7 +631,7 @@ module mkMem_Controller (Mem_Controller_IFC);
 			       && (f_reqs.first.req_op == REQ_OP_WR));
       let wrr = AXI4_BFlit {bid:   f_reqs.first.id,
 			    bresp: SLVERR,
-			    buser: f_reqs.first.user};
+			    buser: f_reqs.first.user}; // XXX This requires that Wd_AW_User == Wd_B_User
       slave_xactor.master.b.put(wrr);
       f_reqs.deq;
 
@@ -643,6 +671,11 @@ module mkMem_Controller (Mem_Controller_IFC);
 
    // To raw memory (outside the SoC)
    interface  to_raw_mem = toGPClient (f_raw_mem_reqs, f_raw_mem_rsps);
+
+   // Catch-all status; return-value can identify the origin (0 = none)
+   method Bit #(8) status;
+      return rg_status;
+   endmethod
 
    // For ISA tests: watch memory writes to <tohost> addr
    method Action set_watch_tohost (Bool watch_tohost, Fabric_Addr tohost_addr);

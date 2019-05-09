@@ -76,16 +76,24 @@ interface Core_IFC #(numeric type t_n_interrupt_sources);
 
    // CPU IMem to Fabric master interface
    interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) cpu_imem_master;
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User) cpu_imem_master;
 
    // CPU DMem to Fabric master interface
    interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_User, Wd_User, Wd_User, Wd_User, Wd_User) cpu_dmem_master;
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User) cpu_dmem_master;
 
    // ----------------------------------------------------------------
    // External interrupt sources
 
    interface Vector #(t_n_interrupt_sources, PLIC_Source_IFC)  core_external_interrupt_sources;
+
+   // ----------------------------------------------------------------
+   // Non-maskable interrupt request
+
+   (* always_ready, always_enabled *)
+   method Action nmi_req (Bool set_not_clear);
 
    // ----------------------------------------------------------------
    // Optional Tandem Verifier interface output tuples (n,vb),

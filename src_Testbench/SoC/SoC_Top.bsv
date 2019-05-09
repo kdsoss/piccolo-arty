@@ -112,6 +112,10 @@ interface SoC_Top_IFC;
    interface Get #(Bit #(8)) get_to_console;
    interface Put #(Bit #(8)) put_from_console;
 
+   // Catch-all status; return-value can identify the origin (0 = none)
+   (* always_ready *)
+   method Bit #(8) status;
+
    // For ISA tests: watch memory writes to <tohost> addr
    method Action set_watch_tohost (Bool  watch_tohost, Fabric_Addr  tohost_addr);
 endinterface
@@ -133,9 +137,17 @@ module mkSoC_Top (SoC_Top_IFC);
 
    // SoC Boot ROM
    Boot_ROM_IFC  boot_rom <- mkBoot_ROM;
+   // AXI4 Deburster in front of Boot_ROM
+   AXI4_Shim#(Wd_SId, Wd_Addr, Wd_Data,
+              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User)
+              boot_rom_axi4_deburster <- mkBurstToNoBurst;
 
    // SoC Memory
    Mem_Controller_IFC  mem0_controller <- mkMem_Controller;
+   // AXI4 Deburster in front of SoC Memory
+   AXI4_Shim#(Wd_SId, Wd_Addr, Wd_Data,
+              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User)
+              mem0_controller_axi4_deburster <- mkBurstToNoBurst;
 
    // SoC IPs
    UART_IFC   uart0  <- mkUART;
@@ -176,11 +188,15 @@ module mkSoC_Top (SoC_Top_IFC);
    Vector#(Num_Slaves, Range#(Wd_Addr))   route_vector = newVector;
 
    // Fabric to Boot ROM
-   slave_vector[boot_rom_slave_num] = boot_rom.slave;
+   mkConnection(boot_rom_axi4_deburster.master, fromAXI4_Slave_Synth(boot_rom.slave));
+   let ug_boot_rom_slave <- toUnguarded_AXI4_Slave(boot_rom_axi4_deburster.slave);
+   slave_vector[boot_rom_slave_num] = toAXI4_Slave_Synth(ug_boot_rom_slave);
    route_vector[boot_rom_slave_num] = soc_map.m_boot_rom_addr_range;
 
    // Fabric to Mem Controller
-   slave_vector[mem0_controller_slave_num] = mem0_controller.slave;
+   mkConnection(mem0_controller_axi4_deburster.master, fromAXI4_Slave_Synth(mem0_controller.slave));
+   let ug_mem0_slave <- toUnguarded_AXI4_Slave(mem0_controller_axi4_deburster.slave);
+   slave_vector[mem0_controller_slave_num] = toAXI4_Slave_Synth(ug_mem0_slave);
    route_vector[mem0_controller_slave_num] = soc_map.m_mem0_controller_addr_range;
 
    // Fabric to UART0
@@ -219,6 +235,9 @@ module mkSoC_Top (SoC_Top_IFC);
       // Tie off remaining interrupt request lines (1..N)
       for (Integer j = 1; j < valueOf (N_External_Interrupt_Sources); j = j + 1)
 	 core.core_external_interrupt_sources [j].m_interrupt_req (False);
+
+      // Non-maskable interrupt request. [Tie-off; TODO: connect to genuine sources]
+      core.nmi_req (False);
 
       /* For debugging only
       if ((! rg_intr_prev) && intr)
@@ -308,6 +327,8 @@ module mkSoC_Top (SoC_Top_IFC);
       uart0.server_reset.request.put (?);
 
       fabric.reset;
+      boot_rom_axi4_deburster.clear;
+      mem0_controller_axi4_deburster.clear;
 
       rg_state <= SOC_RESETTING;
 
@@ -356,8 +377,8 @@ module mkSoC_Top (SoC_Top_IFC);
    // ================================================================
    // INTERFACE
 
-   method Action  set_verbosity (Bit #(4)  verbosity, Bit #(64)  logdelay);
-      core.set_verbosity (verbosity, logdelay);
+   method Action  set_verbosity (Bit #(4)  verbosity1, Bit #(64)  logdelay);
+      core.set_verbosity (verbosity1, logdelay);
    endmethod
 
    // To external controller (E.g., GDB)
@@ -378,6 +399,11 @@ module mkSoC_Top (SoC_Top_IFC);
    // UART to external console
    interface get_to_console   = uart0.get_to_console;
    interface put_from_console = uart0.put_from_console;
+
+   // Catch-all status; return-value can identify the origin (0 = none)
+   method Bit #(8) status;
+      return mem0_controller.status;
+   endmethod
 
    // For ISA tests: watch memory writes to <tohost> addr
    method Action set_watch_tohost (Bool  watch_tohost, Fabric_Addr  tohost_addr);
