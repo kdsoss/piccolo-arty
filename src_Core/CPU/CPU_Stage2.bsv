@@ -310,11 +310,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			   : (  dcache.exc
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
-        Bit#(128) mem_val = tpl_1(dcache.word128);
-        Bit#(1) mem_tag = pack(tpl_2(dcache.word128));
+        match {.mem_tag, .mem_val} = dcache.word128;
         CapPipe result = ?; //TODO any reason for this to be CapPipe not CapReg/CapMem?
         if (rg_stage2.mem_width_code == 3'b100) begin
-            CapMem capMem = {pack(rg_stage2.mem_allow_cap) & mem_tag, mem_val};
+            CapMem capMem = {pack(rg_stage2.mem_allow_cap) & pack(mem_tag), mem_val};
             CapReg capReg = cast(capMem);
             result = cast(capReg);
         end else begin
@@ -679,7 +678,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.val2,
 `else
 `ifdef ISA_CHERI
-      tuple2(truncate(capMem), capMem[128]==1'b1 && x.mem_allow_cap),
+      tuple2(isValidCap(capMem) && x.mem_allow_cap, truncate(capMem)),
 `else
 			zeroExtend (x.val2),
 `endif
@@ -688,6 +687,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			sstatus_SUM,
 			mstatus_MXR,
 			csr_regfile.read_satp);
+      $display("req, data: ", fshow(capMem));
 	 end
 
 `ifdef SHIFT_SERIAL

@@ -138,7 +138,7 @@ interface DMem_IFC;
 		       Bit #(7) amo_funct7,
 `endif
 		       WordXL addr,
-		       Tuple2#(Bit #(128), Bool) store_value,
+		       Tuple2#(Bool, Bit #(128)) store_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -151,7 +151,7 @@ interface DMem_IFC;
 
    // CPU side: DMem response
    (* always_ready *)  method Bool       valid;
-   (* always_ready *)  method Tuple2#(Bit #(128), Bool)  word128;      // Load-value
+   (* always_ready *)  method Tuple2#(Bool, Bit #(128))  word128;      // Load-value
    (* always_ready *)  method Bit #(128)  st_amo_val;  // Final store-value for ST, SC, AMO
                                                        // TODO this also needs tag?
    (* always_ready *)  method Bool       exc;
@@ -169,7 +169,7 @@ endinterface
 //  - word with correct byte(s) shifted into LSBs and properly extended
 
 //TODO make generic
-function Tuple2#(Bit #(128), Bool) fn_extract_and_extend_bytes (Bit #(3) width_code, Bool is_unsigned, WordXL byte_addr, Bit #(129) word128_tagged);
+function Tuple2#(Bool, Bit #(128)) fn_extract_and_extend_bytes (Bit #(3) width_code, Bool is_unsigned, WordXL byte_addr, Bit #(129) word128_tagged);
    Bit #(128) result    = 0;
    Bit #(4)  addr_lsbs = byte_addr [3:0];
 
@@ -226,7 +226,7 @@ function Tuple2#(Bit #(128), Bool) fn_extract_and_extend_bytes (Bit #(3) width_c
             tag = word128_tagged[128] == 1'b1;
          end
    endcase
-   return tuple2(result,tag);
+   return tuple2(tag, result);
 endfunction
 
 // ================================================================

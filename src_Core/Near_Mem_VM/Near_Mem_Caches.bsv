@@ -144,7 +144,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `ifdef ISA_A
 		     amo_funct7,
 `endif
-         addr, tuple2(store_value, False),
+         addr, tuple2(False, store_value),
                                 priv, sstatus_SUM, mstatus_MXR, satp);
       endmethod
 
@@ -159,7 +159,7 @@ module mkNear_Mem (Near_Mem_IFC);
       method Bool     is_i32_not_i16 = True;
       method WordXL   pc             = icache.addr;
 `ifdef RVFI_DII
-      method Tuple2#(Instr,UInt#(SEQ_LEN))    instr    = tuple2(truncate(tpl_1(icache.word128)), 0);
+      method Tuple2#(Instr,UInt#(SEQ_LEN))    instr    = tuple2(truncate(tpl_2(icache.word128)), 0);
 `else
       method Instr    instr          = truncate (icache.word128);
 `endif
@@ -184,7 +184,7 @@ module mkNear_Mem (Near_Mem_IFC);
 			  Bit #(7) amo_funct7,
 `endif
 			  WordXL addr,
-			  Tuple2#(Bit #(128), Bool) store_value,
+			  Tuple2#(Bool, Bit #(128)) store_value,
 			  // The following  args for VM
 			  Priv_Mode  priv,
 			  Bit #(1)   sstatus_SUM,
@@ -206,7 +206,7 @@ module mkNear_Mem (Near_Mem_IFC);
 
       // CPU side: DMem response
       method Bool       valid      = dcache.valid;
-      method Tuple2#(Bit #(128), Bool)  word128     = dcache.word128;
+      method Tuple2#(Bool, Bit #(128))  word128     = dcache.word128;
 `ifdef ISA_A
       method Bit #(128)  st_amo_val = dcache.st_amo_val;
 `endif

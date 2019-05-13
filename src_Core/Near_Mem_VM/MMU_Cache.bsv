@@ -105,7 +105,7 @@ interface MMU_Cache_IFC#(numeric type mID);
 		       Bit #(7) amo_funct7,
 `endif
 		       WordXL addr,
-		       Tuple2#(Bit #(128), Bool) st_value,
+		       Tuple2#(Bool, Bit #(128)) st_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -121,8 +121,8 @@ interface MMU_Cache_IFC#(numeric type mID);
    // CPU interface: response
    (* always_ready *)  method Bool       valid;
    (* always_ready *)  method WordXL     addr;        // req addr for which this is a response
-   (* always_ready *)  method Tuple2#(Bit #(128), Bool) word128;     // rd_val data for LD, LR, AMO, SC success/fail result)
-   (* always_ready *)  method Tuple2#(Bit #(128), Bool) st_amo_val;  // Final stored value for ST, SC, AMO
+   (* always_ready *)  method Tuple2#(Bool, Bit #(128)) word128;     // rd_val data for LD, LR, AMO, SC success/fail result)
+   (* always_ready *)  method Tuple2#(Bool, Bit #(128)) st_amo_val;  // Final stored value for ST, SC, AMO
    (* always_ready *)  method Bool       exc;
    (* always_ready *)  method Exc_Code   exc_code;
 
@@ -285,8 +285,8 @@ function
 		    axsize    = 4;
 		 end
       3: begin
-            word128   = (word128 << shift_bits);
-	        strobe128 = ('b_1111_1111 << shift_bytes);
+        word128   = (word128 << shift_bits);
+	      strobe128 = ('b_1111_1111 << shift_bytes);
 		    axsize    = 8;
 		 end
       4: begin
@@ -535,7 +535,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Reg #(Bit #(7))   rg_amo_funct7  <- mkRegU;    // specifies which kind of AMO op
 `endif
    Reg #(WordXL)     rg_addr        <- mkRegU;    // VA or PA
-   Reg #(Tuple2#(Bit #(128), Bool)) rg_st_amo_val  <- mkRegU;    // Store-value for ST, SC, AMO
+   Reg #(Tuple2#(Bool, Bit #(128))) rg_st_amo_val  <- mkRegU;    // Store-value for ST, SC, AMO
 
    // The following are needed for VM
 `ifdef ISA_PRIV_S
@@ -594,9 +594,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Reg #(Bool)      dw_exc               <- mkDWire (False);
    Reg #(Exc_Code)  rg_exc_code          <- mkRegU;
    Reg #(Exc_Code)  dw_exc_code          <- mkDWire (?);
-   Reg #(Tuple2#(Bit#(128), Bool)) rg_ld_val            <- mkRegU;         // Load-value for LOAD/LR/AMO, success/fail for SC
-   Reg #(Tuple2#(Bit#(128), Bool)) dw_output_ld_val     <- mkDWire (?);
-   Reg #(Tuple2#(Bit#(128), Bool)) dw_output_st_amo_val <- mkDWire (?);    // stored value for ST, SC, AMO (for verification only)
+   Reg #(Tuple2#(Bool, Bit#(128))) rg_ld_val            <- mkRegU;         // Load-value for LOAD/LR/AMO, success/fail for SC
+   Reg #(Tuple2#(Bool, Bit#(128))) dw_output_ld_val     <- mkDWire (?);
+   Reg #(Tuple2#(Bool, Bit#(128))) dw_output_st_amo_val <- mkDWire (?);    // stored value for ST, SC, AMO (for verification only)
 
    // This reg is used during PTWs
    Reg #(PA) rg_pte_pa <- mkRegU;
@@ -611,8 +611,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Reg #(CSet_in_Cache)  rg_cset_in_cache   <- mkReg (0);
 
    // These regs are used in the cache refill loop for ram_Word128_Set
-   Reg #(Bool)                 rg_requesting_cline    <- mkReg (False);
-   Reg #(Fabric_Addr)          rg_req_byte_in_cline   <- mkRegU;
+   // DELETE: Reg #(Bool)                rg_requesting_cline    <- mkReg (False);
+   // DELETE: Reg #(Fabric_Addr)         rg_req_byte_in_cline   <- mkRegU;
    Reg #(Word128_Set_in_Cache) rg_word128_set_in_cache <- mkRegU;
    Reg #(Bool)                 rg_error_during_refill <- mkRegU;
    // In 64b (or lower) fabrics, these hold the lower word64 while we're fetching the upper word64 of a word128
@@ -703,7 +703,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
 	 dw_output_ld_val     <= fn_extract_and_extend_bytes (width_code, is_unsigned, addr, ld_val);
 	 // Value stored into mem (STORE, SC, AMO final value stored)
-	 dw_output_st_amo_val <= tuple2(st_amo_val[valueOf(Cache_Entry_Width)-2:0], st_amo_val[valueOf(Cache_Entry_Width)-1] == 1'b1); //TODO check for CHERI
+	 dw_output_st_amo_val <= tuple2(st_amo_val[valueOf(Cache_Entry_Width)-1] == 1'b1, st_amo_val[valueOf(Cache_Entry_Width)-2:0]); //TODO check for CHERI
 	 if (cfg_verbosity > 1)
 	    $display ("%0d: %s.drive_mem_rsp: addr 0x%0h ld_val 0x%0h st_amo_val 0x%0h",
 		      cur_cycle, d_or_i, addr, ld_val, st_amo_val);
@@ -711,7 +711,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endfunction
 
    // IO-read responses
-   function Action fa_drive_IO_read_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Tuple2#(Bit #(128), Bool) ld_val);
+   function Action fa_drive_IO_read_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Tuple2#(Bool, Bit #(128)) ld_val);
       action
 	 dw_valid         <= True;
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
@@ -745,6 +745,35 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       endaction
    endfunction
 
+   // Send a read-burst request into the fabric to get a cache line.
+   // 'addr' is already aligned to a cache-line.
+   function Action fa_fabric_send_read_burst_req (Fabric_Addr  addr);
+      action
+	 AXI4_Size size = ((bytes_per_fabric_data == 8) ? 8 : 16);
+	 // Note: AXI4 codes a burst length of 'n' as 'n-1'
+	 AXI4_Len  len  = fromInteger ((bytes_per_cline / bytes_per_fabric_data) - 1);
+
+	 let mem_req_rd_addr = AXI4_ARFlit {arid:     default_mid,
+					    araddr:   addr,
+					    arlen:    len,
+					    arsize:   size,
+					    arburst:  INCR,
+					    arlock:   fabric_default_lock,
+					    arcache:  fabric_default_arcache,
+					    arprot:   fabric_default_prot,
+					    arqos:    fabric_default_qos,
+					    arregion: fabric_default_region,
+					    aruser:   fabric_default_aruser};
+
+	 master_xactor.slave.ar.put(mem_req_rd_addr);
+
+	 // Debugging
+	 if (cfg_verbosity > 1) begin
+	    $display ("    To fabric: ", fshow (mem_req_rd_addr));
+	 end
+      endaction
+   endfunction
+
    // Send a write-request into the fabric
    function Action fa_fabric_send_write_req (Bit #(3)  width_code, PA  pa, Bit #(Cache_Entry_Width)  st_val
                                                                                                            );
@@ -752,10 +781,15 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 match {.fabric_addr,
 		.fabric_data,
 `ifdef ISA_CHERI
-        .fabric_user,
+        .fabric_wuser,
 `endif
 		.fabric_strb,
 		.fabric_size} = fn_to_fabric_write_fields (width_code, pa, st_val);
+
+`ifndef ISA_CHERI
+   let fabric_wuser = fabric_default_wuser;
+`endif
+
 
 	 let mem_req_wr_addr = AXI4_AWFlit {awid:     default_mid,
 					    awaddr:   fabric_addr,
@@ -772,7 +806,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 let mem_req_wr_data = AXI4_WFlit {wdata:  fabric_data,
 					   wstrb:  fabric_strb,
 					   wlast:  True,
-					   wuser:  fabric_user};
+					   wuser:  fabric_wuser};
 
 	 master_xactor.slave.aw.put(mem_req_wr_addr);
 	 master_xactor.slave.w.put(mem_req_wr_data);
@@ -827,7 +861,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    rule rl_start_reset ((f_reset_reqs.notEmpty) && (rg_state != MODULE_RESETTING));
       rg_state             <= MODULE_RESETTING;
       rg_cset_in_cache     <= 0;
-      rg_requesting_cline  <= False;
+      // rg_requesting_cline  <= False;    TODO: DELETE after testing bursts
       rg_lower_word64_full <= False;
 
       // Flush the TLB
@@ -1076,7 +1110,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		  // ST, or successful SC
 		  if (hit) begin
 		     // Update cache line in cache
-		    let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, {tpl_1(rg_st_amo_val), pack(tpl_2(rg_st_amo_val))});
+		    let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, pack(rg_st_amo_val));
 		     ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
 		     fa_arm_the_load_stall (rg_width_code);
 
@@ -1095,7 +1129,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		     $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word128 0x%0h", rg_addr, rg_st_amo_val);
 
 		  // For write-hits and write-misses, writeback data to memory (so cache remains clean)
-		   fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, {tpl_1(rg_st_amo_val), pack(tpl_2(rg_st_amo_val))});
+		   fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, pack(rg_st_amo_val));
 
 		  // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
 		  // in case the next incoming request tries to read from the same SRAM address.
@@ -1481,15 +1515,14 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_start_cache_refill: ", cur_cycle, d_or_i);
 
-      // Send request into fabric for first fabric-word of cache line
+      // Send burst request into fabric for full cache line
       PA             cline_addr        = fn_align_Addr_to_CLine (rg_pa);
       Fabric_Addr    cline_fabric_addr = fn_PA_to_Fabric_Addr (cline_addr);
-      AXI4_Size      axi4_size         = ((bytes_per_fabric_data == 4) ? 4 : 8);
-      fa_fabric_send_read_req (cline_fabric_addr, axi4_size);
+      fa_fabric_send_read_burst_req (cline_fabric_addr);
 
-      rg_requesting_cline  <= True;
-      rg_req_byte_in_cline <= ((valueOf (Wd_Data) == 64) ? 8 : 16);
-      rg_lower_word64_full <= False;
+      // TODO: DELETE after testing bursts
+      // DELETE rg_requesting_cline  <= True;
+      // DELETE rg_req_byte_in_cline <= ((valueOf (Wd_Data) == 64) ? 8 : 16);
 
       // Pick a victim 'way'
       // TODO: prioritize picking an EMPTY slot over a CLEAN slot
@@ -1516,6 +1549,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       ram_word128_set.b.put (bram_cmd_read, word128_set_in_cache, ?);
 
       // Enter cache refill loop, awaiting refill responses from mem
+      rg_lower_word64_full   <= False;
       rg_error_during_refill <= False;
       rg_state               <= CACHE_REFILL;
 
@@ -1523,6 +1557,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    Victim way %0d; => CACHE_REFILL", new_victim_way);
    endrule: rl_start_cache_refill
 
+   /* TODO: Remove; this was used before support for read-bursts
    // Loop that issues requests for subsequent fabric-words in cline refill
    rule rl_cache_refill_req_loop (rg_requesting_cline);
       if (cfg_verbosity > 2)
@@ -1540,6 +1575,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_requesting_cline  <= (rg_req_byte_in_cline != last_byte_offset_in_cline);
       rg_req_byte_in_cline <= rg_req_byte_in_cline + fromInteger (bytes_per_fabric_data);
    endrule
+   */
 
    // ----------------------------------------------------------------
    // TODO (possibly): we complete a cache refill (in rl_cache_refill_loop) and
@@ -1739,7 +1775,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("%0d: %s: rl_io_write_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
 
-       fa_fabric_send_write_req (rg_width_code, rg_pa, {pack(tpl_2(rg_st_amo_val)), tpl_1(rg_st_amo_val)});
+       fa_fabric_send_write_req (rg_width_code, rg_pa, pack(rg_st_amo_val));
 
       rg_state <= CACHE_ST_AMO_RSP;
 
@@ -1901,7 +1937,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		       Bit #(7) amo_funct7,
 `endif
 		       Addr addr,
-		       Tuple2#(Bit #(128), Bool) st_value,
+		       Tuple2#(Bool, Bit#(128)) st_value,
 		       // The following  args for VM
 		       Priv_Mode  priv,
 		       Bit #(1)   sstatus_SUM,
@@ -1968,11 +2004,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       return rg_addr;
    endmethod
 
-   method Tuple2#(Bit #(128), Bool)  word128;
+   method Tuple2#(Bool, Bit #(128))  word128;
       return dw_output_ld_val;
    endmethod
 
-   method Tuple2#(Bit #(128), Bool)  st_amo_val;
+   method Tuple2#(Bool, Bit #(128))  st_amo_val;
       return dw_output_st_amo_val;
    endmethod
 
