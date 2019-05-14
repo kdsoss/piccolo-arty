@@ -1,10 +1,12 @@
-[submodule "src_Verifier/BSV-RVFI-DII"]
+[submodule "BSV-RVFI-DII"]
 	path = src_Verifier/BSV-RVFI-DII
 	url = https://github.com/CTSRD-CHERI/BSV-RVFI-DII.git
-	branch = master
-[submodule "src_CHERI/cheri-cap-lib"]
+[submodule "cheri-cap-lib"]
 	path = libs/cheri-cap-lib
 	url = git@github.com:CTSRD-CHERI/cheri-cap-lib.git
-[submodule "libs/BlueStuff"]
+[submodule "BlueStuff"]
 	path = libs/BlueStuff
 	url = git@github.com:CTSRD-CHERI/BlueStuff.git
+[submodule "TagController"]
+	path = libs/TagController
+	url = git@github.com:CTSRD-CHERI/TagController.git
