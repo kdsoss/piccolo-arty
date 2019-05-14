@@ -39,11 +39,19 @@ build_all:
 	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
 	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
 
-.PHONY: build_and_test
-build_and_test:
+.PHONY: build
+build:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) all  test  isa_tests
+	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) all
 	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+
+.PHONY: test
+test:
+	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) test  isa_tests
+	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+
+.PHONY: build_and_test
+build_and_test: build test
 
 .PHONY: build_and_test_iverilog
 build_and_test_iverilog:
