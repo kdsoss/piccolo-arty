@@ -40,13 +40,9 @@ TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC
 
 RVFI_DII_DIRS = $(REPO)/src_Verifier:$(REPO)/src_Verifier/BSV-RVFI-DII
 
-CHERI_DIRS = $(REPO)/src_CHERI/cheri-cap-lib
+CHERI_DIRS = $(REPO)/libs/cheri-cap-lib
 
-# XXX
-# Specify the path to the BlueStuff library (https://github.com/CTSRD-CHERI/BlueStuff)
-# What is the best way to distribute this code?
-# XXX
-AXI_DIRS = $(REPO)/../BlueStuff/AXI:$(REPO)/../BlueStuff/BlueBasics:$(REPO)/../BlueStuff/
+AXI_DIRS = $(REPO)/libs/BlueStuff/AXI:$(REPO)/libs/BlueStuff/BlueBasics:$(REPO)/libs/BlueStuff/
 
 BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(AXI_DIRS):$(RVFI_DII_DIRS):$(CHERI_DIRS):+
 

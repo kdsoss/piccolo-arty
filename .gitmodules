@@ -3,5 +3,8 @@
 	url = https://github.com/CTSRD-CHERI/BSV-RVFI-DII.git
 	branch = master
 [submodule "src_CHERI/cheri-cap-lib"]
-	path = src_CHERI/cheri-cap-lib
+	path = libs/cheri-cap-lib
 	url = git@github.com:CTSRD-CHERI/cheri-cap-lib.git
+[submodule "libs/BlueStuff"]
+	path = libs/BlueStuff
+	url = git@github.com:CTSRD-CHERI/BlueStuff.git
