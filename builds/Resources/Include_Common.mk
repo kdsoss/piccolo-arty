@@ -50,7 +50,8 @@ BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(AXI_DIRS):$(RVFI_DII_DIRS):$(CHER
 # Top-level file and module
 
 TOPFILE   ?= $(REPO)/src_Testbench/Top/Top_HW_Side.bsv
-TOPMODULE ?= mkPiccolo_RVFI_DII
+TOPMODULE_RVFI_DII ?= mkPiccolo_RVFI_DII
+TOPMODULE_NORMAL ?= mkTop_HW_Side
 
 # ================================================================
 # bsc compilation flags

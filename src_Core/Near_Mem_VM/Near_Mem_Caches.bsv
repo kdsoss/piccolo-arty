@@ -161,7 +161,7 @@ module mkNear_Mem (Near_Mem_IFC);
 `ifdef RVFI_DII
       method Tuple2#(Instr,UInt#(SEQ_LEN))    instr    = tuple2(truncate(tpl_2(icache.word128)), 0);
 `else
-      method Instr    instr          = truncate (icache.word128);
+      method Instr    instr          = truncate(tpl_2(icache.word128));
 `endif
       method Bool     exc            = icache.exc;
       method Exc_Code exc_code       = icache.exc_code;

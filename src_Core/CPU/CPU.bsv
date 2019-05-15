@@ -1426,6 +1426,8 @@ module mkCPU (CPU_IFC);
       fa_start_ifetch (rg_next_pc, rg_cur_priv
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
+`endif
+`ifdef ISA_CHERI
                                               , rg_pcc
                                               , rg_ddc
 `endif

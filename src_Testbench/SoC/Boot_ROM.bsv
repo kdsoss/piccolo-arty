@@ -81,9 +81,9 @@ module mkBoot_ROM (Boot_ROM_IFC);
    // ----------------
 
    function Bool fn_addr_is_aligned (Fabric_Addr addr);
-      if (valueOf (Wd_Data) == 32)
+      if (valueOf (Wd_Data_Periph) == 32)
 	 return (addr [1:0] == 2'b_00);
-      else if (valueOf (Wd_Data) == 64)
+      else if (valueOf (Wd_Data_Periph) == 64)
 	 return (addr [2:0] == 3'b_000);
       else
 	 return False;
