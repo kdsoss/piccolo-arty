@@ -132,9 +132,7 @@ Bit #(5) f5rs2_cap_CGetLen     = 5'h03;
 Bit #(5) f5rs2_cap_CGetTag     = 5'h04;
 Bit #(5) f5rs2_cap_CGetSealed  = 5'h05;
 Bit #(5) f5rs2_cap_CGetOffset  = 5'h06;
-// 5'h07 unused
-Bit #(5) f5rs2_cap_CCheckPerm  = 5'h08;
-Bit #(5) f5rs2_cap_CCheckType  = 5'h09;
+// 5'h07-5'h09 unused
 Bit #(5) f5rs2_cap_CMove       = 5'h0a;
 Bit #(5) f5rs2_cap_CClearTag   = 5'h0b;
 Bit #(5) f5rs2_cap_CJALR       = 5'h0c;
