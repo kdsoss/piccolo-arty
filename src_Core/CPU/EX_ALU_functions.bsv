@@ -331,11 +331,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs.check_enable = branch_taken;
-   alu_outputs.check_authority = inputs.pcc;
-   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
-   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
-   alu_outputs.check_inclusive = False;
+   alu_outputs = checkValidJump(alu_outputs, branch_taken, inputs.pcc, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -371,11 +367,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs.check_enable = True;
-   alu_outputs.check_authority = inputs.pcc;
-   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
-   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
-   alu_outputs.check_inclusive = False;
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -1241,12 +1233,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
        alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc).value; //TODO factor this out. Note that ret_pc must be representable
        alu_outputs.val1_cap_not_int = True;
 `endif
-       //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
-       alu_outputs.check_enable = True;
-       alu_outputs.check_address_low = getBase(rs1_val) + next_pc;
-       alu_outputs.check_address_high = zeroExtend(getBase(rs1_val)) + zeroExtend(next_pc) + 2;
-       alu_outputs.check_authority = rs1_val;
-       alu_outputs.check_inclusive = True;
+       alu_outputs = checkValidJump(alu_outputs, True, rs1_val, getBase(rs1_val) + next_pc);
    end
 
    // Normal trace output (if no trap)
@@ -1319,6 +1306,16 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
            end
        end
    end
+   return alu_outputs;
+endfunction
+
+function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, WordXL target);
+   //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
+   alu_outputs.check_enable = branchTaken;
+   alu_outputs.check_authority = authority;
+   alu_outputs.check_address_low = target;
+   alu_outputs.check_address_high = zeroExtend(target) + 2;
+   alu_outputs.check_inclusive = False;
    return alu_outputs;
 endfunction
 
