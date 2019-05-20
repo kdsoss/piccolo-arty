@@ -31,6 +31,7 @@ import Cur_Cycle  :: *;
 import GetPut_Aux :: *;
 import Routable   :: *;
 import AXI4       :: *;
+import TagControllerAXI :: *;
 
 // ================================================================
 // Project imports
@@ -77,8 +78,8 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    // The CPU
    CPU_IFC  cpu <- mkCPU;
 
-   // AXI4 shim for the default slave
-   let shim <- mkAXI4ShimUGSizedFIFOF4;
+   // AXI4 tagController
+   let tagController <- mkDbgTagControllerAXI(Valid("tagcontroller"));
 
    // Near_Mem_IO
    Near_Mem_IO_AXI4_IFC  near_mem_io <- mkNear_Mem_IO_AXI4;
@@ -124,6 +125,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
       cpu.hart0_server_reset.request.put (?);      // CPU
       near_mem_io.server_reset.request.put (?);    // Near_Mem_IO
       plic.server_reset.request.put (?);           // PLIC
+      tagController.clear();
 
 `ifdef INCLUDE_GDB_CONTROL
       // Remember the requestor, so we can respond to it
@@ -314,7 +316,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
                               Wd_AW_User, Wd_W_User, Wd_B_User,
                               Wd_AR_User, Wd_R_User))
                               slave_vector = newVector;
-   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(shim.slave);
+   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(tagController.slave);
    slave_vector[near_mem_io_slave_num] = near_mem_io.axi4_slave;
    slave_vector[plic_slave_num]        = plic.axi4_slave;
 
@@ -376,10 +378,10 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    // AXI4 Fabric interfaces
 
    // IMem to Fabric master interface
-   interface cpu_imem_master = cpu.imem_master;
+   interface cpu_imem_master = toAXI4_Master_Synth(zeroMasterUserFields(fromAXI4_Master_Synth(cpu.imem_master)));
 
    // DMem to Fabric master interface
-   interface cpu_dmem_master = toAXI4_Master_Synth(shim.master);
+   interface cpu_dmem_master = toAXI4_Master_Synth(tagController.master);
 
    // ----------------------------------------------------------------
    // External interrupt sources

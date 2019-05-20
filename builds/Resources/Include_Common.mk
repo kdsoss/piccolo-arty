@@ -40,9 +40,9 @@ TESTBENCH_DIRS  = $(REPO)/src_Testbench/Top:$(REPO)/src_Testbench/SoC
 
 RVFI_DII_DIRS = $(REPO)/src_Verifier:$(REPO)/src_Verifier/BSV-RVFI-DII
 
-CHERI_DIRS = $(REPO)/libs/cheri-cap-lib
+CHERI_DIRS = $(REPO)/libs/cheri-cap-lib:$(REPO)/libs/TagController/TagController:$(REPO)/libs/TagController/TagController/CacheCore:$(REPO)/libs/BlueStuff/BlueUtils
 
-AXI_DIRS = $(REPO)/libs/BlueStuff/AXI:$(REPO)/libs/BlueStuff/BlueBasics:$(REPO)/libs/BlueStuff/
+AXI_DIRS = $(REPO)/libs/BlueStuff/AXI:$(REPO)/libs/BlueStuff/BlueBasics:$(REPO)/libs/BlueStuff
 
 BSC_PATH = -p $(CORE_DIRS):$(TESTBENCH_DIRS):$(AXI_DIRS):$(RVFI_DII_DIRS):$(CHERI_DIRS):+
 
@@ -64,9 +64,11 @@ TOPMODULE_NORMAL ?= mkTop_HW_Side
 #   Unrecognized flag: -no-show-timestamps
 # XXX
 BSC_COMPILATION_FLAGS += \
+	-D MEM128 -D CAP128 -D BLUESIM \
 	-keep-fires -aggressive-conditions -no-warn-action-shadowing -check-assert \
 	-suppress-warnings G0020    \
 	+RTS -K128M -RTS  -show-range-conflict
+	#-D NOTAG
 
 # ================================================================
 # Runs simulation executable on ELF given by EXAMPLE

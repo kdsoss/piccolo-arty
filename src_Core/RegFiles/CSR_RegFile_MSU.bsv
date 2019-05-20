@@ -1196,7 +1196,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
       return (Trap_Info {pc       : exc_pc,                     // New PC
 `ifdef ISA_CHERI
-             pcc      : soc_map.m_mtcc_reset_value,             // New PCC TODO
+                         pcc      : soc_map.m_mtcc_reset_value, // New PCC TODO
 `endif
 			 mstatus  : new_status,                 // New mstatus/sstatus/ustatus
 			 mcause   : mcause_to_word  (xcause),   // New mcause

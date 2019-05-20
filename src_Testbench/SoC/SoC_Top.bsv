@@ -162,8 +162,7 @@ module mkSoC_Top (SoC_Top_IFC);
    // Note: see 'SoC_Map' for 'master_num' definitions
 
    Vector#(Num_Masters, AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                            Wd_AW_User, Wd_W_User, Wd_B_User,
-                                            Wd_AR_User, Wd_R_User))
+                                            0, 0, 0, 0, 0))
                                             master_vector = newVector;
 
    // CPU IMem master to fabric
@@ -182,25 +181,24 @@ module mkSoC_Top (SoC_Top_IFC);
    // Note: see 'SoC_Map' for 'slave_num' definitions
 
    Vector#(Num_Slaves, AXI4_Slave_Synth #(Wd_SId, Wd_Addr, Wd_Data,
-                                          Wd_AW_User, Wd_W_User, Wd_B_User,
-                                          Wd_AR_User, Wd_R_User))
+                                          0, 0, 0, 0, 0))
                                           slave_vector = newVector;
    Vector#(Num_Slaves, Range#(Wd_Addr))   route_vector = newVector;
 
    // Fabric to Boot ROM
    mkConnection(boot_rom_axi4_deburster.master, fromAXI4_Slave_Synth(boot_rom.slave));
    let ug_boot_rom_slave <- toUnguarded_AXI4_Slave(boot_rom_axi4_deburster.slave);
-   slave_vector[boot_rom_slave_num] = toAXI4_Slave_Synth(ug_boot_rom_slave);
+   slave_vector[boot_rom_slave_num] = toAXI4_Slave_Synth(zeroSlaveUserFields(ug_boot_rom_slave));
    route_vector[boot_rom_slave_num] = soc_map.m_boot_rom_addr_range;
 
    // Fabric to Mem Controller
    mkConnection(mem0_controller_axi4_deburster.master, fromAXI4_Slave_Synth(mem0_controller.slave));
    let ug_mem0_slave <- toUnguarded_AXI4_Slave(mem0_controller_axi4_deburster.slave);
-   slave_vector[mem0_controller_slave_num] = toAXI4_Slave_Synth(ug_mem0_slave);
+   slave_vector[mem0_controller_slave_num] = toAXI4_Slave_Synth(zeroSlaveUserFields(ug_mem0_slave));
    route_vector[mem0_controller_slave_num] = soc_map.m_mem0_controller_addr_range;
 
    // Fabric to UART0
-   slave_vector[uart0_slave_num] = uart0.slave;
+   slave_vector[uart0_slave_num] = toAXI4_Slave_Synth(zeroSlaveUserFields(fromAXI4_Slave_Synth(uart0.slave)));
    route_vector[uart0_slave_num] = soc_map.m_uart0_addr_range;
 
 `ifdef INCLUDE_ACCEL0
