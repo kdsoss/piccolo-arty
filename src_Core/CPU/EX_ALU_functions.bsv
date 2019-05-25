@@ -1576,7 +1576,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.check_address_low = getBase(ct_val);
                alu_outputs.check_address_high = getTop(ct_val);
                alu_outputs.check_inclusive = True;
-               let result = setValidCap(ct_val, True); //TODO pretend to do representability check?
+               if (zeroExtend(getBase(ct_val)) > getTop(ct_val)) alu_outputs.control = CONTROL_TRAP; //TODO make more efficient
+               //TODO representability check? Should be unneccessary because arg is already represented so must be representable.
+               //Only question is whether there are representations that are usually unreachable, and whether cbuildcap should
+               //allow these.
+               let result = setValidCap(ct_val, True);
                alu_outputs.cap_val1 = setType(result, -1).value;
                alu_outputs.val1_cap_not_int = True;
            end
