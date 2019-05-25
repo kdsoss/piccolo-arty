@@ -102,7 +102,7 @@ Bit #(7) f7_cap_CSetBoundsExact = 7'h09;
 Bit #(7) f7_cap_CSeal           = 7'h0b;
 Bit #(7) f7_cap_CUnseal         = 7'h0c;
 Bit #(7) f7_cap_CAndPerm        = 7'h0d;
-// 7'h0e unused
+Bit #(7) f7_cap_CSetFlags       = 7'h0e;
 Bit #(7) f7_cap_CSetOffset      = 7'h0f;
 // 7'h10 unused
 Bit #(7) f7_cap_CIncOffset      = 7'h11;
@@ -132,7 +132,8 @@ Bit #(5) f5rs2_cap_CGetLen     = 5'h03;
 Bit #(5) f5rs2_cap_CGetTag     = 5'h04;
 Bit #(5) f5rs2_cap_CGetSealed  = 5'h05;
 Bit #(5) f5rs2_cap_CGetOffset  = 5'h06;
-// 5'h07-5'h09 unused
+Bit #(5) f5rs2_cap_CGetFlags   = 5'h07;
+// 5'h08-5'h09 unused
 Bit #(5) f5rs2_cap_CMove       = 5'h0a;
 Bit #(5) f5rs2_cap_CClearTag   = 5'h0b;
 Bit #(5) f5rs2_cap_CJALR       = 5'h0c;

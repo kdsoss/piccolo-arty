@@ -722,12 +722,16 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
    alu_outputs.val1      = extend (rd_val);
 `else
 `ifdef ISA_CHERI
-   let result = setOffset(inputs.pcc, rd_val); //TODO Factor this out.
-   alu_outputs.cap_val1 = result.value;
-   alu_outputs.val1 = getAddr(result.value);
-   alu_outputs.val1_cap_not_int = result.exact;
+   if (getFlags(inputs.pcc)[0] == 1'b1) begin
+       let result = setOffset(inputs.pcc, rd_val); //TODO Factor this out.
+       alu_outputs.cap_val1 = result.value;
+       alu_outputs.val1 = getAddr(result.value);
+       alu_outputs.val1_cap_not_int = result.exact;
+   end else
 `else
-   alu_outputs.val1      = rd_val;
+   begin
+       alu_outputs.val1      = rd_val;
+   end
 `endif
 `endif
 
@@ -750,7 +754,12 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
    IntXL s_rs2_val = unpack (inputs.rs2_val);
 
    IntXL  imm_s = extend (unpack (inputs.decoded_instr.imm12_I));
+`ifdef ISA_CHERI
+   let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.cap_rs1_val) + pack(imm_s) : getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s); //TODO DDC base should be cached
+`else
    WordXL eaddr = pack (s_rs1_val + imm_s);
+`endif
 
    let funct3 = inputs.decoded_instr.funct3;
 
@@ -791,7 +800,6 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   let authority = inputs.ddc; //TODO mode bit
    alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, False, ?);
 `endif
 
@@ -822,7 +830,12 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    // Signed version of rs1_val
    IntXL  s_rs1_val = unpack (inputs.rs1_val);
    IntXL  imm_s     = extend (unpack (inputs.decoded_instr.imm12_S));
-   WordXL eaddr     = pack (s_rs1_val + imm_s);
+`ifdef ISA_CHERI
+   let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.cap_rs1_val) + pack(imm_s) : getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s); //TODO DDC base should be cached
+`else
+   WordXL eaddr = pack (s_rs1_val + imm_s);
+`endif
 
    let opcode = inputs.decoded_instr.opcode;
    let funct3 = inputs.decoded_instr.funct3;
@@ -858,7 +871,6 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
-   let authority = inputs.ddc; //TODO mode bit
    alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, True, nullCap);
 `endif
 
@@ -1295,6 +1307,7 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    alu_outputs.check_address_high = zeroExtend(base) + (1 << widthCode);
    alu_outputs.check_inclusive = False;
 
+   //TODO check alignment?
    if (widthCode == 3'b100) begin //Load Q, so may be loading caps
        if (isStoreNotLoad) begin
            if (getHardPerms(authority).permitStoreCap && (getHardPerms(data).global || getHardPerms(authority).permitStoreLocalCap)) begin
@@ -1332,7 +1345,7 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    alu_outputs.mem_unsigned   = isStoreNotLoad ? False : isUnsignedNotSigned;
    alu_outputs.val2           = getAddr(data); //for stores
    alu_outputs.cap_val2       = data;
-//   alu_outputs.val2_is_cap_not_int = widthCode == SIZE_Q; //TODO
+   alu_outputs.val2_cap_not_int = widthCode == 4;
 
    let authority = useDDC ? ddc : addr;
 
@@ -1494,6 +1507,15 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = True;
            end
        end
+       f7_cap_CSetFlags: begin
+           if (cb_tag && cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+               //TODO sealing exception
+           end else begin
+               alu_outputs.cap_val1 = setFlags(cb_val, truncate(rt_val));
+               alu_outputs.val1_cap_not_int = True;
+           end
+       end
        f7_cap_CToPtr: begin
            if (inputs.rs2_idx_0) begin
                ct_val = inputs.ddc;
@@ -1618,6 +1640,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
            f5rs2_cap_CGetOffset: begin
                alu_outputs.val1 = getOffset(cb_val);
+           end
+           f5rs2_cap_CGetFlags: begin
+               alu_outputs.val1 = zeroExtend(getFlags(cb_val));
            end
            f5rs2_cap_CGetPerm: begin
                alu_outputs.val1 = zeroExtend(getPerms(cb_val));
