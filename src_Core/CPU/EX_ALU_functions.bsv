@@ -1655,8 +1655,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs = fv_CJALR(inputs);
            end
            f5rs2_cap_CGetType: begin
-               //TODO check behaviour on sentries etc?
-               alu_outputs.val1 = getKind(cb_val) == SEALED_WITH_TYPE ? zeroExtend(getType(cb_val)) : -1;
+               alu_outputs.val1 = isSealed(cb_val) ? zeroExtend(getType(cb_val)) : -1;
            end
            default:
                alu_outputs.control = CONTROL_TRAP;
