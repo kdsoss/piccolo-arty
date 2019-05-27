@@ -1369,6 +1369,51 @@ function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
     return alu_outputs;
 endfunction
 
+function ALU_Outputs sealCommon(ALU_Outputs alu_outputs, CapPipe sealee, CapPipe sealer, Bool conditional);
+    let sealee_tag = isValidCap(sealee);
+    let sealee_sealed = isSealed(sealee);
+    let sealer_tag = isValidCap(sealer);
+    let sealer_sealed = isSealed(sealer);
+    let sealer_addr = getAddr(sealer);
+    if (!sealee_tag) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO tag exception
+    end else if (!conditional && !sealer_tag) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO tag exception
+    end else if (conditional && (!sealer_tag || sealer_addr == -1)) begin
+        alu_outputs.cap_val1 = sealee;
+        alu_outputs.val1_cap_not_int = True;
+    end else if (sealee_sealed) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO seal exception
+    end else if (sealer_sealed) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO seal exception
+    end else if (!getHardPerms(sealer).permitSeal) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO seal permission exception
+    end else if (!validAsType(sealee, truncate(sealer_addr))) begin
+        alu_outputs.control = CONTROL_TRAP;
+        //TODO length exception
+    end else begin
+        let result = setType(sealee, truncate(sealer_addr));
+        if (!result.exact) begin
+            alu_outputs.control = CONTROL_TRAP;
+            //TODO inexact bounds exception
+        end else begin
+            alu_outputs.check_enable = True;
+            alu_outputs.check_authority = sealer;
+            alu_outputs.check_address_low = sealer_addr;
+            alu_outputs.check_address_high = zeroExtend(sealer_addr);
+            alu_outputs.check_inclusive = False;
+            alu_outputs.cap_val1 = result.value;
+            alu_outputs.val1_cap_not_int = True;
+        end
+    end
+    return alu_outputs;
+endfunction
+
 function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let funct3  = inputs.decoded_instr.funct3;
     let funct5rs2 = inputs.decoded_instr.funct5rs2;
@@ -1426,39 +1471,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val);
        end
        f7_cap_CSeal: begin
-           if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
-           end else if (!ct_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
-           end else if (cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO seal exception
-           end else if (ct_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO seal exception
-           end else if (!getHardPerms(ct_val).permitSeal) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO seal permission exception
-           end else if (!validAsType(cb_val, truncate(ct_addr))) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO length exception
-           end else begin
-               let result = setType(cb_val, truncate(ct_addr));
-               if (!result.exact) begin
-                   alu_outputs.control = CONTROL_TRAP;
-                   //TODO inexact bounds exception
-               end else begin
-                   alu_outputs.check_enable = True;
-                   alu_outputs.check_authority = ct_val;
-                   alu_outputs.check_address_low = ct_addr;
-                   alu_outputs.check_address_high = zeroExtend(ct_addr);
-                   alu_outputs.check_inclusive = False;
-                   alu_outputs.cap_val1 = result.value;
-                   alu_outputs.val1_cap_not_int = True;
-               end
-           end
+         alu_outputs = sealCommon(alu_outputs, cb_val, ct_val, False);
+       end
+       f7_cap_CCSeal: begin
+         alu_outputs = sealCommon(alu_outputs, cb_val, ct_val, True);
        end
        f7_cap_CUnseal: begin
            if (!cb_tag) begin
@@ -1493,6 +1509,29 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                    alu_outputs.cap_val1 = result.value;
                    alu_outputs.val1_cap_not_int = True;
                end
+           end
+       end
+       f7_cap_CCopyType: begin
+           if (!cb_tag) begin
+               alu_outputs.control = CONTROL_TRAP;
+           end else if (cb_sealed) begin
+               alu_outputs.control = CONTROL_TRAP;
+           end else if (ct_sealed) begin
+               let result = setAddr(cb_val, zeroExtend(getType(ct_val)));
+               if (!result.exact) begin
+                   alu_outputs.control = CONTROL_TRAP;
+                   //TODO inexact bounds exception
+               end else begin
+                   alu_outputs.check_enable = True;
+                   alu_outputs.check_authority = cb_val;
+                   alu_outputs.check_address_low = zeroExtend(getType(ct_val));
+                   alu_outputs.check_address_high = zeroExtend(getType(ct_val));
+                   alu_outputs.check_inclusive = False;
+                   alu_outputs.cap_val1 = result.value;
+                   alu_outputs.val1_cap_not_int = True;
+               end
+           end else begin
+               alu_outputs.val1 = -1;
            end
        end
        f7_cap_CAndPerm: begin
