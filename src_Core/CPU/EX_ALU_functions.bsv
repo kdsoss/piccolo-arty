@@ -1656,10 +1656,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        f7_cap_TwoOp: begin
            case (funct5rs2)
            f5rs2_cap_CGetLen: begin
-               //TODO needs thinking about behaviour when wrapping round addr space
-               let length = getTop(cb_val) - zeroExtend(getBase(cb_val));
-               Bit #(XLEN) maxLength = -1;
-               alu_outputs.val1 = length > zeroExtend(maxLength) ? -1 : truncate(length);
+               let length = getLength(cb_val);
+               alu_outputs.val1 = truncate(length);
            end
            f5rs2_cap_CGetBase: begin
                alu_outputs.val1 = getBase(cb_val);
