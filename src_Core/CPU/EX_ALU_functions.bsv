@@ -747,7 +747,7 @@ endfunction
 // ----------------------------------------------------------------
 // LOAD
 
-function ALU_Outputs fv_LD (ALU_Inputs inputs);
+function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
    // Signed versions of rs1_val and rs2_val
    let opcode = inputs.decoded_instr.opcode;
    IntXL s_rs1_val = unpack (inputs.rs1_val);
@@ -786,7 +786,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs);
 
    let alu_outputs = alu_outputs_base;
 
-   let width_code = {0,funct3[1:0]};
+   let width_code = isLQ ? 3'b100 : {0,funct3[1:0]};
 
    alu_outputs.control   = ((legal_LD && legal_FP_LD) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
@@ -845,6 +845,9 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 `ifdef RV64
 		    || (funct3 == f3_SD)
 `endif
+`ifdef ISA_CHERI
+        || (funct3 == 3'b100) //TODO f3_SQ
+`endif
 `ifdef ISA_F
 		    || (funct3 == f3_FSW)
 `endif
@@ -861,17 +864,17 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 
    let alu_outputs = alu_outputs_base;
 
-   let width_code = {0, funct3[1:0]};
+   let width_code = funct3; //TODO check what other uses of this field are
 
    alu_outputs.control   = ((legal_ST && legal_FP_ST) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = {0,funct3[1:0]};
+   alu_outputs.mem_width_code = funct3;
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, True, nullCap);
+   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, True, inputs.cap_rs2_val);
 `endif
 
    // The rs2_val would depend on the combination F/D-RV32/64 when FD is enabled
@@ -917,18 +920,25 @@ endfunction
 // No-ops, for now
 
 function ALU_Outputs fv_MISC_MEM (ALU_Inputs inputs);
-   let alu_outputs = alu_outputs_base;
-   alu_outputs.control  = (  (inputs.decoded_instr.funct3 == f3_FENCE_I)
-			   ? CONTROL_FENCE_I
-			   : (  (inputs.decoded_instr.funct3 == f3_FENCE)
-			      ? CONTROL_FENCE
-			      : CONTROL_TRAP));
+`ifdef ISA_CHERI
+   if (inputs.decoded_instr.funct3 == f3_LQ) begin
+       return fv_LD(inputs, True);
+   end else
+`endif
+   begin
+       let alu_outputs = alu_outputs_base;
+       alu_outputs.control  = (  (inputs.decoded_instr.funct3 == f3_FENCE_I)
+			       ? CONTROL_FENCE_I
+			       : (  (inputs.decoded_instr.funct3 == f3_FENCE)
+			          ? CONTROL_FENCE
+			          : CONTROL_TRAP));
 
-   // Normal trace output (if no trap)
-   alu_outputs.trace_data = mkTrace_OTHER (fall_through_pc (inputs),
-					   fv_trace_isize (inputs),
-					   fv_trace_instr (inputs));
-   return alu_outputs;
+       // Normal trace output (if no trap)
+       alu_outputs.trace_data = mkTrace_OTHER (fall_through_pc (inputs),
+					       fv_trace_isize (inputs),
+					       fv_trace_instr (inputs));
+       return alu_outputs;
+   end
 endfunction
 
 // ----------------------------------------------------------------
@@ -1806,7 +1816,7 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
       alu_outputs = fv_AUIPC (inputs);
 
    else if (inputs.decoded_instr.opcode == op_LOAD)
-      alu_outputs = fv_LD (inputs);
+      alu_outputs = fv_LD (inputs, False);
 
    else if (inputs.decoded_instr.opcode == op_STORE)
       alu_outputs = fv_ST (inputs);
