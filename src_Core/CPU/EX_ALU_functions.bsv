@@ -1521,6 +1521,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                end
            end
        end
+       f7_cap_CTestSubset: begin
+           //TODO make this a two-cycle instruction to reuse bounds check in next stage
+           let result = cb_tag == ct_tag && getBase(ct_val) >= getBase(cb_val) && getTop(ct_val) <= getTop(cb_val) && ((getPerms(ct_val) & getPerms(cb_val)) == getPerms(ct_val));
+           alu_outputs.val1 = zeroExtend(pack(result));
+       end
        f7_cap_CCopyType: begin
            if (!cb_tag) begin
                alu_outputs.control = CONTROL_TRAP;
