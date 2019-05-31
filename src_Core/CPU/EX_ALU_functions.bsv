@@ -418,7 +418,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
    alu_outputs.check_authority = inputs.pcc;
    alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
    alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
-   alu_outputs.check_inclusive = False;
+   alu_outputs.check_inclusive = True;
 `endif
 
    // Normal trace output (if no trap)
@@ -1315,7 +1315,7 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    alu_outputs.check_authority = authority;
    alu_outputs.check_address_low = base;
    alu_outputs.check_address_high = zeroExtend(base) + (1 << widthCode);
-   alu_outputs.check_inclusive = False;
+   alu_outputs.check_inclusive = True;
 
    //TODO check alignment?
    if (widthCode == 3'b100) begin //Load Q, so may be loading caps
@@ -1338,7 +1338,7 @@ function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, C
    alu_outputs.check_authority = authority;
    alu_outputs.check_address_low = target;
    alu_outputs.check_address_high = zeroExtend(target) + 2;
-   alu_outputs.check_inclusive = False;
+   alu_outputs.check_inclusive = True;
    return alu_outputs;
 endfunction
 
