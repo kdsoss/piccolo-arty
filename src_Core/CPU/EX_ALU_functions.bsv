@@ -756,7 +756,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
    IntXL  imm_s = extend (unpack (inputs.decoded_instr.imm12_I));
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
-   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.cap_rs1_val) + pack(imm_s) : getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s); //TODO DDC base should be cached
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
 `endif
@@ -832,7 +832,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    IntXL  imm_s     = extend (unpack (inputs.decoded_instr.imm12_S));
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
-   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.cap_rs1_val) + pack(imm_s) : getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s); //TODO DDC base should be cached
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
 `endif
