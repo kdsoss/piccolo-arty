@@ -3,6 +3,10 @@
 //-
 // RVFI_DII modifications:
 //     Copyright (c) 2018 Peter Rugg
+// AXI (user fields) modifications:
+//     Copyright (c) 2019 Alexandre Joannou
+//     Copyright (c) 2019 Peter Rugg
+//     Copyright (c) 2019 Jonathan Woodruff
 //     All rights reserved.
 //
 //     This software was developed by SRI International and the University of
