@@ -1,7 +1,7 @@
 // Copyright (c) 2018-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// AXI (user fields) modifications:
+// AXI (user fields) + CHERI modifications:
 //     Copyright (c) 2019 Alexandre Joannou
 //     Copyright (c) 2019 Peter Rugg
 //     Copyright (c) 2019 Jonathan Woodruff

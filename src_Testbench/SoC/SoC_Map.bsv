@@ -1,8 +1,8 @@
 // Copyright (c) 2013-2019 Bluespec, Inc. All Rights Reserved
 
 //-
-// RVFI_DII modifications:
-//     Copyright (c) 2018 Peter Rugg
+// RVFI_DII + CHERI modifications:
+//     Copyright (c) 2018-19 Peter Rugg
 // AXI (user fields) modifications:
 //     Copyright (c) 2019 Alexandre Joannou
 //     Copyright (c) 2019 Peter Rugg

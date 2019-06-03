@@ -3,6 +3,17 @@
 # Copyright (c) 2017-2019 Bluespec, Inc. All Rights Reserved.
 # ================================================================
 
+#-
+# CHERI modifications:
+#     Copyright (c) 2019 Peter Rugg
+#     All rights reserved.
+#
+#     This software was developed by SRI International and the University of
+#     Cambridge Computer Laboratory (Department of Computer Science and
+#     Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+#     DARPA SSITH research programme.
+#-
+
 # Background: CPU caches have a large number of sizing concepts such
 # as total size, address size, word size, cache line size, set
 # associativity, tag size, index size, address of word in cache line,
