@@ -1457,9 +1457,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         end
     f3_cap_ThreeOp: begin
         case (funct7)
-       /*
-       f7_cap_CSpecialRW:
-           //TODO */
+       f7_cap_CSpecialRW: begin
+           //TODO currently just returns DDC and PCC
+           if (inputs.decoded_instr.rs2 == 5'b0) begin
+               alu_outputs.cap_val1 = inputs.pcc; //TODO is pcc addr kept up to date?
+               alu_outputs.val1_cap_not_int = True;
+           end else if (inputs.decoded_instr.rs2 == 5'b1) begin
+               alu_outputs.cap_val1 = inputs.ddc;
+               alu_outputs.val1_cap_not_int = True;
+           end
+       end
        f7_cap_CSetBounds: begin
            alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, False);
        end
