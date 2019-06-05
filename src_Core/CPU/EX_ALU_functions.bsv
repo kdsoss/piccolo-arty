@@ -786,7 +786,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 
    let alu_outputs = alu_outputs_base;
 
-   let width_code = isLQ ? 3'b100 : {0,funct3[1:0]};
+   let width_code = isLQ ? w_SIZE_Q : {0,funct3[1:0]};
 
    alu_outputs.control   = ((legal_LD && legal_FP_LD) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
@@ -846,7 +846,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 		    || (funct3 == f3_SD)
 `endif
 `ifdef ISA_CHERI
-        || (funct3 == 3'b100) //TODO f3_SQ
+        || (funct3 == f3_SQ)
 `endif
 `ifdef ISA_F
 		    || (funct3 == f3_FSW)
@@ -897,7 +897,12 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 `endif
 `endif
 `else
+`ifdef ISA_CHERI
+   alu_outputs.cap_val2      = inputs.cap_rs2_val;
+   alu_outputs.val2_cap_not_int = width_code == w_SIZE_CAP;
+`else
    alu_outputs.val2      = inputs.rs2_val;
+`endif
 `endif
 
    // Normal trace output (if no trap)
@@ -1318,7 +1323,7 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    alu_outputs.check_inclusive = True;
 
    //TODO check alignment?
-   if (widthCode == 3'b100) begin //Load Q, so may be loading caps
+   if (widthCode == w_SIZE_CAP) begin //May be loading/storing caps
        if (isStoreNotLoad) begin
            if (getHardPerms(authority).permitStoreCap && (getHardPerms(data).global || getHardPerms(authority).permitStoreLocalCap)) begin
                alu_outputs.mem_allow_cap = True;
@@ -1651,7 +1656,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            alu_outputs.control = CONTROL_STRAIGHT;
            if (funct5rs2[4] == 1) begin
                if (funct5rs2[2:0] == 3'b111) begin
-                   widthCode = 3'b100;
+                   widthCode = w_SIZE_Q;
                end else begin
                    alu_outputs.control = CONTROL_TRAP;
                    //TODO illegal instr
@@ -1669,7 +1674,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            let widthCode = funct5rd[2:0];
            alu_outputs.control = CONTROL_STRAIGHT;
            if (funct5rd[4] == 1) alu_outputs.control = CONTROL_TRAP;
-           if (widthCode >= 3'b101) begin
+           if (widthCode > w_SIZE_MAX) begin
                alu_outputs.control = CONTROL_TRAP;
                //TODO illegal instr
            end

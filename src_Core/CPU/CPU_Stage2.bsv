@@ -312,8 +312,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			      : OSTATUS_PIPE));
         match {.mem_tag, .mem_val} = dcache.word128;
         CapPipe result = ?; //TODO any reason for this to be CapPipe not CapReg/CapMem?
-        if (rg_stage2.mem_width_code == 3'b100) begin
-            CapMem capMem = {pack(rg_stage2.mem_allow_cap) & pack(mem_tag), mem_val};
+        if (rg_stage2.mem_width_code == w_SIZE_CAP) begin
+            CapMem capMem = {pack(rg_stage2.mem_allow_cap) & pack(mem_tag), truncate(mem_val)};
             CapReg capReg = cast(capMem);
             result = cast(capReg);
         end else begin
@@ -665,6 +665,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
         CapReg capReg = cast(x.val2);
         CapMem capMem = cast(capReg);//TODO work out where to do these casts
+        Bit#(TSub#(SizeOf#(CapMem),1)) tagless = truncate(capMem);
 `endif
 
 	    dcache.req (cache_op,
@@ -678,7 +679,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.val2,
 `else
 `ifdef ISA_CHERI
-      tuple2(isValidCap(capMem) && x.mem_allow_cap, truncate(capMem)),
+      tuple2(isValidCap(capMem) && x.mem_allow_cap, zeroExtend(tagless)),
 `else
 			zeroExtend (x.val2),
 `endif

@@ -231,11 +231,11 @@ deriving (Bits, FShow);
 // Check if addr is aligned
 
 function Bool fn_is_aligned (Bit #(3) width_code, Bit #(n) addr);
-   return (    (width_code == 3'b000)                                // B, BU
-	   || ((width_code == 3'b001) && (addr [0] == 1'b0))         // H, HU
-	   || ((width_code == 3'b010) && (addr [1:0] == 2'b00))      // W, WU
-	   || ((width_code == 3'b011) && (addr [2:0] == 3'b000))     // D
-       || ((width_code == 3'b100) && (addr [3:0] == 4'b0000))    // Q
+   return (    (width_code == w_SIZE_B)                                // B, BU
+	   || ((width_code == w_SIZE_H) && (addr [0] == 1'b0))         // H, HU
+	   || ((width_code == w_SIZE_W) && (addr [1:0] == 2'b00))      // W, WU
+	   || ((width_code == w_SIZE_D) && (addr [2:0] == 3'b000))     // D
+	   || ((width_code == w_SIZE_Q) && (addr [3:0] == 4'b0000))    // Q
 	   );
 endfunction
 
@@ -244,11 +244,11 @@ endfunction
 
 function AXI4_Size fn_width_code_to_AXI4_Size (Bit #(3) width_code);
    AXI4_Size  result;
-   if      (width_code == 0)        result = 1;
-   else if (width_code == 1)        result = 2;
-   else if (width_code == 2)        result = 4;
-   else if (width_code == 3)        result = 8;
-   else /* if (width_code == 4) */  result = 16;
+   if      (width_code == w_SIZE_B)        result = 1;
+   else if (width_code == w_SIZE_H)        result = 2;
+   else if (width_code == w_SIZE_W)        result = 4;
+   else if (width_code == w_SIZE_D)        result = 8;
+   else /* if (width_code == w_SIZE_Q) */  result = 16;
    return result;
 endfunction
 
