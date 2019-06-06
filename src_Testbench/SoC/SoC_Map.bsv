@@ -143,7 +143,7 @@ module mkSoC_Map (SoC_Map_IFC);
 
    let mem0_controller_addr_range = Range {
       base: 'h_8000_0000,
-      size: 'h_0FFF_FFFF    // 256 MB
+      size: 'h_3FFF_FFFF    // 1 GB
    };
 
    // ----------------------------------------------------------------
@@ -255,7 +255,7 @@ Integer uart0_slave_num           = 2;
 
 // ================================================================
 // Width of fabric 'id' buses
-typedef TAdd#(Wd_MId, TLog#(Num_Masters)) Wd_SId;
+typedef TAdd#(TAdd#(Wd_MId, TLog#(Num_Masters)),1) Wd_SId;
 
 // ================================================================
 // Interrupt request numbers (== index in to vector of

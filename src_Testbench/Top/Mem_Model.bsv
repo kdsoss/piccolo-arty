@@ -45,6 +45,8 @@ interface Mem_Model_IFC;
    interface  MemoryServer #(Bits_per_Raw_Mem_Addr, Bits_per_Raw_Mem_Word)  mem_server;
 endinterface
 
+typedef 'h4000_0000 Bytes_Per_Mem;
+
 // ================================================================
 // Mem Model implementation
 
@@ -53,12 +55,12 @@ module mkMem_Model (Mem_Model_IFC);
 
    Integer verbosity = 0;    // 0 = quiet; 1 = verbose
 
-   Raw_Mem_Addr alloc_size = 'h_80_0000;    // 8M raw mem words, or 256MB
-                   
+   Raw_Mem_Addr alloc_size = fromInteger(valueOf(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word))); //(raw mem words)
+
 `ifdef RVFI_DII
-   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, 'h20_000 - 1);
+   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, fromInteger(valueOf(TDiv#(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word), 4))) - 1);
    //zeroes register allows quick resetting of memory. If bit of zeroes is 0 then corresponding entry of rf is 0.
-   Reg#(Bit#('h20_000)) zeroes <- mkReg(0);
+   Reg#(Bit#(TDiv#(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word), 4))) zeroes <- mkReg(0);
 `else
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
 `endif

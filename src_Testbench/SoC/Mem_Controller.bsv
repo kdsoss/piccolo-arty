@@ -273,6 +273,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
 
    Reg #(State)       rg_state     <- mkReg (STATE_POWER_ON_RESET);
+   Reg #(Bool)        rg_mem_map_set <- mkReg (False);
    Reg #(Fabric_Addr) rg_addr_base <- mkRegU;
    Reg #(Fabric_Addr) rg_addr_lim  <- mkRegU;
 
@@ -435,7 +436,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // different raw_mem_word-addr and is dirty;
    // it writes back the dirty raw_mem_word; the cached raw_mem_word becomes clean
 
-   rule rl_writeback_dirty (   (rg_state == STATE_READY)
+   rule rl_writeback_dirty (   (rg_state == STATE_READY) && rg_mem_map_set
 			    && fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size)
 			    && (rg_cached_raw_mem_addr != req_raw_mem_addr)
 			    && (! rg_cached_clean));
@@ -455,7 +456,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // different addr and is clean; we overwrite with the correct raw_mem_word
    // by reloading from memory; the new cached raw_mem_word is clean.
 
-   rule rl_miss_clean_req (   (rg_state == STATE_READY)
+   rule rl_miss_clean_req (   (rg_state == STATE_READY) && rg_mem_map_set
 			   && fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size)
 			   && (rg_cached_raw_mem_addr != req_raw_mem_addr)
 			   && rg_cached_clean);
@@ -491,7 +492,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // Returns the full Wd_Data-wide word containing the byte specified by the address.
    // i.e., we do not extract relevant bytes here, leaving that to the requestor.
 
-   rule rl_process_rd_req  (   (rg_state == STATE_READY)
+   rule rl_process_rd_req  (   (rg_state == STATE_READY) && rg_mem_map_set
 			    && fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size)
 			    && (rg_cached_raw_mem_addr == req_raw_mem_addr)
 			    && (f_reqs.first.req_op == REQ_OP_RD));
@@ -530,7 +531,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // This rule fires on a fabric write request when the cached raw_mem_word has the
    // same addr ('hit'), whether clean or dirty.
 
-   rule rl_process_wr_req  (   (rg_state == STATE_READY)
+   rule rl_process_wr_req  (   (rg_state == STATE_READY) && rg_mem_map_set
 			    && fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size)
 			    && (rg_cached_raw_mem_addr == req_raw_mem_addr)
 			    && (f_reqs.first.req_op == REQ_OP_WR));
@@ -619,7 +620,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // ================================================================
    // Invalid address
 
-   rule rl_invalid_rd_address (   (rg_state == STATE_READY)
+   rule rl_invalid_rd_address (   (rg_state == STATE_READY) && rg_mem_map_set
 			       && (! fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size))
 			       && (f_reqs.first.req_op == REQ_OP_RD));
       Fabric_Data_Periph rdata = zeroExtend (f_reqs.first.addr);
@@ -641,7 +642,7 @@ module mkMem_Controller (Mem_Controller_IFC);
       $display ("     => ", fshow (rdr));
    endrule
 
-   rule rl_invalid_wr_address (   (rg_state == STATE_READY)
+   rule rl_invalid_wr_address (   (rg_state == STATE_READY) && rg_mem_map_set
 			       && (! fn_addr_is_ok (rg_addr_base, f_reqs.first.addr, rg_addr_lim, f_reqs.first.size))
 			       && (f_reqs.first.req_op == REQ_OP_WR));
       let wrr = AXI4_BFlit {bid:   f_reqs.first.id,
@@ -670,6 +671,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    method Action  set_addr_map (Fabric_Addr addr_base, Fabric_Addr addr_lim) if (rg_state == STATE_READY);
       rg_addr_base <= addr_base;
       rg_addr_lim  <= addr_lim;
+      rg_mem_map_set <= True;
       $display ("%0d: Mem_Controller.set_addr_map: addr_base 0x%0h addr_lim 0x%0h",
 		cur_cycle, addr_base, addr_lim);
 

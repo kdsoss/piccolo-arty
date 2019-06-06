@@ -170,7 +170,7 @@ module mkSoC_Top (SoC_Top_IFC);
    // SoC fabric master connections
    // Note: see 'SoC_Map' for 'master_num' definitions
 
-   Vector#(Num_Masters, AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+   Vector#(Num_Masters, AXI4_Master_Synth #(TAdd#(Wd_MId,1), Wd_Addr, Wd_Data,
                                             0, 0, 0, 0, 0))
                                             master_vector = newVector;
 

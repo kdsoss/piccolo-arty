@@ -394,7 +394,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    // AXI4 Fabric interfaces
 
    // IMem to Fabric master interface
-   interface cpu_imem_master = toAXI4_Master_Synth(zeroMasterUserFields(cpu_imem_ug));
+   interface cpu_imem_master = toAXI4_Master_Synth(extendIDFields(zeroMasterUserFields(cpu_imem_ug), 0));
 
    // DMem to Fabric master interface
    interface cpu_dmem_master = toAXI4_Master_Synth(tagController.master);
