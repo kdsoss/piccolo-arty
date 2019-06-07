@@ -29,6 +29,8 @@
 
 `ifdef ISA_CHERI
 
+typedef TMul#(XLEN, 2) CLEN;
+
 function Bit #(5) instr_cap_funct5rs2 (Instr x); return x [24:20]; endfunction
 
 function Bit #(5) instr_cap_funct5rd (Instr x); return x [11:7]; endfunction

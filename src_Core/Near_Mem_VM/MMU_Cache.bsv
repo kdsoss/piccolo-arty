@@ -94,6 +94,10 @@ import Cache_Decls_RV64 :: *;
 import SoC_Map      :: *;
 import Fabric_Defs  :: *;
 
+`ifdef ISA_CHERI
+import ISA_Decls :: *;
+`endif
+
 // ================================================================
 
 export  MMU_Cache_IFC (..);
@@ -154,7 +158,8 @@ endinterface
 typedef MMU_Cache_IFC#(Wd_MId_2x3) MMU_DCache_IFC;
 typedef MMU_Cache_IFC#(Wd_MId) MMU_ICache_IFC;
 `ifdef ISA_CHERI
-typedef 129 Cache_Entry_Width;
+typedef TAdd#(128, TDiv#(128, CLEN)) Cache_Entry_Width; //Width inluding tags
+typedef 128 Cache_Data_Entry_Width;                     //Width excluding tags
 `else
 typedef 128 Cache_Entry_Width;
 `endif
@@ -282,32 +287,34 @@ function
    AXI4_Size  axsize      = 128;    // Will be updated in 'case' below
 
    case (width_code)
-      0: begin
+      w_SIZE_B: begin
 		    word128   = (word128 << shift_bits);
 		    strobe128 = ('b_1   << shift_bytes);
 		    axsize    = 1;
 		 end
-      1: begin
+      w_SIZE_H: begin
 		    word128   = (word128 << shift_bits);
 		    strobe128 = ('b_11  << shift_bytes);
 		    axsize    = 2;
 		 end
-      2: begin
+      w_SIZE_W: begin
 		    word128   = (word128  << shift_bits);
 		    strobe128 = ('b_1111 << shift_bytes);
 		    axsize    = 4;
 		 end
-      3: begin
+      w_SIZE_D: begin
         word128   = (word128 << shift_bits);
 	      strobe128 = ('b_1111_1111 << shift_bytes);
 		    axsize    = 8;
 		 end
-      4: begin
+      w_SIZE_Q: begin
             word128   = word128;
             strobe128 = 'b_1111_1111_1111_1111;
             axsize    = 16;
          end
    endcase
+
+   Bit#(1) user = width_code == w_SIZE_CAP ? word128[addr64[4:0] == 0 ? 0 : 1] : 1'b0;
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr64);
@@ -321,7 +328,7 @@ function
           tuple4
 `endif           (fabric_addr, fabric_data,
 `ifdef ISA_CHERI
-                                            width_code == 4 ? word128[128] : 0,
+                                            user,
 `endif
                                             fabric_strobe, axsize);
 endfunction: fn_to_fabric_write_fields
@@ -338,9 +345,7 @@ function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
 
    let new_word128_set = old_word128_set;
    Bit#(Cache_Entry_Width) new_word128     = old_word128;
-`ifdef ISA_CHERI
-   new_word128[valueOf(Cache_Entry_Width)-1] = 1'b0;
-`endif
+
    Bit #(4) addr_lsbs  = addr [3:0];
 
    // Replace relevant bytes in new_word128
@@ -387,6 +392,18 @@ function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
             new_word128 = word128;
           end
    endcase
+`ifdef ISA_CHERI
+   let addr_lsb_bits = {1'b0,addr_lsbs,3'b000};
+   if ((addr_lsb_bits) < fromInteger(valueOf(CLEN))) begin
+     new_word128[valueOf(Cache_Data_Entry_Width)] = 1'b0;
+   end
+   if (addr_lsb_bits + (8'h8 << width_code) > fromInteger(valueOf(CLEN))) begin
+     new_word128[valueOf(Cache_Entry_Width) - 1] = 1'b0;
+   end
+   if (width_code == w_SIZE_CAP) begin
+     new_word128[valueOf(Cache_Data_Entry_Width) + (addr_lsbs == 0 ? 0 : 1)] = new_word128[128];
+   end
+`endif
    new_word128_set [way] = new_word128;
    return new_word128_set;
 endfunction: fn_update_word128_set
@@ -495,7 +512,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    String d_or_i = (dmem_not_imem ? "D_MMU_Cache" : "I_MMU_Cache");
 
    // Verbosity: 0: quiet; 1 reset info; 2: + detail; 3: cache refill loop detail
-   Integer verbosity = (dmem_not_imem ? 2 : 0);
+   Integer verbosity = (dmem_not_imem ? 0 : 0);
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (fromInteger (verbosity));
 
    // Overall state of this module
