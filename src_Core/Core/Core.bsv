@@ -344,6 +344,8 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
         res[plic_slave_num] = True;
       else
         res[default_slave_num] = True;
+      Bit #(24) topBits = truncateLSB(addr); //XXX TODO Tag controller masks to 40 bits
+      if (topBits != 0) res = replicate(False);
       return res;
    endfunction
 
