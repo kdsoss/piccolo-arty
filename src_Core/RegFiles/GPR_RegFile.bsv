@@ -63,6 +63,13 @@ import CHERICC_Fat :: *;
 `endif
 `endif
 
+`ifdef ISA_CHERI
+`define CAST cast
+`else
+function id x = x;
+`define CAST id
+`endif
+
 
 interface GPR_RegFile_IFC;
    // Reset
@@ -161,21 +168,21 @@ module mkGPR_RegFile (GPR_RegFile_IFC);
 
    // GPR read
    method `EXTERNAL_REG_TYPE read_rs1 (RegName rs1);
-      return cast((rs1 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs1));
+      return `CAST ((rs1 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs1));
    endmethod
 
    // GPR read
    method `EXTERNAL_REG_TYPE read_rs1_port2 (RegName rs1);        // For debugger access only
-      return cast((rs1 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs1));
+      return `CAST ((rs1 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs1));
    endmethod
 
    method `EXTERNAL_REG_TYPE read_rs2 (RegName rs2);
-      return cast((rs2 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs2));
+      return `CAST ((rs2 == 0) ? `ZERO_REG_CONTENTS : regfile.sub (rs2));
    endmethod
 
    // GPR write
    method Action write_rd (RegName rd, `EXTERNAL_REG_TYPE rd_val);
-     if (rd != 0) regfile.upd (rd, cast(rd_val));
+     if (rd != 0) regfile.upd (rd, `CAST (rd_val));
    endmethod
 
 endmodule

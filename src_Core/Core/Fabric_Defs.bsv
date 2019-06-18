@@ -28,14 +28,9 @@ package Fabric_Defs;
 // languages/tools may silently ignore mismatched widths.
 
 // ================================================================
-// BSV lib imports
-
-// None
-
-// ----------------
-// BSV additional libs
 
 import AXI4 :: *;
+import ISA_Decls :: *;
 
 // ================================================================
 // Core local Fabric parameters
@@ -77,10 +72,10 @@ typedef 128  Wd_Data;
 // ----------------
 // Width of fabric 'user' datapaths. Carry capability tags on data lines.
 typedef 0 Wd_AW_User;
-typedef 1 Wd_W_User;
+typedef TDiv#(Wd_Data, CLEN) Wd_W_User;
 typedef 0 Wd_B_User;
 typedef 0 Wd_AR_User;
-typedef 1 Wd_R_User;
+typedef TDiv#(Wd_Data, CLEN) Wd_R_User;
 
 typedef  TDiv #(Wd_Data, 8)         Bytes_per_Fabric_Data;
 Integer  bytes_per_fabric_data = valueOf (Bytes_per_Fabric_Data);

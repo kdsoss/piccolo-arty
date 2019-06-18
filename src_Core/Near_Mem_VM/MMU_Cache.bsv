@@ -157,12 +157,6 @@ endinterface
 
 typedef MMU_Cache_IFC#(Wd_MId_2x3) MMU_DCache_IFC;
 typedef MMU_Cache_IFC#(Wd_MId) MMU_ICache_IFC;
-`ifdef ISA_CHERI
-typedef TAdd#(128, TDiv#(128, CLEN)) Cache_Entry_Width; //Width inluding tags
-typedef 128 Cache_Data_Entry_Width;                     //Width excluding tags
-`else
-typedef 128 Cache_Entry_Width;
-`endif
 
 // ****************************************************************
 // ****************************************************************
@@ -179,7 +173,7 @@ typedef struct {
 deriving (Bits, FShow);
 
 typedef Vector #(Ways_per_CSet, State_and_CTag)  State_and_CTag_CSet;
-typedef Vector #(Ways_per_CSet, Bit #(Cache_Entry_Width)) Word128_Set;
+typedef Vector #(Ways_per_CSet, Cache_Entry) Word128_Set;
 
 typedef enum {MODULE_PRERESET,              // After power on reset, before soft reset
               MODULE_RESETTING,             // Clearing all tags to EMPTY state
@@ -269,15 +263,17 @@ function
                 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
 		  Fabric_Data,    // data is lane-aligned
 `ifdef ISA_CHERI
-          Bit #(1),           // cap_tag
+          Bit #(Wd_W_User),           // cap_tags
 `endif
 		  Fabric_Strb,    // strobe
 		  AXI4_Size)      // 8 for 8-byte writes, else 4
 
    fn_to_fabric_write_fields (Bit #(3)  width_code,      // RISC-V size code: B/H/W/D/Q
 			      Bit #(n)  addr,    // actual byte addr
-			      Bit #(Cache_Entry_Width) word128)  // data is in lsbs
+            Tuple2#(Bool, Bit#(128)) write)  // data is in lsbs
    provisos (Add #(_, n, 64));
+
+   match {.write_cap, .word128} = write;
 
    // First compute addr, data and strobe for a 64b-wide fabric
    Bit #(16)  strobe128    = 0;
@@ -314,7 +310,10 @@ function
          end
    endcase
 
-   Bit#(1) user = width_code == w_SIZE_CAP ? word128[addr64[4:0] == 0 ? 0 : 1] : 1'b0;
+   let user = 0;
+
+   //The tag controller must ignore user bits for entirely "strobed out" capabilities
+   if (width_code == w_SIZE_CAP) user = signExtend(pack(write_cap));
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr64);
@@ -340,71 +339,71 @@ function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
 					  Way_in_CSet  way,
 					  Bit #(n)     addr,
 					  Bit #(3)     width_code,
-					  Bit #(Cache_Entry_Width)   word128);
+					  Tuple2 #(Bool, Bit#(Cache_Data_Width)) write);
+
+   match {.tag, .word128} = write;
+
    let old_word128    = old_word128_set [way];
 
    let new_word128_set = old_word128_set;
-   Bit#(Cache_Entry_Width) new_word128     = old_word128;
+   Bit#(Cache_Data_Width) new_word128     = tpl_2(old_word128);
 
    Bit #(4) addr_lsbs  = addr [3:0];
 
    // Replace relevant bytes in new_word128
    case (width_code)
       0:  case (addr_lsbs)
-		 'h0 : new_word128 [ 7:0 ] = word128 [7:0];
-		 'h1 : new_word128 [15:8 ] = word128 [7:0];
-		 'h2 : new_word128 [23:16] = word128 [7:0];
-		 'h3 : new_word128 [31:24] = word128 [7:0];
-		 'h4 : new_word128 [39:32] = word128 [7:0];
-		 'h5 : new_word128 [47:40] = word128 [7:0];
-		 'h6 : new_word128 [55:48] = word128 [7:0];
-		 'h7 : new_word128 [63:56] = word128 [7:0];
-		 'h8 : new_word128 [71:64] = word128 [7:0];
-		 'h9 : new_word128 [79:72] = word128 [7:0];
-		 'ha : new_word128 [87:80] = word128 [7:0];
-		 'hb : new_word128 [95:88] = word128 [7:0];
-		 'hc : new_word128 [103:96] = word128 [7:0];
-		 'hd : new_word128 [111:104] = word128 [7:0];
-		 'he : new_word128 [119:112] = word128 [7:0];
-		 'hf : new_word128 [127:120] = word128 [7:0];
-	      endcase
+            'h0 : new_word128 [ 7:0 ] = word128 [7:0];
+            'h1 : new_word128 [15:8 ] = word128 [7:0];
+            'h2 : new_word128 [23:16] = word128 [7:0];
+            'h3 : new_word128 [31:24] = word128 [7:0];
+            'h4 : new_word128 [39:32] = word128 [7:0];
+            'h5 : new_word128 [47:40] = word128 [7:0];
+            'h6 : new_word128 [55:48] = word128 [7:0];
+            'h7 : new_word128 [63:56] = word128 [7:0];
+            'h8 : new_word128 [71:64] = word128 [7:0];
+            'h9 : new_word128 [79:72] = word128 [7:0];
+            'ha : new_word128 [87:80] = word128 [7:0];
+            'hb : new_word128 [95:88] = word128 [7:0];
+            'hc : new_word128 [103:96] = word128 [7:0];
+            'hd : new_word128 [111:104] = word128 [7:0];
+            'he : new_word128 [119:112] = word128 [7:0];
+            'hf : new_word128 [127:120] = word128 [7:0];
+        endcase
       1:  case (addr_lsbs)
-		 'h0 : new_word128 [15:0 ] = word128 [15:0];
-		 'h2 : new_word128 [31:16] = word128 [15:0];
-		 'h4 : new_word128 [47:32] = word128 [15:0];
-		 'h6 : new_word128 [63:48] = word128 [15:0];
-		 'h8 : new_word128 [79:64] = word128 [15:0];
-		 'ha : new_word128 [95:80] = word128 [15:0];
-		 'hc : new_word128 [111:96] = word128 [15:0];
-		 'he : new_word128 [127:112] = word128 [15:0];
-	      endcase
+            'h0 : new_word128 [15:0 ] = word128 [15:0];
+            'h2 : new_word128 [31:16] = word128 [15:0];
+            'h4 : new_word128 [47:32] = word128 [15:0];
+            'h6 : new_word128 [63:48] = word128 [15:0];
+            'h8 : new_word128 [79:64] = word128 [15:0];
+            'ha : new_word128 [95:80] = word128 [15:0];
+            'hc : new_word128 [111:96] = word128 [15:0];
+            'he : new_word128 [127:112] = word128 [15:0];
+        endcase
       2:  case (addr_lsbs)
-		 'h0 : new_word128 [31:0] = word128 [31:0];
-		 'h4 : new_word128 [63:32] = word128 [31:0];
-		 'h8 : new_word128 [95:64] = word128 [31:0];
-		 'hc : new_word128 [127:96] = word128 [31:0];
-	      endcase
+            'h0 : new_word128 [31:0] = word128 [31:0];
+            'h4 : new_word128 [63:32] = word128 [31:0];
+            'h8 : new_word128 [95:64] = word128 [31:0];
+            'hc : new_word128 [127:96] = word128 [31:0];
+        endcase
       3:  case (addr_lsbs)
-         'h0 : new_word128[63:0] = word128[63:0];
-         'h8 : new_word128[127:64] = word128[63:0];
-          endcase
+            'h0 : new_word128[63:0] = word128[63:0];
+            'h8 : new_word128[127:64] = word128[63:0];
+        endcase
       4:  begin
-            new_word128 = word128;
+            new_word128[127:0] = word128;
           end
    endcase
+
 `ifdef ISA_CHERI
-   let addr_lsb_bits = {1'b0,addr_lsbs,3'b000};
-   if ((addr_lsb_bits) < fromInteger(valueOf(CLEN))) begin
-     new_word128[valueOf(Cache_Data_Entry_Width)] = 1'b0;
-   end
-   if (addr_lsb_bits + (8'h8 << width_code) > fromInteger(valueOf(CLEN))) begin
-     new_word128[valueOf(Cache_Entry_Width) - 1] = 1'b0;
-   end
-   if (width_code == w_SIZE_CAP) begin
-     new_word128[valueOf(Cache_Data_Entry_Width) + (addr_lsbs == 0 ? 0 : 1)] = new_word128[128];
-   end
+   Bit#(Cache_Cap_Tag_Width) tags = tpl_1(old_word128);
+
+   //We assume that caps are the widest write width on the processor
+   let overwritten_idx = addr >> valueOf(TDiv#(CLEN,8));
+   tags[overwritten_idx] = width_code == w_SIZE_CAP ? pack(tag) : 0;
 `endif
-   new_word128_set [way] = new_word128;
+
+   new_word128_set [way] = tuple2(tags, new_word128);
    return new_word128_set;
 endfunction: fn_update_word128_set
 
@@ -681,11 +680,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    // Test cache hit or miss; if hit, return which 'way', and the word128 data
    // ---- This pure function is an ActionValue only for the $display inside
-   function ActionValue #(Tuple3 #(Bool, Way_in_CSet, Bit #(Cache_Entry_Width))) fn_test_cache_hit_or_miss (CTag  pa_ctag);
+   function ActionValue #(Tuple3 #(Bool, Way_in_CSet, Cache_Entry)) fn_test_cache_hit_or_miss (CTag  pa_ctag);
       actionvalue
 	 Bool         hit     = False;
 	 Way_in_CSet  way_hit = 0;
-	 Bit #(Cache_Entry_Width)   word128  = 0;
+	 Bit#(SizeOf#(Cache_Entry))  word128  = 0;
 
 	 for (Integer way = 0; way < ways_per_cset; way = way + 1) begin
 	    let hit_at_way  = (   (state_and_ctag_cset [way].state != CTAG_EMPTY)
@@ -699,10 +698,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	    hit     = hit || hit_at_way;
 	    way_hit = fromInteger (way);
-	    word128  = (word128 | (word128_at_way & pack (replicate (hit_at_way))));
+	    word128  = (word128 | (pack(word128_at_way) & pack (replicate (hit_at_way))));
 	 end
 
-	 return tuple3 (hit, way_hit, word128);
+	 return tuple3 (hit, way_hit, unpack(word128));
       endactionvalue
    endfunction
 
@@ -727,13 +726,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Functions to drive read-responses (outputs)
 
    // Memory-read responses
-   function Action fa_drive_mem_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Bit #(Cache_Entry_Width) ld_val, Bit #(Cache_Entry_Width) st_amo_val);
+   function Action fa_drive_mem_rsp (Bit #(3) width_code, Bool is_unsigned, Addr addr, Cache_Entry ld_val, Cache_Entry st_amo_val);
       action
 	 dw_valid             <= True;
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
 	 dw_output_ld_val     <= fn_extract_and_extend_bytes (width_code, is_unsigned, addr, ld_val);
 	 // Value stored into mem (STORE, SC, AMO final value stored)
-	 dw_output_st_amo_val <= tuple2(st_amo_val[valueOf(Cache_Entry_Width)-1] == 1'b1, st_amo_val[valueOf(Cache_Entry_Width)-2:0]); //TODO check for CHERI
+	 dw_output_st_amo_val <= tuple2(tpl_1(st_amo_val)[(addr[4:0] == 0) ? 1 : 0] == 1'b1, tpl_2(st_amo_val)); //TODO check for CHERI
 	 if (cfg_verbosity > 1)
 	    $display ("%0d: %s.drive_mem_rsp: addr 0x%0h ld_val 0x%0h st_amo_val 0x%0h",
 		      cur_cycle, d_or_i, addr, ld_val, st_amo_val);
@@ -805,7 +804,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endfunction
 
    // Send a write-request into the fabric
-   function Action fa_fabric_send_write_req (Bit #(3)  width_code, PA  pa, Bit #(Cache_Entry_Width)  st_val
+   function Action fa_fabric_send_write_req (Bit #(3)  width_code, PA  pa, Tuple2 #(Bool, Bit#(128))  st_val
                                                                                                            );
       action
 	 match {.fabric_addr,
@@ -1071,7 +1070,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	    if ((rg_op == CACHE_LD) || is_AMO_LR) begin
 	       if (hit) begin
 		  // Cache hit; drive response
-		  fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, word128, 0);
+		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, word128, unpack(0));
 
 `ifdef ISA_A
 		  if (is_AMO_LR) begin
@@ -1140,7 +1139,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		  // ST, or successful SC
 		  if (hit) begin
 		     // Update cache line in cache
-		    let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, pack(rg_st_amo_val));
+		    let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, rg_st_amo_val);
 		     ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
 		     fa_arm_the_load_stall (rg_width_code);
 
@@ -1159,7 +1158,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		     $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word128 0x%0h", rg_addr, rg_st_amo_val);
 
 		  // For write-hits and write-misses, writeback data to memory (so cache remains clean)
-		   fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, pack(rg_st_amo_val));
+		   fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, rg_st_amo_val);
 
 		  // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
 		  // in case the next incoming request tries to read from the same SRAM address.
@@ -1170,7 +1169,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	       end
 	       else begin // do_write == False
 		  // SC fail
-		  fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, 1, 0);
+		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, tuple2(0,1), unpack(0));
 		  if (cfg_verbosity > 1)
 		     $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
 	       end
@@ -1659,14 +1658,15 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
       // Refill 128b of cache line
       else begin
-      Bit #(Cache_Entry_Width) new_word128 = zeroExtend ({mem_rsp.ruser, mem_rsp.rdata});
-	 if (valueOf (Wd_Data) == 64) begin
-	    // Assert: rg_lower_64_full == True
-	    new_word128 = { truncate(new_word128) << 64, rg_lower_word64 };
-	    rg_lower_word64_full <= False;
-	    if (cfg_verbosity > 2)
-	       $display ("        64b fabric: concat with rg_lower_word64: new_word128 0x%0x", new_word128);
-	 end
+      Cache_Entry new_word128 = tuple2(mem_rsp.ruser, mem_rsp.rdata);
+// TODO reinstate this
+//	 if (valueOf (Wd_Data) == 64) begin
+//	    // Assert: rg_lower_64_full == True
+//	    new_word128 = { truncate(new_word128) << 64, rg_lower_word64 };
+//	    rg_lower_word64_full <= False;
+//	    if (cfg_verbosity > 2)
+//	       $display ("        64b fabric: concat with rg_lower_word64: new_word128 0x%0x", new_word128);
+//	 end
 
 	 // Update the Word128_Set (BRAM port A) (if this response was not an error)
 	 let new_word128_set = word128_set;
@@ -1764,7 +1764,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, zeroExtend (rd_data.rdata));
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, tuple2(0, zeroExtend (rd_data.rdata))); //TODO safe to assume no tags from IO reads?
       rg_ld_val <= ld_val;
 
       // Successful read
@@ -1805,7 +1805,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("%0d: %s: rl_io_write_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
 
-       fa_fabric_send_write_req (rg_width_code, rg_pa, pack(rg_st_amo_val));
+       fa_fabric_send_write_req (rg_width_code, rg_pa, rg_st_amo_val);
 
       rg_state <= CACHE_ST_AMO_RSP;
 

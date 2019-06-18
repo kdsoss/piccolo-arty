@@ -311,6 +311,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
         match {.mem_tag, .mem_val} = dcache.word128;
+`ifdef ISA_CHERI
         CapPipe result = ?; //TODO any reason for this to be CapPipe not CapReg/CapMem?
         if (rg_stage2.mem_width_code == w_SIZE_CAP) begin
             CapMem capMem = {pack(rg_stage2.mem_allow_cap) & pack(mem_tag), truncate(mem_val)};
@@ -319,6 +320,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         end else begin
             result = nullWithAddr(truncate(mem_val));
         end
+`else
+        WordXL result = truncate(mem_val);
+`endif
 
         let funct3 = instr_funct3 (rg_stage2.instr);
 
@@ -415,7 +419,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         `endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
+`ifdef ISA_CHERI
         trace_data.word1 = getAddr(result);
+`else
+        trace_data.word1 = result;
+`endif
 
 	    output_stage2 = Output_Stage2 {ostatus:         ostatus,
 					   trap_info:       trap_info_dmem,
@@ -681,14 +689,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       tuple2(isValidCap(capMem) && x.mem_allow_cap, zeroExtend(tagless)),
 `else
-			zeroExtend (x.val2),
+      tuple2(False, zeroExtend(x.val2)),
 `endif
 `endif
 			mem_priv,
 			sstatus_SUM,
 			mstatus_MXR,
 			csr_regfile.read_satp);
-      $display("req, data: ", fshow(capMem));
 	 end
 
 `ifdef SHIFT_SERIAL

@@ -267,6 +267,12 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
         else:
             fo.write ("\t-D SV39  \\\n")
 
+    fo.write("\t-D RISCV\\\n");
+    if (arch_std.startswith ("RV32")):
+        fo.write ("\t-D CAP64\\\n")
+    else:
+        fo.write ("\t-D CAP128\\\n")
+
     # RISC-V arch features
     arch_flags = ""
     if ("G" in arch_std):

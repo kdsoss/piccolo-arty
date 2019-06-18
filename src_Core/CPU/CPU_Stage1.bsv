@@ -138,7 +138,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    // ----------------
    // ALU
 
+`ifdef ISA_CHERI
    let   pc             = imem.pc - getBase(rg_pcc_unpacked); //TODO latch pc instead?
+`else
+   let   pc             = imem.pc;
+`endif
    let   is_i32_not_i16 = imem.is_i32_not_i16;
 `ifdef RVFI_DII
    Instr instr          = tpl_1(imem.instr);
@@ -367,8 +371,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.control        = alu_outputs.control;
 	 output_stage1.trap_info      = trap_info;
 	 output_stage1.next_pc        = next_pc;
+`ifdef ISA_CHERI
      output_stage1.next_pcc       = alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked;
      output_stage1.next_ddc       = alu_outputs.ddc_changed ? alu_outputs.ddc : rg_ddc_unpacked;
+`endif
 	 output_stage1.data_to_stage2 = data_to_stage2;
 
       end

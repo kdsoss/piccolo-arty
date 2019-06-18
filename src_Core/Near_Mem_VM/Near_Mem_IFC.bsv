@@ -101,6 +101,14 @@ typedef enum {  CACHE_LD
    } CacheOp
 deriving (Bits, Eq, FShow);
 
+typedef 128 Cache_Data_Width;
+`ifdef ISA_CHERI
+typedef TDiv#(Cache_Data_Width, CLEN) Cache_Cap_Tag_Width;
+typedef Tuple2#(Bit#(Cache_Cap_Tag_Width), Bit#(Cache_Data_Width)) Cache_Entry;
+`else
+typedef Tuple2#(Bit#(0), Cache_Data_Width) Cache_Entry;
+`endif
+
 // ================================================================
 // IMem interface
 
@@ -182,12 +190,12 @@ endinterface
 //  - word with correct byte(s) shifted into LSBs and properly extended
 
 //TODO make generic
-function Tuple2#(Bool, Bit #(128)) fn_extract_and_extend_bytes (Bit #(3) width_code, Bool is_unsigned, WordXL byte_addr, Bit #(129) word128_tagged);
+function Tuple2#(Bool, Bit #(128)) fn_extract_and_extend_bytes (Bit #(3) width_code, Bool is_unsigned, WordXL byte_addr, Cache_Entry word128_tagged);
    Bit #(128) result    = 0;
    Bit #(4)  addr_lsbs = byte_addr [3:0];
 
    Bool tag = False;
-   Bit #(128) word128 = word128_tagged[127:0];
+   Bit #(128) word128 = tpl_2(word128_tagged);
 
    let u_s_extend = is_unsigned ? zeroExtend : signExtend;
 
@@ -230,13 +238,19 @@ function Tuple2#(Bool, Bit #(128)) fn_extract_and_extend_bytes (Bit #(3) width_c
 	     endcase
 
       3: case (addr_lsbs)
-		'h0: result = u_s_extend (word128 [63:0]);     
-		'h8: result = u_s_extend (word128 [127:64]);
+		'h0: begin
+           result = u_s_extend (word128 [63:0]);
+           if (valueOf(CLEN) == 64) tag = tpl_1(word128_tagged)[0] == 1'b1;
+         end
+		'h8: begin
+           result = u_s_extend (word128 [127:64]);
+           if (valueOf(CLEN) == 64) tag = tpl_1(word128_tagged)[1] == 1'b1;
+         end
 	     endcase
 
       4: begin
             result = word128;
-            tag = word128_tagged[128] == 1'b1;
+            tag = tpl_1(word128_tagged)[0] == 1'b1;
          end
    endcase
    return tuple2(tag, result);
