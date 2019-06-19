@@ -37,15 +37,22 @@ BSC_COMPILATION_FLAGS += \
 # ================================================================
 # Search path for bsc for .bsv files
 
-CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
+BSV_LIBS = $(REPO)/libs
+BLUESTUFF = $(BSV_LIBS)/BlueStuff
+
+CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs:$(BLUESTUFF)/BlueUtils:$(REPO)/src_Verifier:
+
+# Paths for Tag Controller
+TAG_CONTROLLER_DIRS = $(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagController/TagController/CacheCore:
 
 # XXX
 # Specify the path to the BlueStuff library (https://github.com/CTSRD-CHERI/BlueStuff)
 # What is the best way to distribute this code?
 # XXX
-AXI_DIRS = $(REPO)/../BlueStuff/AXI:$(REPO)/../BlueStuff/BlueBasics:$(REPO)/../BlueStuff/
 
-BSC_PATH = -p $(CORE_DIRS):src_BSV:$(AXI_DIRS):+
+AXI_DIRS = $(BLUESTUFF)/AXI:$(BLUESTUFF)/BlueBasics:$(BLUESTUFF):
+
+BSC_PATH = -p $(CORE_DIRS)src_BSV:$(AXI_DIRS)$(TAG_CONTROLLER_DIRS)+
 
 # ----------------
 # Top-level file and module
