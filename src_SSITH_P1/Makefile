@@ -24,15 +24,18 @@ ARCH ?= RV32ACIMU
 BSC_COMPILATION_FLAGS += \
 	-D RV32 \
 	-D ISA_PRIV_M  -D ISA_PRIV_U  \
-	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C  \
+        -D RISCV \
+	-D CAP64 \
+	-D MEM128 \
+	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C -D ISA_CHERI \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
 	-D Near_Mem_Caches    \
-	-D FABRIC64    \
+	-D FABRIC64 \
 	-D INCLUDE_GDB_CONTROL \
-	-D INCLUDE_TANDEM_VERIF \
 	-D BRVF_TRACE \
 	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP
+	#-D INCLUDE_TANDEM_VERIF \ Appears to have rotted? Needs merge from something working.
 
 # ================================================================
 # Search path for bsc for .bsv files
@@ -45,6 +48,9 @@ CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:
 # Paths for Tag Controller
 TAG_CONTROLLER_DIRS = $(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagController/TagController/CacheCore:
 
+# Path for CHERI
+CHERI_DIR = $(BSV_LIBS)/cheri-cap-lib:
+
 # XXX
 # Specify the path to the BlueStuff library (https://github.com/CTSRD-CHERI/BlueStuff)
 # What is the best way to distribute this code?
@@ -52,7 +58,7 @@ TAG_CONTROLLER_DIRS = $(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagCon
 
 AXI_DIRS = $(BLUESTUFF)/AXI:$(BLUESTUFF)/BlueBasics:$(BLUESTUFF):
 
-BSC_PATH = -p $(CORE_DIRS)src_BSV:$(AXI_DIRS)$(TAG_CONTROLLER_DIRS)+
+BSC_PATH = -p $(CORE_DIRS)src_BSV:$(AXI_DIRS)$(CHERI_DIR)$(TAG_CONTROLLER_DIRS)+
 
 # ----------------
 # Top-level file and module

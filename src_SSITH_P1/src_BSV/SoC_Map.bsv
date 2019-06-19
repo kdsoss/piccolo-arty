@@ -56,6 +56,11 @@ import Routable :: *;
 
 import Fabric_Defs :: *;    // Only for type Fabric_Addr
 
+`ifdef ISA_CHERI
+import CHERICap     :: *;
+import CHERICC_Fat  :: *;
+`endif
+
 // ================================================================
 // Interface and module for the address map
 
@@ -95,6 +100,9 @@ interface SoC_Map_IFC;
    method  Bool  m_is_near_mem_IO_addr (Fabric_Addr addr);
 
    (* always_ready *)   method  Bit #(64)  m_pc_reset_value;
+//`ifdef ISA_CHERI
+//   (* always_ready *)   method  CapReg m_mtcc_reset_value;
+//`endif
    (* always_ready *)   method  Bit #(64)  m_mtvec_reset_value;
    (* always_ready *)   method  Bit #(64)  m_nmivec_reset_value;
 endinterface

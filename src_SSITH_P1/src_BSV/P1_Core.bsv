@@ -80,14 +80,12 @@ interface P1_Core_IFC;
    // Core CPU interfaces
 
    // CPU IMem to Fabric master interface
-   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_AW_User, Wd_W_User, Wd_B_User,
-                                 Wd_AR_User, Wd_R_User) master0;
+   interface AXI4_Master_Synth #(TAdd#(Wd_MId,1), Wd_Addr, Wd_Data,
+                                 0, 0, 0, 0, 0) master0;
 
    // CPU DMem (incl. I/O) to Fabric master interface
-   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
-                                 Wd_AW_User, Wd_W_User, Wd_B_User,
-                                 Wd_AR_User, Wd_R_User) master1;
+   interface AXI4_Master_Synth #(TAdd#(Wd_MId,1), Wd_Addr, Wd_Data,
+                                 0, 0, 0, 0, 0) master1;
 
    // External interrupt sources
    (* always_ready, always_enabled, prefix="" *)
@@ -243,10 +241,10 @@ module mkP1_Core (P1_Core_IFC);
    // INTERFACE
 
    // CPU IMem to Fabric master interface
-   interface AXI4_Master_IFC master0 = core.cpu_imem_master;
+   interface master0 = core.cpu_imem_master;
 
    // CPU DMem to Fabric master interface
-   interface AXI4_Master_IFC master1 = core.cpu_dmem_master;
+   interface master1 = core.cpu_dmem_master;
 
    // External interrupts
    method  Action interrupt_reqs (Bit #(N_External_Interrupt_Sources) reqs);

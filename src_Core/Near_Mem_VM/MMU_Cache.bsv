@@ -412,14 +412,15 @@ endfunction: fn_update_word128_set
 // Returns the value to be stored back to mem.
 
 `ifdef ISA_A
-function Tuple2 #(Bit #(64),
-		  Bit #(64)) fn_amo_op (Bit #(3)   funct3,    // encodes data size (.W or .D)
+function Tuple2 #(Tuple2#(Bool, Bit #(128)),
+		  Tuple2 #(Bool, Bit#(Cache_Data_Width))) fn_amo_op (
+		                        Bit #(3)   funct3,    // encodes data size (.W or .D)
 					Bit #(7)   funct7,    // encodes the AMO op
 					WordXL     addr,      // lsbs indicate which 32b W in 64b D (.W)
-					Bit #(64)  ld_val,    // 64b value loaded from mem
-					Bit #(64)  st_val);   // 64b value from CPU reg Rs2
-   Bit #(64) w1     = fn_extract_and_extend_bytes (funct3, addr, ld_val);
-   Bit #(64) w2     = st_val;
+					Cache_Entry ld_val,   // value loaded from mem
+					Tuple2#(Bool, Bit #(128)) st_val);   // Value from CPU reg Rs2
+   Bit #(64) w1     = truncate(tpl_2(fn_extract_and_extend_bytes(funct3, True, addr, ld_val))); // XXX Check if "True" is sufficient for is_unsigned argument.
+   Bit #(64) w2     = truncate(tpl_2(st_val));
    Int #(64) i1     = unpack (w1);    // Signed, for signed ops
    Int #(64) i2     = unpack (w2);    // Signed, for signed ops
    if (funct3 == f3_AMO_W) begin
@@ -446,7 +447,8 @@ function Tuple2 #(Bit #(64),
    if (funct3 == f3_AMO_W)
       new_st_val = zeroExtend (new_st_val [31:0]);
 
-   return tuple2 (truncate (pack (i1)), new_st_val);
+   return tuple2 (tuple2(False, zeroExtend(pack(i1))),
+                  tuple2(False, zeroExtend(new_st_val)));
 endfunction: fn_amo_op
 `endif
 
@@ -1129,7 +1131,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 		  Bit #(1) lrsc_result = (do_write ? 1'b0 : 1'b1);
 
-		  rg_ld_val     <= zeroExtend (lrsc_result);
+		  rg_ld_val     <= tuple2(False, zeroExtend (lrsc_result));
 		  rg_lrsc_valid <= False;
 		  if (cfg_verbosity > 1)
 		     $display ("        AMO SC result = %0d", lrsc_result);
@@ -1209,7 +1211,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		  end
 
 		  // Writeback data to memory (so cache remains clean)
-		  fa_fabric_send_write_req (rg_f3, vm_xlate_result.pa, new_st_val);
+		  fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, new_st_val);
 
 		  // If this is to the LR/SC reserved address, invalidate the reservation
 		  // TODO: should we invalidate even if to a different
@@ -1819,7 +1821,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `ifdef ISA_A
    rule rl_io_AMO_SC_req ((rg_state == IO_REQ) && is_AMO_SC);
 
-      rg_ld_val <= 1;    // 1 is LR/SC failure value
+      rg_ld_val <= tuple2(False, 1);    // 1 is LR/SC failure value
       rg_state  <= CACHE_ST_AMO_RSP;
 
       if (cfg_verbosity > 1) begin
@@ -1866,7 +1868,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, zeroExtend (rd_data.rdata));
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, tuple2(0, zeroExtend(rd_data.rdata)));
 
       // Bus error for AMO read
       if (rd_data.rresp != OKAY) begin
@@ -1884,7 +1886,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	 // Do the AMO op on the loaded value and the store value
 	 match {.new_ld_val,
-		.new_st_val} = fn_amo_op (rg_width_code, rg_amo_funct7, rg_addr, ld_val, rg_st_amo_val);
+		.new_st_val} = fn_amo_op (rg_width_code, rg_amo_funct7, rg_addr, tuple2(0, tpl_2(ld_val)), rg_st_amo_val);
 
 	 // Write back new st_val to fabric
 	 fa_fabric_send_write_req (rg_width_code, rg_pa, new_st_val);

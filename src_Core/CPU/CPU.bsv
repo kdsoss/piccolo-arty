@@ -1757,7 +1757,12 @@ module mkCPU (CPU_IFC);
 
       // Debugger 'resume' request (e.g., GDB 'continue' command)
       let dpc = csr_regfile.read_dpc;
-      fa_restart (dpc);
+      fa_restart (dpc
+`ifdef ISA_CHERI
+                  , almightyCap
+                  , almightyCap
+`endif
+                  );
       $display ("%0d: CPU.rl_debug_run: restart at PC = 0x%0h", mcycle, dpc);
 
       // Notify debugger that we've started running
@@ -1809,7 +1814,7 @@ module mkCPU (CPU_IFC);
    rule rl_debug_read_gpr ((rg_state == CPU_DEBUG_MODE) && (! f_gpr_reqs.first.write));
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      let data = gpr_regfile.read_rs1_port2 (regname);
+      Bit #(XLEN) data = truncate(pack(gpr_regfile.read_rs1_port2 (regname)));
       let rsp = DM_CPU_Rsp {ok: True, data: data};
       f_gpr_rsps.enq (rsp);
       if (cur_verbosity > 1)
@@ -1820,7 +1825,7 @@ module mkCPU (CPU_IFC);
    rule rl_debug_write_gpr ((rg_state == CPU_DEBUG_MODE) && f_gpr_reqs.first.write);
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      let data = req.data;
+      CapPipe data = unpack(extend(req.data));
       gpr_regfile.write_rd (regname, data);
 
       let rsp = DM_CPU_Rsp {ok: True, data: ?};

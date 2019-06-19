@@ -219,7 +219,7 @@ module mkNear_Mem (Near_Mem_IFC);
       method Bool       valid      = dcache.valid;
       method Tuple2#(Bool, Bit #(128))  word128     = dcache.word128;
 `ifdef ISA_A
-      method Bit #(128)  st_amo_val = dcache.st_amo_val;
+      method Bit #(128)  st_amo_val = tpl_2(dcache.st_amo_val);
 `endif
       method Bool       exc        = dcache.exc;
       method Exc_Code   exc_code   = dcache.exc_code;

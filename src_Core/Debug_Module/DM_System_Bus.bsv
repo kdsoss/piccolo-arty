@@ -169,8 +169,13 @@ function Tuple4 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr);
+`ifdef ISA_CHERI
+   Fabric_Data  fabric_data   = zeroExtend (word64);
+   Fabric_Strb  fabric_strobe = zeroExtend (strobe64);
+`else
    Fabric_Data  fabric_data   = truncate (word64);
    Fabric_Strb  fabric_strobe = truncate (strobe64);
+`endif
 
    return tuple4 (fabric_addr, fabric_data, fabric_strobe, axsize);
 endfunction: fn_to_fabric_write_fields
@@ -512,8 +517,13 @@ module mkDM_System_Bus (DM_System_Bus_IFC);
 	 $display ("DM_System_Bus.rule_sb_read_finish: rdr = ", fshow (rdr));
 
       // Extract relevant bytes from fabric data
+`ifdef ISA_CHERI
+      Bit #(64) rdata64 = truncate (rdr.rdata);
+      Bit #(64) data    = fn_extract_and_extend_bytes (rg_sbcs_sbaccess, rg_sbaddress_reading, rdata64);
+`else
       Bit #(64) rdata64 = zeroExtend (rdr.rdata);
       Bit #(64) data    = fn_extract_and_extend_bytes (rg_sbcs_sbaccess, rg_sbaddress_reading, rdata64);
+`endif
 
       if (rdr.rresp != OKAY) begin
 	 $display ("DM_System_Bus.rule_sb_read_finish: setting rg_sbcs_sberror to DM_SBERROR_OTHER\n");

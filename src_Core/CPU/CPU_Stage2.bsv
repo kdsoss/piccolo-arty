@@ -643,7 +643,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 // If DMem access, initiate it
 `ifdef ISA_A
 	 Bool op_stage2_amo = (x.op_stage2 == OP_Stage2_AMO);
-	 Bit #(7) amo_funct7 = x.val1 [6:0];
+	 Bit #(7) amo_funct7 = pack(x.val1) [6:0];
      rg_f5 <= amo_funct7[6:2];
 `else
 	 Bool op_stage2_amo = False;
