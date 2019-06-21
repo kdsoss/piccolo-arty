@@ -1825,7 +1825,7 @@ module mkCPU (CPU_IFC);
    rule rl_debug_write_gpr ((rg_state == CPU_DEBUG_MODE) && f_gpr_reqs.first.write);
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      CapPipe data = unpack(extend(req.data));
+      CapPipe data = unpack(zeroExtend(req.data));
       gpr_regfile.write_rd (regname, data);
 
       let rsp = DM_CPU_Rsp {ok: True, data: ?};

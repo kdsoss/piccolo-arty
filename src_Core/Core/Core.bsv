@@ -224,7 +224,11 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // Create a tap for DM's memory-writes to the bus, and merge-in the trace data.
    DM_Mem_Tap_IFC dm_mem_tap <- mkDM_Mem_Tap;
-   mkConnection (debug_module.master, dm_mem_tap.slave);
+   let deburst_debug <- mkBurstToNoBurst;
+   let debug_shim <- mkAXI4Shim;
+   mkConnection(deburst_debug.slave, debug_module.master);
+   let wide_debug_master <- toWider_AXI4_Master(deburst_debug.master);
+   mkConnection (wide_debug_master, dm_mem_tap.slave);
    let dm_master_local = dm_mem_tap.master;
 
    rule merge_dm_mem_trace_data;

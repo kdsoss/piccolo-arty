@@ -100,9 +100,10 @@ interface SoC_Map_IFC;
    method  Bool  m_is_near_mem_IO_addr (Fabric_Addr addr);
 
    (* always_ready *)   method  Bit #(64)  m_pc_reset_value;
-//`ifdef ISA_CHERI
-//   (* always_ready *)   method  CapReg m_mtcc_reset_value;
-//`endif
+`ifdef ISA_CHERI
+   (* always_ready *)   method  CapReg  m_pcc_reset_value;
+   (* always_ready *)   method  CapReg m_mtcc_reset_value;
+`endif
    (* always_ready *)   method  Bit #(64)  m_mtvec_reset_value;
    (* always_ready *)   method  Bit #(64)  m_nmivec_reset_value;
 endinterface
@@ -256,6 +257,11 @@ module mkSoC_Map (SoC_Map_IFC);
    Bit #(64) mtvec_reset_value  = 'h1000;    // TODO
    Bit #(64) nmivec_reset_value = ?;         // TODO
 
+`ifdef ISA_CHERI
+   CapReg pcc_reset_value  = almightyCap;
+   CapReg mtcc_reset_value = almightyCap;
+`endif
+
    // ================================================================
    // INTERFACE
 
@@ -293,6 +299,11 @@ module mkSoC_Map (SoC_Map_IFC);
    method  Bit #(64)  m_pc_reset_value     = pc_reset_value;
    method  Bit #(64)  m_mtvec_reset_value  = mtvec_reset_value;
    method  Bit #(64)  m_nmivec_reset_value = nmivec_reset_value;
+
+`ifdef ISA_CHERI
+   method  CapReg  m_pcc_reset_value   = pcc_reset_value;
+   method  CapReg  m_mtcc_reset_value  = mtcc_reset_value;
+`endif
 endmodule
 
 // ================================================================

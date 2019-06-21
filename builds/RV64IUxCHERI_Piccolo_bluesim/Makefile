@@ -14,7 +14,9 @@ TOPMODULE ?= $(TOPMODULE_NORMAL)  \
 BSC_COMPILATION_FLAGS += \
 	-D RV64 \
 	-D ISA_PRIV_M  \
-	-D ISA_I  -D ISA_M -D ISA_CHERI   \
+	-D RISCV\
+	-D CAP128\
+	-D ISA_I  -D ISA_M  -D ISA_CHERI  \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
 	-D Near_Mem_Caches    \

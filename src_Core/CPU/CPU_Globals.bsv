@@ -165,9 +165,9 @@ endfunction
 
 typedef struct {
    Addr      epc;
-//`ifdef ISA_CHERI
-//   CapReg pcc;
-//`endif
+`ifdef ISA_CHERI
+   CapReg pcc;
+`endif
    Exc_Code  exc_code;
    Addr      tval;
    } Trap_Info
