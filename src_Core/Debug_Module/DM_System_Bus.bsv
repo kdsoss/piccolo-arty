@@ -52,7 +52,7 @@ interface DM_System_Bus_IFC;
 
    // ----------------
    // Facing System
-   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data_Periph,
                                  Wd_AW_User, Wd_W_User, Wd_B_User,
                                  Wd_AR_User, Wd_R_User) master;
 endinterface
@@ -126,8 +126,8 @@ endfunction
 // Compute address, data and strobe (byte-enables) for writes to fabric
 
 function Tuple4 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
-		  Fabric_Data,    // data is lane-aligned
-		  Fabric_Strb,    // strobe
+		  Fabric_Data_Periph,    // data is lane-aligned
+		  Fabric_Strb_Periph,    // strobe
 		  AXI4_Size)      // 8 for 8-byte writes, else 4
    fn_to_fabric_write_fields (DM_sbaccess  sbaccess,    // size of access
 			      Bit #(64)    addr,
@@ -169,13 +169,8 @@ function Tuple4 #(Fabric_Addr,    // addr is 32b- or 64b-aligned
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr);
-`ifdef ISA_CHERI
-   Fabric_Data  fabric_data   = zeroExtend (word64);
-   Fabric_Strb  fabric_strobe = zeroExtend (strobe64);
-`else
-   Fabric_Data  fabric_data   = truncate (word64);
-   Fabric_Strb  fabric_strobe = truncate (strobe64);
-`endif
+   Fabric_Data_Periph  fabric_data   = truncate (word64);
+   Fabric_Strb_Periph  fabric_strobe = truncate (strobe64);
 
    return tuple4 (fabric_addr, fabric_data, fabric_strobe, axsize);
 endfunction: fn_to_fabric_write_fields
@@ -200,7 +195,7 @@ module mkDM_System_Bus (DM_System_Bus_IFC);
    // ----------------------------------------------------------------
 
    // Interface to memory fabric
-   AXI4_Master_Xactor#(Wd_MId_2x3, Wd_Addr, Wd_Data,
+   AXI4_Master_Xactor#(Wd_MId_2x3, Wd_Addr, Wd_Data_Periph,
                        Wd_AW_User, Wd_W_User, Wd_B_User,
                        Wd_AR_User, Wd_R_User)
                        master_xactor <- mkAXI4_Master_Xactor;

@@ -34,8 +34,8 @@ BSC_COMPILATION_FLAGS += \
 	-D FABRIC64 \
 	-D INCLUDE_GDB_CONTROL \
 	-D BRVF_TRACE \
-	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP
-	#-D INCLUDE_TANDEM_VERIF \ Appears to have rotted? Needs merge from something working.
+	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP \
+	-D INCLUDE_TANDEM_VERIF
 
 # ================================================================
 # Search path for bsc for .bsv files

@@ -54,10 +54,10 @@ import Fabric_Defs  :: *;
 // DM-to-memory tap
 
 interface DM_Mem_Tap_IFC;
-   interface AXI4_Slave_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+   interface AXI4_Slave_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data_Periph,
                                 Wd_AW_User, Wd_W_User, Wd_B_User,
                                 Wd_AR_User, Wd_R_User) slave;
-   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data_Periph,
                                  Wd_AW_User, Wd_W_User, Wd_B_User,
                                  Wd_AR_User, Wd_R_User) master;
    interface Get #(Trace_Data) trace_data_out;
@@ -104,7 +104,7 @@ module mkDM_Mem_Tap (DM_Mem_Tap_IFC);
 `else
       paddr = zeroExtend (wr_addr.awaddr);
       stval = zeroExtend (wr_data.wdata);
-`endif      
+`endif
       Trace_Data td = mkTrace_MEM_WRITE (f3_SIZE_W, truncate (stval), paddr);
       f_trace_data.enq (td);
    endrule
