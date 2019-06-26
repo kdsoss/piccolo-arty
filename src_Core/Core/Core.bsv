@@ -71,9 +71,7 @@ import TV_Encode :: *;
 
 // TV_Taps needed when both GDB_CONTROL and TANDEM_VERIF are present
 `ifdef INCLUDE_GDB_CONTROL
-`ifdef INCLUDE_TANDEM_VERIF
 import TV_Taps :: *;
-`endif
 `endif
 
 // ================================================================
@@ -293,9 +291,17 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // Connect DM's CSR interface directly to CPU
    mkConnection (debug_module.hart0_csr_mem_client, cpu.hart0_csr_mem_server);
-
-   // DM's bus master is directly the bus master
-   let dm_master_local = debug_module.master;
+   
+   // Create a tap for DM's memory-writes to the bus, and merge-in the trace data.
+   DM_Mem_Tap_IFC dm_mem_tap <- mkDM_Mem_Tap;
+   AXI4_Shim#(Wd_MId_2x3, Wd_Addr, Wd_Data_Periph,
+             Wd_AW_User, Wd_W_User, Wd_B_User,
+             Wd_AR_User, Wd_R_User) deburst_debug <- mkBurstToNoBurst;
+   mkConnection (debug_module.master, dm_mem_tap.slave);
+   let deburst_dm <- mkBurstToNoBurst;
+   mkConnection(dm_mem_tap.master, toAXI4_Slave_Synth(deburst_dm.slave));
+   let dm_master_nonsynth <- toWider_AXI4_Master(deburst_dm.master);
+   let dm_master_local = toAXI4_Master_Synth(dm_master_nonsynth);
 
    // END SECTION: GDB and no TV
 `endif
