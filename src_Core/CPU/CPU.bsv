@@ -1814,7 +1814,7 @@ module mkCPU (CPU_IFC);
    rule rl_debug_read_gpr ((rg_state == CPU_DEBUG_MODE) && (! f_gpr_reqs.first.write));
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      Bit #(XLEN) data = truncate(pack(gpr_regfile.read_rs1_port2 (regname)));
+      Bit #(XLEN) data = getAddr(gpr_regfile.read_rs1_port2 (regname));
       let rsp = DM_CPU_Rsp {ok: True, data: data};
       f_gpr_rsps.enq (rsp);
       if (cur_verbosity > 1)
@@ -1825,7 +1825,7 @@ module mkCPU (CPU_IFC);
    rule rl_debug_write_gpr ((rg_state == CPU_DEBUG_MODE) && f_gpr_reqs.first.write);
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      CapPipe data = unpack(zeroExtend(req.data));
+      CapPipe data = setAddr(almightyCap, req.data).value; // XXX Debug bypasses cap safety
       gpr_regfile.write_rd (regname, data);
 
       let rsp = DM_CPU_Rsp {ok: True, data: ?};
