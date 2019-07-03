@@ -167,11 +167,6 @@ Bit #(1) cap_mem_signed = 1'h0;
 Bit #(3) f3_LQ = 3'h2;
 Bit #(3) f3_SQ = 3'b100;
 
-Bit #(3) w_SIZE_B = {0,f3_SIZE_B};
-Bit #(3) w_SIZE_H = {0,f3_SIZE_H};
-Bit #(3) w_SIZE_W = {0,f3_SIZE_W};
-Bit #(3) w_SIZE_D = {0,f3_SIZE_D};
-Bit #(3) w_SIZE_Q = 3'b100;
 `ifdef RV64
 Bit #(3) w_SIZE_CAP = w_SIZE_Q;
 Bit #(3) w_SIZE_MAX = w_SIZE_Q;

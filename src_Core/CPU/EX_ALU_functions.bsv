@@ -786,7 +786,11 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 
    let alu_outputs = alu_outputs_base;
 
+`ifdef ISA_CHERI
    let width_code = isLQ ? w_SIZE_Q : {0,funct3[1:0]};
+`else
+   let width_code = {0,funct3[1:0]};
+`endif
 
    alu_outputs.control   = ((legal_LD && legal_FP_LD) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);

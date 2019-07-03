@@ -312,8 +312,10 @@ function
 
    let user = 0;
 
+`ifdef ISA_CHERI
    //The tag controller must ignore user bits for entirely "strobed out" capabilities
    if (width_code == w_SIZE_CAP) user = signExtend(pack(write_cap));
+`endif
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr64);
@@ -401,6 +403,8 @@ function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
    //We assume that caps are the widest write width on the processor
    let overwritten_idx = addr >> valueOf(TDiv#(CLEN,8));
    tags[overwritten_idx] = width_code == w_SIZE_CAP ? pack(tag) : 0;
+`else
+   let tags = 0;
 `endif
 
    new_word128_set [way] = tuple2(tags, new_word128);

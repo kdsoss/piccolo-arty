@@ -406,12 +406,18 @@ deriving (Eq, Bits, FShow);
 // ================================================================
 // LOAD/STORE instructions
 
-typedef Bit #(2) MemReqSize;
+typedef Bit #(3) MemReqSize;
 
-MemReqSize f3_SIZE_B = 2'b00;
-MemReqSize f3_SIZE_H = 2'b01;
-MemReqSize f3_SIZE_W = 2'b10;
-MemReqSize f3_SIZE_D = 2'b11;
+MemReqSize w_SIZE_B = 3'b000;
+MemReqSize w_SIZE_H = 3'b001;
+MemReqSize w_SIZE_W = 3'b010;
+MemReqSize w_SIZE_D = 3'b011;
+MemReqSize w_SIZE_Q = 3'b100;
+
+Bit#(2) f3_SIZE_B = truncate(w_SIZE_B);
+Bit#(2) f3_SIZE_H = truncate(w_SIZE_H);
+Bit#(2) f3_SIZE_W = truncate(w_SIZE_W);
+Bit#(2) f3_SIZE_D = truncate(w_SIZE_D);
 
 // ----------------
 // Load instructions

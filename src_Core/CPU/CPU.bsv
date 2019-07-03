@@ -1365,8 +1365,10 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
 `endif
+`ifdef ISA_CHERI
                                               , rg_pcc
                                               , rg_ddc
+`endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
 

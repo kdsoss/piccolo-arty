@@ -106,7 +106,7 @@ typedef 128 Cache_Data_Width;
 typedef TDiv#(Cache_Data_Width, CLEN) Cache_Cap_Tag_Width;
 typedef Tuple2#(Bit#(Cache_Cap_Tag_Width), Bit#(Cache_Data_Width)) Cache_Entry;
 `else
-typedef Tuple2#(Bit#(0), Cache_Data_Width) Cache_Entry;
+typedef Tuple2#(Bit#(0), Bit#(Cache_Data_Width)) Cache_Entry;
 `endif
 
 // ================================================================
@@ -240,17 +240,23 @@ function Tuple2#(Bool, Bit #(128)) fn_extract_and_extend_bytes (Bit #(3) width_c
       3: case (addr_lsbs)
 		'h0: begin
            result = u_s_extend (word128 [63:0]);
+`ifdef ISA_CHERI
            if (valueOf(CLEN) == 64) tag = tpl_1(word128_tagged)[0] == 1'b1;
+`endif
          end
 		'h8: begin
            result = u_s_extend (word128 [127:64]);
+`ifdef ISA_CHERI
            if (valueOf(CLEN) == 64) tag = tpl_1(word128_tagged)[1] == 1'b1;
+`endif
          end
 	     endcase
 
       4: begin
             result = word128;
+`ifdef ISA_CHERI
             tag = tpl_1(word128_tagged)[0] == 1'b1;
+`endif
          end
    endcase
    return tuple2(tag, result);

@@ -44,7 +44,9 @@ import Cur_Cycle  :: *;
 import GetPut_Aux :: *;
 import Routable   :: *;
 import AXI4       :: *;
+`ifdef ISA_CHERI
 import TagControllerAXI :: *;
+`endif
 
 // ================================================================
 // Project imports
@@ -91,8 +93,13 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    let cpu_imem <- fromAXI4_Master_Synth(cpu.imem_master);
    let cpu_imem_ug <- toUnguarded_AXI4_Master(cpu_imem);
 
+`ifdef ISA_CHERI
    // AXI4 tagController
    let tagController <- mkDbgTagControllerAXI(Valid("tagcontroller"));
+`else
+   let shim <- mkAXI4Shim;
+   let ug_shim <- toUnguarded_AXI4_Master(extendIDFields(shim.master, 1'b0));
+`endif
 
    // Near_Mem_IO
    Near_Mem_IO_AXI4_IFC  near_mem_io <- mkNear_Mem_IO_AXI4;
@@ -137,7 +144,11 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
       cpu.hart0_server_reset.request.put (running);    // CPU
       near_mem_io.server_reset.request.put (?);        // Near_Mem_IO
       plic.server_reset.request.put (?);               // PLIC
+`ifdef ISA_CHERI
       tagController.clear();
+`else
+      shim.clear();
+`endif
 
 `ifdef INCLUDE_GDB_CONTROL
       // Remember the requestor, so we can respond to it
@@ -344,7 +355,11 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
                               Wd_AW_User, Wd_W_User, Wd_B_User,
                               Wd_AR_User, Wd_R_User))
                               slave_vector = newVector;
+`ifdef ISA_CHERI
    slave_vector[default_slave_num]     = toAXI4_Slave_Synth(tagController.slave);
+`else
+   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(shim.slave);
+`endif
    slave_vector[near_mem_io_slave_num] = near_mem_io.axi4_slave;
    slave_vector[plic_slave_num]        = plic.axi4_slave;
 
@@ -411,7 +426,11 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    interface cpu_imem_master = toAXI4_Master_Synth(extendIDFields(zeroMasterUserFields(cpu_imem_ug), 0));
 
    // DMem to Fabric master interface
+`ifdef ISA_CHERI
    interface cpu_dmem_master = toAXI4_Master_Synth(tagController.master);
+`else
+   interface cpu_dmem_master = toAXI4_Master_Synth(ug_shim);
+`endif
 
    // ----------------------------------------------------------------
    // External interrupt sources
