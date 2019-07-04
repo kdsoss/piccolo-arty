@@ -138,7 +138,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
 `ifdef INCLUDE_GDB_CONTROL
    // Reset-hart0 from Debug Module
-   rule rl_cpu_hart0_reset_from_dm_start if (soc_reset_fired);
+   rule rl_cpu_hart0_reset_from_dm_start if (!soc_reset_fired);
       let running <- debug_module.hart0_reset_client.request.get;
 
       cpu.hart0_server_reset.request.put (running);    // CPU
