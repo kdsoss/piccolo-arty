@@ -155,7 +155,7 @@ module mkCPU (CPU_IFC);
 
    // ----------------
    // Major CPU states
-   Reg #(CPU_State)  rg_state    <- mkReg (CPU_RESET1);
+   Reg #(CPU_State)  rg_state    <- mkConfigReg (CPU_RESET1);
    Reg #(Priv_Mode)  rg_cur_priv <- mkReg (m_Priv_Mode);
 
    // Save next_pc across split-phase FENCE.I and other split-phase ops. This
@@ -1329,7 +1329,7 @@ module mkCPU (CPU_IFC);
    // Handle the flush responses from the caches when the flush was initiated
    // on entering CPU_GDB_PAUSING state
 
-   rule rl_BREAK_cache_flush_finish (rg_state == CPU_GDB_PAUSING);
+   rule rl_BREAK_cache_flush_finish (rg_state == CPU_GDB_PAUSING && fn_is_running (rg_state));
       let ack <- near_mem.server_fence_i.response.get;
       rg_state <= CPU_DEBUG_MODE;
 
@@ -1472,7 +1472,7 @@ module mkCPU (CPU_IFC);
    endrule
 
    (* descending_urgency = "rl_debug_run_redundant, rl_pipe" *)
-   rule rl_debug_run_redundant ((f_run_halt_reqs.first == True) && fn_is_running (rg_state));
+   rule rl_debug_run_redundant ((f_run_halt_reqs.first == True) && fn_is_running (rg_state) && !break_into_Debug_Mode);
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_debug_run_redundant", mcycle);
 
       f_run_halt_reqs.deq;
