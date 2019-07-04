@@ -1329,7 +1329,7 @@ module mkCPU (CPU_IFC);
    // Handle the flush responses from the caches when the flush was initiated
    // on entering CPU_GDB_PAUSING state
 
-   rule rl_BREAK_cache_flush_finish (rg_state == CPU_GDB_PAUSING && fn_is_running (rg_state));
+   rule rl_BREAK_cache_flush_finish (rg_state == CPU_GDB_PAUSING && !f_run_halt_reqs.notEmpty);
       let ack <- near_mem.server_fence_i.response.get;
       rg_state <= CPU_DEBUG_MODE;
 
