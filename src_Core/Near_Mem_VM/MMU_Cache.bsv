@@ -533,7 +533,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    // Reset request/response: REQUESTOR_RESET_IFC, REQUESTOR_FLUSH_IFC
    FIFOF #(Requestor) f_reset_reqs <- mkFIFOF;
+   Bool resetting = f_reset_reqs.notEmpty;
    FIFOF #(Requestor) f_reset_rsps <- mkFIFOF;
+   
+   PulseWire req_called <- mkPulseWire();
 
    // Fabric request/response
    AXI4_Master_Xactor#(mID, Wd_Addr, Wd_Data,
@@ -893,7 +896,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // ----------------------------------------------------------------
    // Reset
 
-   rule rl_start_reset ((f_reset_reqs.notEmpty) && (rg_state != MODULE_RESETTING));
+   rule rl_start_reset (resetting && (rg_state != MODULE_RESETTING));
       rg_state             <= MODULE_RESETTING;
       rg_cset_in_cache     <= 0;
       // rg_requesting_cline  <= False;    TODO: DELETE after testing bursts
@@ -981,7 +984,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    (* descending_urgency = "rl_probe_and_immed_rsp, rl_writeback_updated_PTE" *)
 `endif
 
-   rule rl_probe_and_immed_rsp ((rg_state == MODULE_RUNNING) && (! load_stall));
+   rule rl_probe_and_immed_rsp (!resetting && (rg_state == MODULE_RUNNING) && (! load_stall));
 
       // Print some initial information for debugging
       if (cfg_verbosity > 1) begin
@@ -1546,7 +1549,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Pick victim way, update ctag.
    // Initiate read of word64_set in cache for read-modify-write of word64
 
-   rule rl_start_cache_refill ((rg_state == CACHE_START_REFILL) && (ctr_wr_rsps_pending.value == 0));
+   rule rl_start_cache_refill (!req_called && !resetting && (rg_state == CACHE_START_REFILL) && (ctr_wr_rsps_pending.value == 0));
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_start_cache_refill: ", cur_cycle, d_or_i);
 
@@ -1637,7 +1640,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    //     initiate read of next word64_set from ram
    //         (for set read-modify-write; not relevant for direct-mapped)
 
-   rule rl_cache_refill_rsps_loop (rg_state == CACHE_REFILL);
+   rule rl_cache_refill_rsps_loop (!req_called && !resetting && rg_state == CACHE_REFILL);
       let mem_rsp <- get(master_xactor.slave.r);
       if (cfg_verbosity > 2) begin
 	 $display ("%0d: %s.rl_cache_refill_rsps_loop:", cur_cycle, d_or_i);
@@ -1719,7 +1722,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // After tlb and cache refills, redo the missing request,
    // i.e., probe the TLB and cache (BRAM port B) again
 
-   rule rl_rereq (rg_state == CACHE_REREQ);
+   rule rl_rereq (!req_called && !resetting && rg_state == CACHE_REREQ);
       rg_state <= MODULE_RUNNING;
       fa_req_ram_B (rg_addr);
    endrule
@@ -1741,7 +1744,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // TODO: Move this into rl_probe_and_immed_rsp, post MMU translation?
    // No caching, send request directly to fabric
 
-   rule rl_io_read_req (   (rg_state == IO_REQ)
+   rule rl_io_read_req (   !resetting
+                        && (rg_state == IO_REQ)
 			&& ((rg_op == CACHE_LD) || is_AMO_LR)
 			&& (ctr_wr_rsps_pending.value == 0));
 
@@ -1762,7 +1766,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // ----------------------------------------------------------------
    // Receive I/O read response from fabric
 
-   rule rl_io_read_rsp ((rg_state == IO_AWAITING_READ_RSP));
+   rule rl_io_read_rsp (!resetting && (rg_state == IO_AWAITING_READ_RSP));
 
       let rd_data <- get(master_xactor.slave.r);
       if (cfg_verbosity > 1) begin
@@ -1793,7 +1797,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Maintain I/O-read response
    // Stays in this state until CPU's next request puts it back into RUNNING state
 
-   rule rl_maintain_io_read_rsp (rg_state == IO_READ_RSP);
+   rule rl_maintain_io_read_rsp (!resetting && rg_state == IO_READ_RSP);
       fa_drive_IO_read_rsp (rg_width_code, rg_is_unsigned, rg_addr, rg_ld_val);
    endrule
 
@@ -1806,7 +1810,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    (* descending_urgency = "rl_io_write_req, rl_writeback_updated_PTE" *)
 `endif
 
-   rule rl_io_write_req ((rg_state == IO_REQ) && (rg_op == CACHE_ST));
+   rule rl_io_write_req (!resetting && (rg_state == IO_REQ) && (rg_op == CACHE_ST));
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s: rl_io_write_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
@@ -1823,7 +1827,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Memory-mapped I/O AMO_SC requests. Always fail.
 
 `ifdef ISA_A
-   rule rl_io_AMO_SC_req ((rg_state == IO_REQ) && is_AMO_SC);
+   rule rl_io_AMO_SC_req (!resetting && (rg_state == IO_REQ) && is_AMO_SC);
 
       rg_ld_val <= tuple2(False, 1);    // 1 is LR/SC failure value
       rg_state  <= CACHE_ST_AMO_RSP;
@@ -1843,7 +1847,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // TODO: Extend fabric to do these ops at the I/O device?
 
 `ifdef ISA_A
-   rule rl_io_AMO_op_req ((rg_state == IO_REQ) && is_AMO && (! is_AMO_LR) && (! is_AMO_SC));
+   rule rl_io_AMO_op_req (!resetting && (rg_state == IO_REQ) && is_AMO && (! is_AMO_LR) && (! is_AMO_SC));
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_io_AMO_op_req; width_code 0x%0h vaddr %0h  paddr %0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa);
@@ -1865,7 +1869,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    (* descending_urgency = "rl_io_AMO_read_rsp, rl_writeback_updated_PTE" *)
 `endif
 
-   rule rl_io_AMO_read_rsp (rg_state == IO_AWAITING_AMO_READ_RSP);
+   rule rl_io_AMO_read_rsp (!resetting && rg_state == IO_AWAITING_AMO_READ_RSP);
       let rd_data <- get(master_xactor.slave.r);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.rl_io_AMO_read_rsp: vaddr 0x%0h  paddr 0x%0h", cur_cycle, d_or_i, rg_addr, rg_pa);
@@ -1936,7 +1940,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // This rule drives an exception response until the cache is put
    // into MODULE_RUNNING state by the next request.
 
-   rule rl_drive_exception_rsp (rg_state == MODULE_EXCEPTION_RSP);
+   rule rl_drive_exception_rsp (!resetting && rg_state == MODULE_EXCEPTION_RSP);
       dw_valid    <= True;
       dw_exc      <= True;
       dw_exc_code <= rg_exc_code;
@@ -2024,6 +2028,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 rg_state <= MODULE_RUNNING;
 	 fa_req_ram_B (addr);
       end
+      req_called.send();
    endmethod
 
 `ifdef ISA_CHERI
@@ -2059,7 +2064,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Flush request/response
    interface Server  server_flush;
       interface Put  request;
-	 method Action  put (Token t);
+	 method Action  put (Token t) if (!req_called);
 	    f_reset_reqs.enq (REQUESTOR_FLUSH_IFC);
 	 endmethod
       endinterface
@@ -2072,7 +2077,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endinterface
 
    // TLB flush
-   method Action tlb_flush;
+   method Action tlb_flush if (!req_called);
 `ifdef ISA_PRIV_S
       tlb.flush;
       rg_state <= MODULE_READY;

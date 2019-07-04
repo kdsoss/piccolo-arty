@@ -148,11 +148,11 @@ Bit #(5) f5rs2_cap_CClearFPReg = 5'h10;
 // ================================================================
 // f7_cap_{Load, Store} opcode subdivision
 
-MemReqSize cap_mem_SIZE_B = 2'h0;
-MemReqSize cap_mem_SIZE_H = 2'h1;
-MemReqSize cap_mem_SIZE_W = 2'h2;
-MemReqSize cap_mem_SIZE_D = 2'h3;
-//MemReqSize f5rs2_cap_mem_SIZE_Q = 2'h4; //TODO
+MemReqSize cap_mem_SIZE_B = 'h0;
+MemReqSize cap_mem_SIZE_H = 'h1;
+MemReqSize cap_mem_SIZE_W = 'h2;
+MemReqSize cap_mem_SIZE_D = 'h3;
+//MemReqSize f5rs2_cap_mem_SIZE_Q = 'h4; //TODO
 
 Bit #(1) cap_mem_ddc = 1'h0;
 Bit #(1) cap_mem_cap = 1'h1;
