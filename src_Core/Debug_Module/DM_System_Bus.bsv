@@ -597,7 +597,7 @@ module mkDM_System_Bus (DM_System_Bus_IFC);
    // INTERFACE
 
    method Action reset;
-      // master_xactor.reset;    // TODO: introduces a scheduling cycle: fix this
+      master_xactor.clear;
 
       rg_sb_state <= SB_NOTBUSY;
 

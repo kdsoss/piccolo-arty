@@ -267,6 +267,8 @@ module mkSoC_Top (SoC_Top_IFC);
 	 core.cpu_reset_server.request.put (running);
 	 mem0_controller.server_reset.request.put (?);
 	 uart0.server_reset.request.put (?);
+         boot_rom_axi4_deburster.clear;
+         mem0_controller_axi4_deburster.clear;
       endaction
    endfunction
 
@@ -419,7 +421,7 @@ module mkSoC_Top (SoC_Top_IFC);
    endrule
 */
 `endif
-
+/*
    rule rl_reset_complete (rg_state == SOC_RESETTING);
       let cpu_rsp             <- core.cpu_reset_server.response.get;
       let mem0_controller_rsp <- mem0_controller.server_reset.response.get;
@@ -456,7 +458,7 @@ module mkSoC_Top (SoC_Top_IFC);
 		   rangeTop(soc_map.m_uart0_addr_range));
       end
    endrule
-
+*/
    // ================================================================
    // INTERFACE
 

@@ -145,6 +145,7 @@ module mkP1_Core (P1_Core_IFC);
 	 running = False;
       core.cpu_reset_server.request.put (running);
       rg_once <= True;
+      tv_xactor.clear;
    endrule
 
    rule rl_reset_response;
@@ -152,8 +153,10 @@ module mkP1_Core (P1_Core_IFC);
 
 `ifdef INCLUDE_GDB_CONTROL
       // Respond to Debug module if this is an ndm-reset
-      if (rg_ndm_reset matches tagged Valid .x)
+      if (rg_ndm_reset matches tagged Valid .x) begin
 	 core.ndm_reset_client.response.put (running);
+         tv_xactor.clear;
+      end
       rg_ndm_reset <= tagged Invalid;
 `endif
    endrule
@@ -165,6 +168,7 @@ module mkP1_Core (P1_Core_IFC);
 `ifdef INCLUDE_GDB_CONTROL
       let running <- core.ndm_reset_client.request.get;
       rg_ndm_reset <= tagged Valid running;
+      tv_xactor.clear;
 `endif
 
       rg_once <= False;

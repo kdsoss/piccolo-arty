@@ -208,6 +208,7 @@ module mkBoot_ROM (Boot_ROM_IFC);
       rg_addr_base    <= addr_base;
       rg_addr_lim     <= addr_lim;
       rg_module_ready <= True;
+      slave_xactor.clear;
       if (verbosity > 0) begin
 	 $display ("%0d: Boot_ROM.set_addr_map: base 0x%0h lim 0x%0h", cur_cycle, addr_base, addr_lim);
       end
