@@ -542,10 +542,6 @@ module mkCPU (CPU_IFC);
 `ifdef ISA_CHERI
       CapReg dpcc = almightyCap;
       CapReg dddc = almightyCap;
-      `ifdef ISA_CHERI
-        rg_pcc <= dpcc;
-        rg_ddc <= dddc;
-      `endif
 `endif
 
       f_reset_rsps.enq (rg_run_on_reset);
