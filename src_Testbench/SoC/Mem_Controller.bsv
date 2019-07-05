@@ -272,7 +272,7 @@ module mkMem_Controller (Mem_Controller_IFC);
    // verbosity 3: more detail of local raw_mem interactions
    Reg #(Bit #(4)) cfg_verbosity <- mkConfigReg (0);
 
-   Reg #(State)       rg_state     <- mkReg (STATE_POWER_ON_RESET);
+   Reg #(State)       rg_state     <- mkConfigReg (STATE_POWER_ON_RESET);
    Reg #(Bool)        rg_mem_map_set <- mkReg (False);
    Reg #(Fabric_Addr) rg_addr_base <- mkRegU;
    Reg #(Fabric_Addr) rg_addr_lim  <- mkRegU;

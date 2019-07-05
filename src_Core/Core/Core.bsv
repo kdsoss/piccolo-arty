@@ -137,6 +137,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    FIFOF #(Bit #(1)) f_reset_requestor <- mkFIFOF;
 `endif
 
+   PulseWire soc_reset_fired <- mkPulseWire();
    // Reset-hart0 request from SoC
    rule rl_cpu_hart0_reset_from_soc_start;
       let running <- pop (f_reset_reqs);
@@ -150,6 +151,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
       shim.clear();
 `endif
 
+      soc_reset_fired.send();
 `ifdef INCLUDE_GDB_CONTROL
       // Remember the requestor, so we can respond to it
       f_reset_requestor.enq (reset_requestor_soc);
@@ -159,7 +161,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
 `ifdef INCLUDE_GDB_CONTROL
    // Reset-hart0 from Debug Module
-   rule rl_cpu_hart0_reset_from_dm_start;
+   rule rl_cpu_hart0_reset_from_dm_start if (!soc_reset_fired);
       let running <- debug_module.hart0_reset_client.request.get;
 
       cpu.hart0_server_reset.request.put (running);    // CPU

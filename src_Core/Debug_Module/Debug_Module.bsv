@@ -169,7 +169,7 @@ module mkDebug_Module (Debug_Module_IFC);
    // Facing GDB/DMI (Debug Module Interface)
 
    interface DMI dmi;
-      method Action read_addr  (DM_Addr dm_addr);
+      method Action read_addr  (DM_Addr dm_addr) if (dm_run_control.dmactive);
 	 f_read_addr.enq(dm_addr);
 
 	 if (verbosity != 0)
@@ -238,7 +238,7 @@ module mkDebug_Module (Debug_Module_IFC);
 	 return dm_word;
       endmethod
 
-      method Action write (DM_Addr dm_addr, DM_Word dm_word);
+      method Action write (DM_Addr dm_addr, DM_Word dm_word) if (dm_run_control.dmactive);
 	 if (   (dm_addr == dm_addr_dmcontrol)
 	    || (dm_addr == dm_addr_dmstatus)
 	    || (dm_addr == dm_addr_hartinfo)

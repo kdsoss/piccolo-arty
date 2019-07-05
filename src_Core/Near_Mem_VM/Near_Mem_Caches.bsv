@@ -233,7 +233,7 @@ module mkNear_Mem (Near_Mem_IFC);
 
    interface Server server_fence_i;
       interface Put request;
-	 method Action put (Token t);
+	 method Action put (Token t) if (rg_state != STATE_RESET);
 	    icache.server_flush.request.put (?);
 	    dcache.server_flush.request.put (?);
 	 endmethod

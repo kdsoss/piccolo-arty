@@ -370,6 +370,7 @@ module mkSoC_Top (SoC_Top_IFC);
       end
    endrule
 
+   PulseWire didReadResponse <- mkPulseWire ();
    rule rl_handle_external_req_read_response;
       let x <- core.dm_dmi.read_data;
       let rsp = Control_Rsp {status: external_control_rsp_status_ok, result: signExtend (x)};
@@ -378,9 +379,10 @@ module mkSoC_Top (SoC_Top_IFC);
 	 $display ("%0d: SoC_Top.rl_handle_external_req_read_response", cur_cycle);
          $display ("    ", fshow (rsp));
       end
+      didReadResponse.send();
    endrule
 
-   rule rl_handle_external_req_write (req.op == external_control_req_op_write_control_fabric);
+   rule rl_handle_external_req_write (req.op == external_control_req_op_write_control_fabric && !didReadResponse);
       f_external_control_reqs.deq;
       core.dm_dmi.write (truncate (req.arg1), truncate (req.arg2));
       // let rsp = Control_Rsp {status: external_control_rsp_status_ok, result: 0};
@@ -392,7 +394,8 @@ module mkSoC_Top (SoC_Top_IFC);
    endrule
 
    rule rl_handle_external_req_err (   (req.op != external_control_req_op_read_control_fabric)
-				    && (req.op != external_control_req_op_write_control_fabric));
+				    && (req.op != external_control_req_op_write_control_fabric)
+                                    && !didReadResponse);
       f_external_control_reqs.deq;
       let rsp = Control_Rsp {status: external_control_rsp_status_err, result: 0};
       f_external_control_rsps.enq (rsp);

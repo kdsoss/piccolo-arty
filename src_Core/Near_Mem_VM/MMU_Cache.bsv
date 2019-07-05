@@ -911,10 +911,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_lrsc_valid  <= False;
 `endif
 
-      //if (f_reset_reqs.first == REQUESTOR_RESET_IFC) begin
+      if (f_reset_reqs.first == REQUESTOR_RESET_IFC) begin
 	 master_xactor.clear;
 	 ctr_wr_rsps_pending.clear;
-      //end
+      end
 
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_start_reset", cur_cycle, d_or_i);

@@ -181,7 +181,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 	 $display ("%0d: Near_Mem_IO_AXI4.rl_reset", cur_cycle);
    endrule
 
-   rule rl_soft_reset (f_reset_reqs.notEmpty);
+   rule rl_soft_reset (f_reset_reqs.notEmpty && rg_state != MODULE_STATE_START);
       rg_state <= MODULE_STATE_START;
    endrule
 
