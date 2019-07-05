@@ -414,10 +414,10 @@ MemReqSize w_SIZE_W = 3'b010;
 MemReqSize w_SIZE_D = 3'b011;
 MemReqSize w_SIZE_Q = 3'b100;
 
-Bit#(2) f3_SIZE_B = truncate(w_SIZE_B);
-Bit#(2) f3_SIZE_H = truncate(w_SIZE_H);
-Bit#(2) f3_SIZE_W = truncate(w_SIZE_W);
-Bit#(2) f3_SIZE_D = truncate(w_SIZE_D);
+Bit#(3) f3_SIZE_B = w_SIZE_B;
+Bit#(3) f3_SIZE_H = w_SIZE_H;
+Bit#(3) f3_SIZE_W = w_SIZE_W;
+Bit#(3) f3_SIZE_D = w_SIZE_D;
 
 // ----------------
 // Load instructions
