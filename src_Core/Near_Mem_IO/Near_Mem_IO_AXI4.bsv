@@ -143,7 +143,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    Reg #(Bit #(64)) crg_time [2]    <- mkCReg (2, 1);
    Reg #(Bit #(64)) crg_timecmp [2] <- mkCReg (2, 0);
 
-   Reg #(Bool) rg_mtip <- mkReg (True);
+   Reg #(Bool) rg_mtip <- mkConfigReg (True);
 
    // Timer-interrupt queue
    FIFOF #(Bool) f_timer_interrupt_req <- mkFIFOF;

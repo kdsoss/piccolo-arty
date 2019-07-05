@@ -912,7 +912,6 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `endif
 
       if (f_reset_reqs.first == REQUESTOR_RESET_IFC) begin
-	 master_xactor.clear;
 	 ctr_wr_rsps_pending.clear;
       end
 
@@ -924,6 +923,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    rule rl_reset (rg_state == MODULE_RESETTING);
       let state_and_ctag = State_and_CTag { state: CTAG_EMPTY, ctag: ? };
       ram_state_and_ctag_cset.a.put (bram_cmd_write, rg_cset_in_cache, replicate (state_and_ctag));
+
+      if (f_reset_reqs.first == REQUESTOR_RESET_IFC) master_xactor.clear;
 
       if (rg_cset_in_cache == fromInteger (csets_per_cache - 1)) begin
 	 // This is the last cset; exit the loop
