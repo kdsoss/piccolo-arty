@@ -418,20 +418,25 @@ def do_isa_test (args_dict, full_filename):
 
 def run_command (command):
     python_minor_version = sys.version_info [1]
-    if python_minor_version < 6:
-        # Python 3.5 and earlier
-        result = subprocess.run (args = command,
-                                 bufsize = 0,
-                                 stdout = subprocess.PIPE,
-                                 stderr = subprocess.STDOUT,
-                                 universal_newlines = True)
-    else:
-        # Python 3.6 and later
-        result = subprocess.run (args = command,
-                                 bufsize = 0,
-                                 stdout = subprocess.PIPE,
-                                 stderr = subprocess.STDOUT,
-                                 encoding='utf-8')
+    try:
+        if python_minor_version < 6:
+            # Python 3.5 and earlier
+            result = subprocess.run (args = command,
+                                     bufsize = 0,
+                                     stdout = subprocess.PIPE,
+                                     stderr = subprocess.STDOUT,
+                                     universal_newlines = True,
+                                     timeout=10.0)
+        else:
+            # Python 3.6 and later
+            result = subprocess.run (args = command,
+                                     bufsize = 0,
+                                     stdout = subprocess.PIPE,
+                                     stderr = subprocess.STDOUT,
+                                     encoding='utf-8',
+                                     timeout=10.0)
+    except subprocess.TimeoutExpired as exc:
+        result = exc
     return result
 
 # ================================================================
