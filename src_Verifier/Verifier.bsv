@@ -132,9 +132,9 @@ endfunction : getRVFIInfoS1
 
 `endif
 
-function Bit #(8) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
+function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
     Bit #(5) width = 5'b1 << width_code;
-    Bit #(8) result = truncate((9'b1 << width) - 9'b1);
+    Bit #(Bytes_per_Addr) result = truncate((9'b1 << width) - 9'b1);
     return result;
 endfunction : getMemMask
 

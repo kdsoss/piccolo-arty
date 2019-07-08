@@ -46,6 +46,9 @@ interface Mem_Model_IFC;
 endinterface
 
 typedef 'h4000_0000 Bytes_Per_Mem;
+`ifdef RVFI_DII
+typedef 'h1_0000 Zeroed_Bytes;
+`endif
 
 // ================================================================
 // Mem Model implementation
@@ -56,11 +59,12 @@ module mkMem_Model (Mem_Model_IFC);
    Integer verbosity = 0;    // 0 = quiet; 1 = verbose
 
    Raw_Mem_Addr alloc_size = fromInteger(valueOf(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word))); //(raw mem words)
+   Raw_Mem_Addr zeroed_top = fromInteger(valueOf(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8))));
 
 `ifdef RVFI_DII
-   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, fromInteger(valueOf(TDiv#(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word), 4))) - 1);
+   RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, alloc_size - 1);
    //zeroes register allows quick resetting of memory. If bit of zeroes is 0 then corresponding entry of rf is 0.
-   Reg#(Bit#(TDiv#(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word), 4))) zeroes <- mkReg(0);
+   Reg#(Bit#(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8)))) zeroes <- mkReg(0);
 `else
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
 `endif
@@ -80,7 +84,7 @@ module mkMem_Model (Mem_Model_IFC);
 	    end
 	    else if (req.write) begin
 `ifdef RVFI_DII
-            if (zeroes[req.address] == 0) begin
+            if (req.address < zeroed_top && zeroes[req.address] == 0) begin
                 for (Integer byteidx = 0; 8 * byteidx < valueOf(Bits_per_Raw_Mem_Word); byteidx = byteidx + 1) begin
                     req.data[byteidx] = req.byteen[byteidx] == 1 ? req.data[byteidx] : 0;
                     req.byteen[byteidx] = 1;
@@ -95,7 +99,7 @@ module mkMem_Model (Mem_Model_IFC);
 	    else begin
 	       let x = rf.sub (req.address);
 `ifdef RVFI_DII
-           if (zeroes[req.address] == 0) x = 0;
+           if (req.address < zeroed_top && zeroes[req.address] == 0) x = 0;
 `endif
 	       let rsp = MemoryResponse {data: x};
 	       f_raw_mem_rsps.enq (rsp);
