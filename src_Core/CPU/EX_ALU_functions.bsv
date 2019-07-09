@@ -1469,7 +1469,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        f7_cap_CSpecialRW: begin
            //TODO currently just returns DDC and PCC
            if (inputs.decoded_instr.rs2 == 5'b0) begin
-               alu_outputs.cap_val1 = inputs.pcc; //TODO is pcc addr kept up to date?
+               alu_outputs.cap_val1 = setOffset(inputs.pcc, inputs.pc).value;
                alu_outputs.val1_cap_not_int = True;
            end else if (inputs.decoded_instr.rs2 == 5'b1) begin
                alu_outputs.cap_val1 = inputs.ddc;
