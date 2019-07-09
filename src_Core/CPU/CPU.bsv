@@ -938,6 +938,11 @@ module mkCPU (CPU_IFC);
 	 trace_data.word3 = zeroExtend (csr_addr);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
 	 // Debug
@@ -1036,6 +1041,11 @@ module mkCPU (CPU_IFC);
 	 trace_data.word3 = zeroExtend (csr_addr);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
 	 // Debug
