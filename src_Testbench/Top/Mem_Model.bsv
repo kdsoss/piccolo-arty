@@ -59,9 +59,9 @@ module mkMem_Model (Mem_Model_IFC);
    Integer verbosity = 0;    // 0 = quiet; 1 = verbose
 
    Raw_Mem_Addr alloc_size = fromInteger(valueOf(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word))); //(raw mem words)
-   Raw_Mem_Addr zeroed_top = fromInteger(valueOf(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8))));
 
 `ifdef RVFI_DII
+   Raw_Mem_Addr zeroed_top = fromInteger(valueOf(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8))));
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, alloc_size - 1);
    //zeroes register allows quick resetting of memory. If bit of zeroes is 0 then corresponding entry of rf is 0.
    Reg#(Bit#(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8)))) zeroes <- mkReg(0);
