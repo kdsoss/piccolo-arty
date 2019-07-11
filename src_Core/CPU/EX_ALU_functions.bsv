@@ -751,7 +751,7 @@ endfunction
 // ----------------------------------------------------------------
 // LOAD
 
-function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
+function ALU_Outputs fv_LD (ALU_Inputs inputs, Maybe#(Bit#(3)) size);
    // Signed versions of rs1_val and rs2_val
    let opcode = inputs.decoded_instr.opcode;
    IntXL s_rs1_val = unpack (inputs.rs1_val);
@@ -759,6 +759,8 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 
    IntXL  imm_s = extend (unpack (inputs.decoded_instr.imm12_I));
 `ifdef ISA_CHERI
+   if (valueOf(XLEN) == 32 && inputs.decoded_instr.funct3 == f3_LD) size = Valid(w_SIZE_D);
+
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
    let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
    WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
@@ -768,7 +770,9 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 
    let funct3 = inputs.decoded_instr.funct3;
 
-   Bool legal_LD = (   (funct3 == f3_LB) || (funct3 == f3_LBU)
+   Bool legal_LD = (
+           isValid(size)
+        || (funct3 == f3_LB) || (funct3 == f3_LBU)
 		    || (funct3 == f3_LH) || (funct3 == f3_LHU)
 		    || (funct3 == f3_LW)
 `ifdef RV64
@@ -791,11 +795,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 
    let alu_outputs = alu_outputs_base;
 
-`ifdef ISA_CHERI
-   let width_code = isLQ ? w_SIZE_Q : {0,funct3[1:0]};
-`else
-   let width_code = {0,funct3[1:0]};
-`endif
+   let width_code = fromMaybe({0,funct3[1:0]}, size);
 
    alu_outputs.control   = ((legal_LD && legal_FP_LD) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
@@ -852,11 +852,14 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    Bool legal_ST = (   (funct3 == f3_SB)
 		    || (funct3 == f3_SH)
 		    || (funct3 == f3_SW)
-`ifdef RV64
-		    || (funct3 == f3_SD)
-`endif
 `ifdef ISA_CHERI
+`ifdef RV64
         || (funct3 == f3_SQ)
+`else
+        || (funct3 == f3_SD)
+`endif
+`elsif RV64
+		    || (funct3 == f3_SD)
 `endif
 `ifdef ISA_F
 		    || (funct3 == f3_FSW)
@@ -874,13 +877,13 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 
    let alu_outputs = alu_outputs_base;
 
-   let width_code = funct3; //TODO check what other uses of this field are
+   let width_code = funct3;
 
    alu_outputs.control   = ((legal_ST && legal_FP_ST) ? CONTROL_STRAIGHT
                                                       : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_ST;
    alu_outputs.addr      = eaddr;
-   alu_outputs.mem_width_code = funct3;
+   alu_outputs.mem_width_code = width_code;
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
@@ -936,8 +939,8 @@ endfunction
 
 function ALU_Outputs fv_MISC_MEM (ALU_Inputs inputs);
 `ifdef ISA_CHERI
-   if (inputs.decoded_instr.funct3 == f3_LQ) begin
-       return fv_LD(inputs, True);
+   if (valueOf(XLEN) == 64 && inputs.decoded_instr.funct3 == f3_LQ) begin
+       return fv_LD(inputs, Valid(w_SIZE_Q));
    end else
 `endif
    begin
@@ -1822,7 +1825,7 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
       alu_outputs = fv_AUIPC (inputs);
 
    else if (inputs.decoded_instr.opcode == op_LOAD)
-      alu_outputs = fv_LD (inputs, False);
+      alu_outputs = fv_LD (inputs, Invalid);
 
    else if (inputs.decoded_instr.opcode == op_STORE)
       alu_outputs = fv_ST (inputs);
