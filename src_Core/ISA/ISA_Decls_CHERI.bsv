@@ -47,33 +47,63 @@ endfunction
 
 // Exception codes
 
-Exc_Code exc_code_CHERI = 32;
-
 typedef Bit #(5) CHERI_Exc_Code;
 
-Exc_Code exc_code_CHERI_None         = 0;
-Exc_Code exc_code_CHERI_Length       = 1;
-Exc_Code exc_code_CHERI_Tag          = 2;
-Exc_Code exc_code_CHERI_Seal         = 3;
-Exc_Code exc_code_CHERI_Type         = 4;
-Exc_Code exc_code_CHERI_Call         = 5;
-Exc_Code exc_code_CHERI_Return       = 6;
-Exc_Code exc_code_CHERI_Underflow    = 7;
-Exc_Code exc_code_CHERI_Software     = 8;
-Exc_Code exc_code_CHERI_TLB          = 9;
-Exc_Code exc_code_CHERI_Precision    = 10;
-Exc_Code exc_code_CHERI_Global       = 16;
-Exc_Code exc_code_CHERI_XPerm        = 17;
-Exc_Code exc_code_CHERI_RPerm        = 18;
-Exc_Code exc_code_CHERI_WPerm        = 19;
-Exc_Code exc_code_CHERI_LCPerm       = 20;
-Exc_Code exc_code_CHERI_SCPerm       = 21;
-Exc_Code exc_code_CHERI_SCLocalPerm  = 22;
-Exc_Code exc_code_CHERI_SealPerm     = 23;
-Exc_Code exc_code_CHERI_SysRegsPerm  = 24;
-Exc_Code exc_code_CHERI_CCallPerm    = 25;
-Exc_Code exc_code_CHERI_CCallIDCPerm = 26;
-Exc_Code exc_code_CHERI_UnsealPerm   = 27;
+CHERI_Exc_Code exc_code_CHERI_None         = 0;
+CHERI_Exc_Code exc_code_CHERI_Length       = 1;
+CHERI_Exc_Code exc_code_CHERI_Tag          = 2;
+CHERI_Exc_Code exc_code_CHERI_Seal         = 3;
+CHERI_Exc_Code exc_code_CHERI_Type         = 4;
+CHERI_Exc_Code exc_code_CHERI_Call         = 5;
+CHERI_Exc_Code exc_code_CHERI_Return       = 6;
+CHERI_Exc_Code exc_code_CHERI_Underflow    = 7;
+CHERI_Exc_Code exc_code_CHERI_Software     = 8;
+CHERI_Exc_Code exc_code_CHERI_TLB          = 9;
+CHERI_Exc_Code exc_code_CHERI_Precision    = 10;
+CHERI_Exc_Code exc_code_CHERI_Global       = 16;
+CHERI_Exc_Code exc_code_CHERI_XPerm        = 17;
+CHERI_Exc_Code exc_code_CHERI_RPerm        = 18;
+CHERI_Exc_Code exc_code_CHERI_WPerm        = 19;
+CHERI_Exc_Code exc_code_CHERI_LCPerm       = 20;
+CHERI_Exc_Code exc_code_CHERI_SCPerm       = 21;
+CHERI_Exc_Code exc_code_CHERI_SCLocalPerm  = 22;
+CHERI_Exc_Code exc_code_CHERI_SealPerm     = 23;
+CHERI_Exc_Code exc_code_CHERI_SysRegsPerm  = 24;
+CHERI_Exc_Code exc_code_CHERI_CCallPerm    = 25;
+CHERI_Exc_Code exc_code_CHERI_CCallIDCPerm = 26;
+CHERI_Exc_Code exc_code_CHERI_UnsealPerm   = 27;
+
+typedef struct {
+  Bit #(6) cheri_exc_reg;
+  CHERI_Exc_Code cheri_exc_code;
+  } XCCSR
+deriving(Bits);
+
+function WordXL xccsr_to_word(XCCSR xccsr);
+  return zeroExtend({xccsr.cheri_exc_reg, xccsr.cheri_exc_code, 3'b0, 1'b1, 1'b1});
+endfunction
+
+// SCR map
+
+typedef Bit#(5) SCR_Addr;
+
+SCR_Addr scr_addr_PCC = 0;
+SCR_Addr scr_addr_DDC = 1;
+
+SCR_Addr scr_addr_UTCC = 4;
+SCR_Addr scr_addr_UTDC = 5;
+SCR_Addr scr_addr_UScatchC = 6;
+SCR_Addr scr_addr_UEPCC = 7;
+
+SCR_Addr scr_addr_STCC = 12;
+SCR_Addr scr_addr_STDC = 13;
+SCR_Addr scr_addr_SScatchC = 14;
+SCR_Addr scr_addr_SEPCC = 15;
+
+SCR_Addr scr_addr_MTCC = 28;
+SCR_Addr scr_addr_MTDC = 29;
+SCR_Addr scr_addr_MScatchC = 30;
+SCR_Addr scr_addr_MEPCC = 31;
 
 // Instruction field encodings
 

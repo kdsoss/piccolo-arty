@@ -182,6 +182,10 @@ CSR_Addr   csr_addr_dpc       = 12'h7B1;    // Debug PC
 CSR_Addr   csr_addr_dscratch0 = 12'h7B2;    // Debug scratch0
 CSR_Addr   csr_addr_dscratch1 = 12'h7B3;    // Debug scratch1
 
+`ifdef ISA_CHERI
+CSR_Addr   csr_addr_mccsr     = 12'h8C0;    // Machine Capability Control and Status
+`endif
+
 // ================================================================
 // MISA
 
@@ -540,6 +544,7 @@ endfunction
 
 `ifdef ISA_CHERI
 typedef Bit #(6) Exc_Code;
+Exc_Code  exc_code_CHERI                         = 32;
 `else
 typedef Bit #(4) Exc_Code;
 `endif

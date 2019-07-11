@@ -167,6 +167,8 @@ typedef struct {
    Addr      epc;
 `ifdef ISA_CHERI
    CapReg pcc;
+   CHERI_Exc_Code cheri_exc_code;
+   Bit#(6) cheri_exc_reg;
 `endif
    Exc_Code  exc_code;
    Addr      tval;

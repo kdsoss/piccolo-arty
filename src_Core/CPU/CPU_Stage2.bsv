@@ -215,6 +215,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
    let  trap_info_capbounds = Trap_Info {epc:    rg_stage2.pc,
                        exc_code: exc_code_CHERI,
+                       cheri_exc_code: exc_code_CHERI_Length,
+                       cheri_exc_reg: ?, //TODO
                        tval:    0 }; //TODO ?
 `endif
 

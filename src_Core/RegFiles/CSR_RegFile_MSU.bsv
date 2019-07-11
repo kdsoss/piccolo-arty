@@ -120,6 +120,10 @@ interface CSR_RegFile_IFC;
 			    Word       pc,
 			    Bool       nmi,          // non-maskable interrupt
 			    Bool       interrupt,    // other interrupt
+`ifdef ISA_CHERI
+          CHERI_Exc_Code cheri_exc_code,
+          Bit#(6)        cheri_exc_reg,
+`endif
 			    Exc_Code   exc_code,
 			    Word       xtval);
 
@@ -358,6 +362,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    Reg #(Word)       rg_mscratch <- mkRegU;
    Reg #(Word)       rg_mepc     <- mkRegU;
    Reg #(MCause)     rg_mcause   <- mkRegU;
+   Reg #(XCCSR)      rg_mccsr    <- mkRegU;
    Reg #(Word)       rg_mtval    <- mkRegU;
 
    // RegFile #(Bit #(2), WordXL)  rf_pmpcfg   <- mkRegFileFull;
@@ -690,6 +695,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	    csr_addr_mcause:     m_csr_value = tagged Valid (mcause_to_word (rg_mcause));
 	    csr_addr_mtval:      m_csr_value = tagged Valid rg_mtval;
 	    csr_addr_mip:        m_csr_value = tagged Valid (csr_mip.fv_read);
+
+`ifdef ISA_CHERI
+      csr_addr_mccsr:      m_csr_value = tagged Valid (xccsr_to_word(rg_mccsr));
+`endif
 
 	    // TODO: Phys Mem Protection regs
 	    // csr_pmpcfg0:   m_csr_value = tagged Valid rf_pmpcfg.sub (0);
@@ -1131,6 +1140,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 			    WordXL     pc,
 			    Bool       nmi,          // non-maskable interrupt
 			    Bool       interrupt,    // other interrupt
+`ifdef ISA_CHERI
+          CHERI_Exc_Code cheri_exc_code,
+          Bit#(6)        cheri_exc_reg,
+`endif
 			    Exc_Code   exc_code,
 			    WordXL     xtval);
 
@@ -1161,6 +1174,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       let new_mstatus  = fv_new_mstatus_on_exception (csr_mstatus.fv_read, from_priv, new_priv);
       let new_status  <- csr_mstatus.fav_write (misa, new_mstatus);
 
+`ifdef ISA_CHERI
+      let xccsr = XCCSR {cheri_exc_reg: cheri_exc_reg, cheri_exc_code: cheri_exc_code};
+`endif
+
       let  xcause      = (nmi
 			  ? MCause {interrupt: 0, exc_code: 0 }
 			  : MCause {interrupt: pack (interrupt), exc_code: exc_code});
@@ -1171,6 +1188,9 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 rg_mepc    <= pc;
 	 rg_mcause  <= xcause;
 	 rg_mtval   <= xtval;
+`ifdef ISA_CHERI
+   rg_mccsr   <= xccsr;
+`endif
 	 exc_pc      = rg_nmi_vector;
 	 is_vectored = False;
       end

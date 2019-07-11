@@ -55,8 +55,8 @@ typedef struct {
 `ifdef ISA_CHERI
    CapPipe        pcc;
    CapPipe        ddc;
-   Bool           rs1_idx_0;
-   Bool           rs2_idx_0;
+   Bit#(5)        rs1_idx;
+   Bit#(5)        rs2_idx;
 `endif
    Addr           pc;
    Bool           is_i32_not_i16;
@@ -105,6 +105,10 @@ endfunction
 typedef struct {
    Control    control;
    Exc_Code   exc_code;        // Relevant if control == CONTROL_TRAP
+`ifdef ISA_CHERI
+   CHERI_Exc_Code cheri_exc_code; //Relevant if control == CONTROL_TRAP && exc_code == exc_code_CHERI
+   Bit#(6)        cheri_exc_reg;
+`endif
 
    Op_Stage2  op_stage2;
    RegName    rd;
@@ -162,6 +166,10 @@ deriving (Bits, FShow);
 ALU_Outputs alu_outputs_base
 = ALU_Outputs {control   : CONTROL_STRAIGHT,
 	       exc_code  : exc_code_ILLEGAL_INSTRUCTION,
+`ifdef ISA_CHERI
+         cheri_exc_code: exc_code_CHERI_None,
+         cheri_exc_reg:  ?,
+`endif
 	       op_stage2 : ?,
 	       rd        : ?,
 	       addr      : ?,
@@ -414,11 +422,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs.check_enable = True;
-   alu_outputs.check_authority = inputs.pcc;
-   alu_outputs.check_address_low = getBase(inputs.pcc) + next_pc;
-   alu_outputs.check_address_high = zeroExtend(getBase(inputs.pcc)) + zeroExtend(next_pc) + 2;
-   alu_outputs.check_inclusive = True;
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -756,6 +760,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
    IntXL  imm_s = extend (unpack (inputs.decoded_instr.imm12_I));
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
+   let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
    WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
@@ -804,7 +809,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Bool isLQ);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, False, ?);
+   alu_outputs = checkValidDereference(alu_outputs, authority, authorityIdx, eaddr, width_code, False, ?);
 `endif
 
    // Normal trace output (if no trap)
@@ -836,6 +841,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    IntXL  imm_s     = extend (unpack (inputs.decoded_instr.imm12_S));
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
+   let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
    WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
@@ -878,7 +884,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
    alu_outputs.mem_unsigned = False;
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, width_code, True, inputs.cap_rs2_val);
+   alu_outputs = checkValidDereference(alu_outputs, authority, authorityIdx, eaddr, width_code, True, inputs.cap_rs2_val);
 `endif
 
    // The rs2_val would depend on the combination F/D-RV32/64 when FD is enabled
@@ -1224,6 +1230,14 @@ endfunction
 // CJALR
 //TODO remove duplication of some calculuations
 
+function ALU_Outputs fv_CHERI_exc(ALU_Outputs outputs, Bit#(6) regIdx, CHERI_Exc_Code exc_code);
+  outputs.exc_code = exc_code_CHERI;
+  outputs.cheri_exc_code = exc_code;
+  outputs.cheri_exc_reg = regIdx;
+  outputs.control = CONTROL_TRAP;
+  return outputs;
+endfunction
+
 function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    let rs1_val = inputs.cap_rs1_val;
 
@@ -1235,7 +1249,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    //TODO redundant base calculations
    Bool misaligned_target = (next_pc [1] == 1'b1) || (getBase(rs1_val)[1:0] != 2'b0);
 `ifdef ISA_C
-   misaligned_target = (getBase(rs1_val)[0] != 1'b1);
+   misaligned_target = (getBase(rs1_val)[0] == 1'b1);
 `endif
 
    let alu_outputs = alu_outputs_base;
@@ -1245,15 +1259,11 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    alu_outputs.rd        = inputs.decoded_instr.rd;
 
    if (!isValidCap(rs1_val)) begin
-       //TODO tag exception
-       alu_outputs.control = CONTROL_TRAP;
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
    end else if (isSealed(rs1_val)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO seal exception
-       //TODO sentry
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
    end else if (!getHardPerms(rs1_val).permitExecute) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO Permit X exception
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
    end else begin
        alu_outputs.addr      = next_pc;
        alu_outputs.pcc       = rs1_val;
@@ -1277,48 +1287,41 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
 endfunction
 
 //TODO make this an instance of single-instance function?
-function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, WordXL length, Bool exactRequired);
+function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(5) regIdx, Bool tag, Bool sealed,  WordXL length, Bool exactRequired);
     if (!tag) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO tag exception
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Tag);
     end else if (sealed) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO sealing exception
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Seal);
     end else if (!isInBounds(cap, True)) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO length exception
+       alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Length);
     end else begin
-        alu_outputs.check_enable = True;
-        alu_outputs.check_authority = cap;
-        alu_outputs.check_inclusive = True;
-        let result = setBounds(cap, length);
-        alu_outputs.cap_val1 = result.value;
-        alu_outputs.val1_cap_not_int = True;
-        //Since the result of the setBounds is smaller than the original pointer, and the rounding
-        //of the top and bottom does not depend on the other, this is safe, i.e. the result of
-        //rounding cannot take you outside of the authorising capability if the request was not.
-        //alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
-        alu_outputs.check_address_low = getAddr(cap); //TODO repeated computation
-        //alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
-        alu_outputs.check_address_high = zeroExtend(getAddr(cap)) + zeroExtend(length); //TODO much repeated computation
-        if (exactRequired && !result.exact) begin
-            alu_outputs.control = CONTROL_TRAP;
-        end
+       alu_outputs.check_enable = True;
+       alu_outputs.check_authority = cap;
+       alu_outputs.check_inclusive = True;
+       let result = setBounds(cap, length);
+       alu_outputs.cap_val1 = result.value;
+       alu_outputs.val1_cap_not_int = True;
+       //Since the result of the setBounds is smaller than the original pointer, and the rounding
+       //of the top and bottom does not depend on the other, this is safe, i.e. the result of
+       //rounding cannot take you outside of the authorising capability if the request was not.
+       //alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
+       alu_outputs.check_address_low = getAddr(cap); //TODO repeated computation
+       //alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
+       alu_outputs.check_address_high = zeroExtend(getAddr(cap)) + zeroExtend(length); //TODO much repeated computation
+       if (exactRequired && !result.exact) begin
+           alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Precision);
+       end
     end
     return alu_outputs;
 endfunction
 
-function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe authority, WordXL base, Bit#(3) widthCode, Bool isStoreNotLoad, CapPipe data);
+function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe authority, Bit#(6) authIdx, WordXL base, Bit#(3) widthCode, Bool isStoreNotLoad, CapPipe data);
    if (!isValidCap(authority)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO tag violation
+       alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, exc_code_CHERI_Tag);
    end else if (isSealed(authority)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO sealing exception.
-       //TODO sentry
+       alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, exc_code_CHERI_Seal);
    end else if ((isStoreNotLoad ? !getHardPerms(authority).permitStore : !getHardPerms(authority).permitLoad)) begin
-       alu_outputs.control = CONTROL_TRAP;
-       //TODO perms violation
+       alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, isStoreNotLoad ? exc_code_CHERI_WPerm : exc_code_CHERI_RPerm);
    end
    alu_outputs.check_enable = True;
    alu_outputs.check_authority = authority;
@@ -1351,10 +1354,8 @@ function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, C
    return alu_outputs;
 endfunction
 
-function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool isUnsignedNotSigned, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, CapPipe data);
+function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool isUnsignedNotSigned, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, Bit#(5) addrIdx, CapPipe data);
    let eaddr = getAddr(addr) + (useDDC ? getBase(ddc) : 0);
-
-   //TODO signal unsigned
 
    //width code must be checked externally
 
@@ -1367,18 +1368,18 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    alu_outputs.val2_cap_not_int = widthCode == 4;
 
    let authority = useDDC ? ddc : addr;
+   let authorityIdx = useDDC ? {1,scr_addr_PCC} : {0,addrIdx};
 
    //TODO store cap: also check store cap/store local/global cap permissions
 
-   alu_outputs = checkValidDereference(alu_outputs, authority, eaddr, widthCode, isStoreNotLoad, data);
+   alu_outputs = checkValidDereference(alu_outputs, authority, authorityIdx, eaddr, widthCode, isStoreNotLoad, data);
 
    return alu_outputs;
 endfunction
 
-function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool tag, Bool sealed, Bit#(XLEN) increment);
+function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(5) regIdx, Bool tag, Bool sealed, Bit#(XLEN) increment);
     if (tag && sealed) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO sealing violation
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Seal);
     end else begin
         let result = setOffset(cap, getOffset(cap) + increment);
         alu_outputs.cap_val1 = result.value;
@@ -1388,38 +1389,31 @@ function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bool 
     return alu_outputs;
 endfunction
 
-function ALU_Outputs sealCommon(ALU_Outputs alu_outputs, CapPipe sealee, CapPipe sealer, Bool conditional);
+function ALU_Outputs sealCommon(ALU_Outputs alu_outputs, CapPipe sealee, Bit#(5) sealeeIdx, CapPipe sealer, Bit#(5) sealerIdx, Bool conditional);
     let sealee_tag = isValidCap(sealee);
     let sealee_sealed = isSealed(sealee);
     let sealer_tag = isValidCap(sealer);
     let sealer_sealed = isSealed(sealer);
     let sealer_addr = getAddr(sealer);
     if (!sealee_tag) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO tag exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealeeIdx), exc_code_CHERI_Tag);
     end else if (!conditional && !sealer_tag) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO tag exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealerIdx), exc_code_CHERI_Tag);
     end else if (conditional && (!sealer_tag || sealer_addr == -1)) begin
         alu_outputs.cap_val1 = sealee;
         alu_outputs.val1_cap_not_int = True;
     end else if (sealee_sealed) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO seal exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealeeIdx), exc_code_CHERI_Seal);
     end else if (sealer_sealed) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO seal exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealerIdx), exc_code_CHERI_Seal);
     end else if (!getHardPerms(sealer).permitSeal) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO seal permission exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealerIdx), exc_code_CHERI_SealPerm);
     end else if (!validAsType(sealee, truncate(sealer_addr))) begin
-        alu_outputs.control = CONTROL_TRAP;
-        //TODO length exception
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealerIdx), exc_code_CHERI_Length);
     end else begin
         let result = setType(sealee, truncate(sealer_addr));
         if (!result.exact) begin
-            alu_outputs.control = CONTROL_TRAP;
-            //TODO inexact bounds exception
+            alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(sealerIdx), exc_code_CHERI_Precision);
         end else begin
             alu_outputs.check_enable = True;
             alu_outputs.check_authority = sealer;
@@ -1459,13 +1453,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
 
     case (funct3)
     f3_cap_CIncOffsetImmediate: begin
-            alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, signExtend(inputs.decoded_instr.imm12_I));
-        end
+        alu_outputs = incOffsetCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, signExtend(inputs.decoded_instr.imm12_I));
+    end
     f3_cap_CSetBoundsImmediate: begin
-        alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
-        end
+        alu_outputs = setBoundsCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
+    end
     f3_cap_ThreeOp: begin
-        case (funct7)
+       case (funct7)
        f7_cap_CSpecialRW: begin
            //TODO currently just returns DDC and PCC
            if (inputs.decoded_instr.rs2 == 5'b0) begin
@@ -1477,15 +1471,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
        end
        f7_cap_CSetBounds: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, False);
+           alu_outputs = setBoundsCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, rt_val, False);
        end
        f7_cap_CSetBoundsExact: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val, True);
+           alu_outputs = setBoundsCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, rt_val, True);
        end
        f7_cap_CSetOffset: begin
            if (cb_tag && cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                let result = setOffset(cb_val, rt_val);
                alu_outputs.cap_val1 = result.value;
@@ -1494,38 +1487,32 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
        end
        f7_cap_CIncOffset: begin
-           alu_outputs = incOffsetCommon(alu_outputs, cb_val, cb_tag, cb_sealed, rt_val);
+           alu_outputs = incOffsetCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, rt_val);
        end
        f7_cap_CSeal: begin
-         alu_outputs = sealCommon(alu_outputs, cb_val, ct_val, False);
+         alu_outputs = sealCommon(alu_outputs, cb_val, inputs.rs1_idx, ct_val, inputs.rs2_idx, False);
        end
        f7_cap_CCSeal: begin
-         alu_outputs = sealCommon(alu_outputs, cb_val, ct_val, True);
+         alu_outputs = sealCommon(alu_outputs, cb_val, inputs.rs1_idx, ct_val, inputs.rs2_idx, True);
        end
        f7_cap_CUnseal: begin
            if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (!ct_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
            end else if (getKind(cb_val) != SEALED_WITH_TYPE) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing excption
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else if (ct_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
            end else if (ct_addr != zeroExtend(getType(cb_val))) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO type violation
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Type);
            end else if (!getHardPerms(ct_val).permitUnseal) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO permit unseal violation
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_UnsealPerm);
            end else begin
                let result = setType(cb_val, -1);
                if (!result.exact) begin
-                   alu_outputs.control = CONTROL_TRAP;
-                   //TODO inexact bounds exception
+                   //Should be impossible
+                   alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Precision);
                end else begin
                    alu_outputs.check_enable = True;
                    alu_outputs.check_authority = ct_val;
@@ -1544,14 +1531,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        f7_cap_CCopyType: begin
            if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else if (ct_sealed) begin
                let result = setAddr(cb_val, zeroExtend(getType(ct_val)));
                if (!result.exact) begin
-                   alu_outputs.control = CONTROL_TRAP;
-                   //TODO inexact bounds exception
+                   //Should be impossible
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Precision);
                end else begin
                    alu_outputs.check_enable = True;
                    alu_outputs.check_authority = cb_val;
@@ -1567,11 +1554,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        f7_cap_CAndPerm: begin
            if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                alu_outputs.cap_val1 = setPerms(cb_val, pack(getPerms(cb_val)) & truncate(rt_val));
                alu_outputs.val1_cap_not_int = True;
@@ -1579,31 +1564,28 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        f7_cap_CSetFlags: begin
            if (cb_tag && cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                alu_outputs.cap_val1 = setFlags(cb_val, truncate(rt_val));
                alu_outputs.val1_cap_not_int = True;
            end
        end
        f7_cap_CToPtr: begin
-           if (inputs.rs2_idx_0) begin
+           if (inputs.rs2_idx == 0) begin
                ct_val = inputs.ddc;
                ct_tag = isValidCap(ct_val);
                //TODO think about alternatives for this
            end
            if (!ct_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
            end else if (cb_tag && cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                alu_outputs.val1 = cb_tag ? getAddr(cb_val) - getBase(ct_val) : 0; //TODO long critical path
            end
        end
        f7_cap_CFromPtr: begin
-           if (inputs.rs1_idx_0) begin
+           if (inputs.rs1_idx == 0) begin
                cb_val = inputs.ddc;
                cb_tag = isValidCap(cb_val);
                //TODO think about alternatives for this
@@ -1611,11 +1593,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (rt_val == 0) begin
                alu_outputs.val1 = 0;
            end else if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                let result = setOffset(cb_val, rt_val);
                alu_outputs.cap_val1 = result.value;
@@ -1625,28 +1605,27 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        f7_cap_CBuildCap: begin
            //TODO factor into subset test
-           if (inputs.rs1_idx_0) begin
+           if (inputs.rs1_idx == 0) begin
                cb_val = inputs.ddc;
                cb_tag = isValidCap(cb_val);
                cb_sealed = isSealed(cb_val);
                //TODO think about alternatives for this
            end
            if (!cb_tag) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO tag exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO sealing exception
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else if ((getPerms(cb_val) & getPerms(ct_val)) != getPerms(ct_val)) begin
-               alu_outputs.control = CONTROL_TRAP;
-               //TODO UserDef violation?
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Software);
            end else begin
                alu_outputs.check_enable = True;
                alu_outputs.check_authority = cb_val;
                alu_outputs.check_address_low = getBase(ct_val);
                alu_outputs.check_address_high = getTop(ct_val);
                alu_outputs.check_inclusive = True;
-               if (zeroExtend(getBase(ct_val)) > getTop(ct_val)) alu_outputs.control = CONTROL_TRAP; //TODO make more efficient
+               if (zeroExtend(getBase(ct_val)) > getTop(ct_val)) begin //TODO make more efficient
+                   alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Length);
+               end
                //TODO representability check? Should be unneccessary because arg is already represented so must be representable.
                //Only question is whether there are representations that are usually unreachable, and whether cbuildcap should
                //allow these.
@@ -1663,16 +1642,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                    widthCode = w_SIZE_Q;
                end else begin
                    alu_outputs.control = CONTROL_TRAP;
-                   //TODO illegal instr
+                   alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                end
            end else begin
                widthCode = zeroExtend(funct5rs2[1:0]);
                if (funct5rs2[2:0] == 3'b111) begin
                    alu_outputs.control = CONTROL_TRAP;
-                   //TODO illegal instr
+                   alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                end
            end
-           alu_outputs = memCommon(alu_outputs, False, funct5rs2[2] == cap_mem_unsigned, funct5rs2[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, ?);
+           alu_outputs = memCommon(alu_outputs, False, funct5rs2[2] == cap_mem_unsigned, funct5rs2[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.rs1_idx, ?);
        end
        f7_cap_Stores: begin
            let widthCode = funct5rd[2:0];
@@ -1680,9 +1659,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (funct5rd[4] == 1) alu_outputs.control = CONTROL_TRAP;
            if (widthCode > w_SIZE_MAX) begin
                alu_outputs.control = CONTROL_TRAP;
-               //TODO illegal instr
+               alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
            end
-           alu_outputs = memCommon(alu_outputs, True, ?, funct5rd[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.cap_rs2_val);
+           alu_outputs = memCommon(alu_outputs, True, ?, funct5rd[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.rs1_idx, inputs.cap_rs2_val);
        end
        f7_cap_TwoOp: begin
            case (funct5rs2)
@@ -1725,16 +1704,22 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            f5rs2_cap_CGetType: begin
                alu_outputs.val1 = isSealed(cb_val) ? zeroExtend(getType(cb_val)) : -1;
            end
-           default:
+           default: begin
                alu_outputs.control = CONTROL_TRAP;
+               alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+           end
            endcase
        end
-       default:
+       default: begin
            alu_outputs.control = CONTROL_TRAP;
+           alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+       end
        endcase
    end
-   default:
+   default: begin
        alu_outputs.control = CONTROL_TRAP;
+       alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+   end
    endcase
     alu_outputs.rd = inputs.decoded_instr.rd;
 

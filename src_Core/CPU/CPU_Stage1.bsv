@@ -223,8 +223,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       , cap_rs1_val     : rs1_val_bypassed
       , cap_rs2_val     : rs2_val_bypassed
-      , rs1_idx_0       : rs1 == 0
-      , rs2_idx_0       : rs2 == 0
+      , rs1_idx         : rs1
+      , rs2_idx         : rs2
       , rs1_val         : getAddr(rs1_val_bypassed)
       , rs2_val         : getAddr(rs2_val_bypassed)
 `else
@@ -336,6 +336,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.control   = CONTROL_TRAP;
 	 output_stage1.trap_info = Trap_Info {epc:      pc,
 					      exc_code: imem.exc_code,
+                cheri_exc_code : imem.exc_code == exc_code_CHERI ? exc_code_CHERI_Length : exc_code_CHERI_None, //TODO
+                cheri_exc_reg : imem.exc_code == exc_code_CHERI ? {1, scr_addr_PCC} : 0,
 					      tval:     imem.tval};
 	 output_stage1.data_to_stage2 = data_to_stage2;
       end
@@ -365,6 +367,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
 	 let trap_info = Trap_Info {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
+            cheri_exc_code: alu_outputs.cheri_exc_code,
+            cheri_exc_reg: alu_outputs.cheri_exc_reg,
 				    tval:     tval};
 
 	 output_stage1.ostatus        = ostatus;

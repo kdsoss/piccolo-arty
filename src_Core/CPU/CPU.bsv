@@ -779,6 +779,10 @@ module mkCPU (CPU_IFC);
 
       let epc      = stage2.out.trap_info.epc;
       let exc_code = stage2.out.trap_info.exc_code;
+`ifdef ISA_CHERI
+      let cheri_exc_code = stage2.out.trap_info.cheri_exc_code;
+      let cheri_exc_reg  = stage2.out.trap_info.cheri_exc_reg;
+`endif
       let tval     = stage2.out.trap_info.tval;
       let instr    = stage2.out.data_to_stage3.instr;
 
@@ -787,6 +791,10 @@ module mkCPU (CPU_IFC);
 						     epc,
 						     False,          // non-maskable interrupt
 						     False,          // interrupt_req
+`ifdef ISA_CHERI
+                 cheri_exc_code,
+                 cheri_exc_reg,
+`endif
 						     exc_code,
 						     tval);
 
@@ -1489,6 +1497,10 @@ module mkCPU (CPU_IFC);
 
       let epc      = stage1.out.trap_info.epc;
       let exc_code = stage1.out.trap_info.exc_code;
+`ifdef ISA_CHERI
+      let cheri_exc_code = stage1.out.trap_info.cheri_exc_code;
+      let cheri_exc_reg  = stage1.out.trap_info.cheri_exc_reg;
+`endif
       let tval     = stage1.out.trap_info.tval;
       let instr    = stage1.out.data_to_stage2.instr;
 
@@ -1497,6 +1509,10 @@ module mkCPU (CPU_IFC);
 						     epc,
 						     False,       // non-maskable interrupt
 						     False,       // interrupt_req
+`ifdef ISA_CHERI
+                 cheri_exc_code,
+                 cheri_exc_reg,
+`endif
 						     exc_code,
 						     tval);
 
@@ -1664,6 +1680,10 @@ module mkCPU (CPU_IFC);
 
       WordXL   epc      = stage1.out.data_to_stage2.pc;
       Exc_Code exc_code = 0;    // "Unknown cause" for NMI
+`ifdef ISA_CHERI
+      let cheri_exc_code = 0;
+      let cheri_exc_reg  = 0;
+`endif
 
       if (csr_regfile.interrupt_pending (rg_cur_priv) matches tagged Valid .ec
 	  &&& (! csr_regfile.nmi_pending))
@@ -1674,6 +1694,10 @@ module mkCPU (CPU_IFC);
 						     epc,
 						     csr_regfile.nmi_pending,        // non-maskable interrupt
 						     (! csr_regfile.nmi_pending),    // interrupt_req,
+`ifdef ISA_CHERI
+                 cheri_exc_code,
+                 cheri_exc_reg,
+`endif
 						     exc_code,
 						     0);             // tval
       let next_pc       = trap_info.pc;
@@ -1772,7 +1796,7 @@ module mkCPU (CPU_IFC);
       let dpc = csr_regfile.read_dpc;
       fa_restart (dpc
 `ifdef ISA_CHERI
-                  , almightyCap
+                  , almightyCap //TODO dpcc
                   , almightyCap
 `endif
                   );
@@ -1902,6 +1926,10 @@ module mkCPU (CPU_IFC);
    rule rl_debug_read_csr ((rg_state == CPU_DEBUG_MODE) && (! f_csr_reqs.first.write));
       let req <- pop (f_csr_reqs);
       Bit #(12) csr_addr = req.address;
+      //So that GDB can tell us the ccsr, remap requests to mscatch to be mccsr. TODO remove
+      if (csr_addr == csr_addr_mscratch) begin
+        csr_addr = csr_addr_mccsr;
+      end
       let m_data = csr_regfile.read_csr_port2 (csr_addr);
       let data = fromMaybe (?, m_data);
       let rsp = DM_CPU_Rsp {ok: True, data: data};
