@@ -1125,7 +1125,7 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
-`ifdef ISA_CHER
+`ifdef ISA_CHERI
       rg_pcc <= new_pcc;
 `endif
       rg_state    <= CPU_SPLIT_FETCH;
