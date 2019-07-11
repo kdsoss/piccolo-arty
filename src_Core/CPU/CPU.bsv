@@ -294,7 +294,7 @@ module mkCPU (CPU_IFC);
    Reg #(WordXL) rg_prev_mip <- mkReg (0);
 `elsif RVFI
 
-   FIFOF #(RVFI_DII_Execution #(XLEN))  f_to_verifier <- mkFIFOF;
+   FIFOF #(RVFI_DII_Execution #(XLEN,MEMWIDTH))  f_to_verifier <- mkFIFOF;
    Reg   #(Bool)                  rg_handler    <- mkReg (False);
    Reg   #(Bool)                  rg_donehalt       <- mkReg (False);
 

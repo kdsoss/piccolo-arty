@@ -249,6 +249,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		 : fall_through_pc);
 
 `ifdef RVFI
+   CapReg tmp_val2 = cast(alu_outputs.cap_val2);
+   CapMem cap_val2 = cast(tmp_val2);
    let info_RVFI = Data_RVFI_Stage1 {
                        instr:          instr,
                        rs1_addr:       rs1,
@@ -262,7 +264,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
                        pc_rdata:       getBase(rg_pcc_unpacked) + pc,
                        pc_wdata:       getBase(alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked) + next_pc, //TODO what should get reported? This or offset into pcc?
-                       mem_wdata:      alu_outputs.val2,
+                       mem_wdata:      truncate(cap_val2),
                        rd_addr:        alu_outputs.rd,
                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
                        rd_wdata_alu:   alu_outputs.val1,

@@ -47,7 +47,7 @@ import CHERICC_Fat :: *;
 
 Bit#(32) ecall_insn = 32'h73;
 
-function RVFI_DII_Execution #(XLEN) getRVFIInfoCondensed(
+function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoCondensed(
             // Using the full data gives us access to rd_valid and a few other fields.
             Data_Stage2_to_Stage3   data_s2_s3,
             WordXL                  trapPC,
@@ -94,7 +94,7 @@ endfunction : getRVFIInfoCondensed
             
             
             
-function RVFI_DII_Execution #(XLEN) getRVFIInfoS1 (
+function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
             Data_Stage1_to_Stage2   data_s1_s2,
             WordXL                  next_pc,
             Bit#(64)                order,
@@ -132,9 +132,9 @@ endfunction : getRVFIInfoS1
 
 `endif
 
-function Bit #(Bytes_per_Addr) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
+function Bit #(TDiv#(MEMWIDTH,8)) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
     Bit #(5) width = 5'b1 << width_code;
-    Bit #(Bytes_per_Addr) result = truncate((9'b1 << width) - 9'b1);
+    Bit #(TDiv#(MEMWIDTH,8)) result = truncate((9'b1 << width) - 9'b1);
     return result;
 endfunction : getMemMask
 

@@ -49,13 +49,13 @@ import RVFI_DII  :: *;
     interface Piccolo_RVFI_DII_Bridge_IFC;
         interface Piccolo_RVFI_DII_Server rvfi_dii_server;
         interface IMem_IFC instr_CPU;
-        interface Put #(RVFI_DII_Execution #(XLEN)) trace_report;
+        interface Put #(RVFI_DII_Execution #(XLEN,MEMWIDTH)) trace_report;
     endinterface
 
     module mkPiccoloRVFIDIIBridge(Piccolo_RVFI_DII_Bridge_IFC);
         Reg#(Maybe#(Tuple2#(Bit#(32), UInt#(SEQ_LEN)))) instr[2] <- mkCReg(2, Invalid);
         Reg#(Maybe#(WordXL)) fake_addr <- mkReg(Invalid);
-        FIFO#(RVFI_DII_Execution #(XLEN)) reports <- mkFIFO;
+        FIFO#(RVFI_DII_Execution #(XLEN,MEMWIDTH)) reports <- mkFIFO;
         Reg#(Maybe#(UInt#(SEQ_LEN))) seq_req[2] <- mkCReg(2, Invalid);
 
         Bit#(32) nop = 'h00000013;

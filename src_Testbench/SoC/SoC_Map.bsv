@@ -143,7 +143,7 @@ module mkSoC_Map (SoC_Map_IFC);
 
    let mem0_controller_addr_range = Range {
       base: 'h_8000_0000,
-      size: 'h_3FFF_FFFF    // 1 GB
+      size: 'h_4000_0000    // 1 GB
    };
 
    // ----------------------------------------------------------------

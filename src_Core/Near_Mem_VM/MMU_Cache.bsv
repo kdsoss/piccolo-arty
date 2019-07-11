@@ -98,6 +98,10 @@ import Fabric_Defs  :: *;
 import ISA_Decls :: *;
 `endif
 
+`ifdef RVFI_DII
+import RVFI_DII :: *;
+`endif
+
 // ================================================================
 
 export  MMU_Cache_IFC (..);
@@ -2019,7 +2023,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ADDR_MISALIGNED : exc_code_STORE_AMO_ADDR_MISALIGNED);
       end
 `ifdef RVFI_DII
-      else if (addr < 'h80000000 || addr >= 'h80010000) begin
+   else if (addr < fromInteger(valueOf(RVFI_DII_Mem_Start)) || addr >= fromInteger(valueOf(RVFI_DII_Mem_End))) begin
 	 // We detect accesses outside of the assigned RVFI_DII range and trap on them
 	 rg_state    <= MODULE_EXCEPTION_RSP;
 	 rg_exc_code <= ((op == CACHE_LD) ? exc_code_LOAD_ACCESS_FAULT : exc_code_STORE_AMO_ACCESS_FAULT); //TODO check exception codes, deal with unaligned accesses that exceed range?

@@ -352,7 +352,7 @@ typedef struct {
     // TODO: Exceptions?
     Bit#(XLEN)  pc_wdata;
     // TODO: Needs 0'ing when unused?
-    Bit#(XLEN)  mem_wdata;
+    Bit#(MEMWIDTH)  mem_wdata;
 
     // From ALU:
     Bit#(5)     rd_addr;
@@ -470,8 +470,8 @@ typedef struct {
     // Hard to know what was written as SC pretends to write "0" on failure
     // instead of actual untouched value. So, indicate wmask = 0 perhaps?
 
-    Bit#(Bytes_per_Addr)       mem_rmask;
-    Bit#(Bytes_per_Addr)       mem_wmask;
+    Bit#(TDiv#(MEMWIDTH,8))       mem_rmask;
+    Bit#(TDiv#(MEMWIDTH,8))       mem_wmask;
 
 }   Data_RVFI_Stage2 deriving (Bits);
 

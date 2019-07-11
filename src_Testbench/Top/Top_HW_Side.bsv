@@ -328,7 +328,7 @@ endmodule
 
 (* synthesize *)
 module mkPiccolo_RVFI_DII(Empty)
-    provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64));
+    provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64), Add#(c__, TDiv#(XLEN,8), 8), Add#(d__, XLEN, 64));
 
     Reg #(Bool) rg_banner_printed <- mkReg (False);
 
@@ -342,7 +342,7 @@ module mkPiccolo_RVFI_DII(Empty)
        rg_banner_printed <= True;
     endrule
 
-    RVFI_DII_Bridge #(XLEN, SEQ_LEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
+    RVFI_DII_Bridge #(XLEN, MEMWIDTH, SEQ_LEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
     let    dut <- mkTop_HW_Side(reset_by bridge.new_rst);
     mkConnection(bridge.client.report, dut.trace_report);
 

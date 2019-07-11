@@ -36,6 +36,9 @@ import GetPut_Aux :: *;
 // Project imports
 
 import Mem_Controller :: *;
+`ifdef RVFI_DII
+import RVFI_DII :: *;
+`endif
 
 // ================================================================
 // Mem Model interface
@@ -46,9 +49,6 @@ interface Mem_Model_IFC;
 endinterface
 
 typedef 'h4000_0000 Bytes_Per_Mem;
-`ifdef RVFI_DII
-typedef 'h1_0000 Zeroed_Bytes;
-`endif
 
 // ================================================================
 // Mem Model implementation
@@ -61,10 +61,10 @@ module mkMem_Model (Mem_Model_IFC);
    Raw_Mem_Addr alloc_size = fromInteger(valueOf(TDiv#(TMul#(Bytes_Per_Mem,8), Bits_per_Raw_Mem_Word))); //(raw mem words)
 
 `ifdef RVFI_DII
-   Raw_Mem_Addr zeroed_top = fromInteger(valueOf(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8))));
+   Raw_Mem_Addr zeroed_top = fromInteger(valueOf(TDiv#(RVFI_DII_Mem_Size, TDiv#(Bits_per_Raw_Mem_Word, 8))));
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFile (0, alloc_size - 1);
    //zeroes register allows quick resetting of memory. If bit of zeroes is 0 then corresponding entry of rf is 0.
-   Reg#(Bit#(TDiv#(Zeroed_Bytes, TDiv#(Bits_per_Raw_Mem_Word, 8)))) zeroes <- mkReg(0);
+   Reg#(Bit#(TDiv#(RVFI_DII_Mem_Size, TDiv#(Bits_per_Raw_Mem_Word, 8)))) zeroes <- mkReg(0);
 `else
    RegFile #(Raw_Mem_Addr, Bit #(Bits_per_Raw_Mem_Word)) rf <- mkRegFileLoad ("Mem.hex", 0, alloc_size - 1);
 `endif
