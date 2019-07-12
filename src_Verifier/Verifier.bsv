@@ -130,13 +130,13 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
     };
 endfunction : getRVFIInfoS1
 
-`endif
-
 function Bit #(TDiv#(MEMWIDTH,8)) getMemMask(Bit #(3) width_code, Bit #(XLEN) addr);
     Bit #(5) width = 5'b1 << width_code;
     Bit #(TDiv#(MEMWIDTH,8)) result = truncate((9'b1 << width) - 9'b1);
     return result;
 endfunction : getMemMask
+
+`endif
 
 endpackage
 
