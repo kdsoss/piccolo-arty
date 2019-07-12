@@ -61,6 +61,8 @@ import CHERICap     :: *;
 import CHERICC_Fat  :: *;
 `endif
 
+import ISA_Decls :: *;
+
 // ================================================================
 // Interface and module for the address map
 
@@ -99,13 +101,14 @@ interface SoC_Map_IFC;
    (* always_ready *)
    method  Bool  m_is_near_mem_IO_addr (Fabric_Addr addr);
 
-   (* always_ready *)   method  Bit #(64)  m_pc_reset_value;
+   (* always_ready *)   method  Bit #(XLEN)  m_pc_reset_value;
 `ifdef ISA_CHERI
    (* always_ready *)   method  CapReg  m_pcc_reset_value;
-   (* always_ready *)   method  CapReg m_mtcc_reset_value;
+   (* always_ready *)   method  CapReg  m_mtcc_reset_value;
+   (* always_ready *)   method  CapReg  m_mepcc_reset_value;
 `endif
-   (* always_ready *)   method  Bit #(64)  m_mtvec_reset_value;
-   (* always_ready *)   method  Bit #(64)  m_nmivec_reset_value;
+   (* always_ready *)   method  Bit #(XLEN)  m_mtvec_reset_value;
+   (* always_ready *)   method  Bit #(XLEN)  m_nmivec_reset_value;
 endinterface
 
 // ================================================================
@@ -253,13 +256,15 @@ module mkSoC_Map (SoC_Map_IFC);
    // ----------------------------------------------------------------
    // PC, MTVEC and NMIVEC reset values
 
-   Bit #(64) pc_reset_value     = rangeBase(boot_rom_addr_range);
-   Bit #(64) mtvec_reset_value  = 'h1000;    // TODO
-   Bit #(64) nmivec_reset_value = ?;         // TODO
+   Bit #(XLEN) pc_reset_value     = rangeBase(boot_rom_addr_range);
+   Bit #(XLEN) mtvec_reset_value  = 'h1000;    // TODO
+   Bit #(XLEN) nmivec_reset_value = ?;         // TODO
 
 `ifdef ISA_CHERI
    CapReg pcc_reset_value  = almightyCap;
-   CapReg mtcc_reset_value = almightyCap;
+   CapPipe almightyPipe = almightyCap;
+   CapReg mtcc_reset_value = cast(setOffset(almightyPipe, mtvec_reset_value).value);
+   CapReg mepcc_reset_value = almightyCap;
 `endif
 
    // ================================================================
@@ -296,13 +301,14 @@ module mkSoC_Map (SoC_Map_IFC);
 
    method  Bool  m_is_near_mem_IO_addr (Fabric_Addr addr) = inRange(near_mem_io_addr_range, addr);
 
-   method  Bit #(64)  m_pc_reset_value     = pc_reset_value;
-   method  Bit #(64)  m_mtvec_reset_value  = mtvec_reset_value;
-   method  Bit #(64)  m_nmivec_reset_value = nmivec_reset_value;
+   method  Bit #(XLEN)  m_pc_reset_value     = pc_reset_value;
+   method  Bit #(XLEN)  m_mtvec_reset_value  = mtvec_reset_value;
+   method  Bit #(XLEN)  m_nmivec_reset_value = nmivec_reset_value;
 
 `ifdef ISA_CHERI
    method  CapReg  m_pcc_reset_value   = pcc_reset_value;
    method  CapReg  m_mtcc_reset_value  = mtcc_reset_value;
+   method  CapReg  m_mepcc_reset_value = mepcc_reset_value;
 `endif
 endmodule
 

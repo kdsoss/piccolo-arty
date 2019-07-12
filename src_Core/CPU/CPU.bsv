@@ -780,6 +780,7 @@ module mkCPU (CPU_IFC);
       let epc      = stage2.out.trap_info.epc;
       let exc_code = stage2.out.trap_info.exc_code;
 `ifdef ISA_CHERI
+      let epcc_top     = stage2.out.trap_info.epcc_top;
       let cheri_exc_code = stage2.out.trap_info.cheri_exc_code;
       let cheri_exc_reg  = stage2.out.trap_info.cheri_exc_reg;
 `endif
@@ -788,7 +789,7 @@ module mkCPU (CPU_IFC);
 
       // Take trap, save trap information for next phase
       let trap_info <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
-						     epc,
+						     cast(setOffset(epcc_top, epc).value), //TODO should always be representable (and in bounds)
 						     False,          // non-maskable interrupt
 						     False,          // interrupt_req
 `ifdef ISA_CHERI
@@ -798,9 +799,11 @@ module mkCPU (CPU_IFC);
 						     exc_code,
 						     tval);
 
-      let next_pc    = trap_info.pc;
 `ifdef ISA_CHERI
       let next_pcc   = trap_info.pcc;
+      let next_pc    = getOffset(next_pcc);
+`else
+      let next_pc    = trap_info.pc;
 `endif
       let new_mstatus= trap_info.mstatus;
       let mcause     = trap_info.mcause;
@@ -822,7 +825,7 @@ module mkCPU (CPU_IFC);
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq;
 `endif
 `ifdef ISA_CHERI
-      rg_pcc      <= next_pcc; //TODO check this
+      rg_pcc      <= cast(next_pcc);
 `endif
       rg_state    <= CPU_SPLIT_FETCH;
 
@@ -1113,11 +1116,16 @@ module mkCPU (CPU_IFC);
       Priv_Mode from_priv = ((stage1.out.control == CONTROL_MRET) ?
 			     m_Priv_Mode : ((stage1.out.control == CONTROL_SRET) ?
 					    s_Priv_Mode : u_Priv_Mode));
-      match { .next_pc,
+      match {
 `ifdef ISA_CHERI
-              .new_pcc,
+              .next_pcc,
+`else
+              .next_pc,
 `endif
               .new_priv, .new_mstatus } <- csr_regfile.csr_ret_actions (from_priv);
+`ifdef ISA_CHERI
+      let next_pc = getOffset(next_pcc);
+`endif
       // Save new privilege and pc for ifetch
       rg_cur_priv <= new_priv;
       rg_next_pc  <= next_pc;
@@ -1133,10 +1141,9 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
-//TODO sort out mepcc
-//`ifdef ISA_CHERI
-//      rg_pcc <= new_pcc;
-//`endif
+`ifdef ISA_CHERI
+      rg_pcc <= cast(next_pcc);
+`endif
       rg_state    <= CPU_SPLIT_FETCH;
 
       stage1.set_full (False);    fa_step_check;
@@ -1498,6 +1505,7 @@ module mkCPU (CPU_IFC);
       let epc      = stage1.out.trap_info.epc;
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef ISA_CHERI
+      let epcc_top = stage1.out.trap_info.epcc_top;
       let cheri_exc_code = stage1.out.trap_info.cheri_exc_code;
       let cheri_exc_reg  = stage1.out.trap_info.cheri_exc_reg;
 `endif
@@ -1506,7 +1514,7 @@ module mkCPU (CPU_IFC);
 
       // Take trap, save trap information for next phase
       let trap_info <- csr_regfile.csr_trap_actions (rg_cur_priv, // from priv
-						     epc,
+						     cast(setOffset(epcc_top, epc).value),
 						     False,       // non-maskable interrupt
 						     False,       // interrupt_req
 `ifdef ISA_CHERI
@@ -1516,9 +1524,11 @@ module mkCPU (CPU_IFC);
 						     exc_code,
 						     tval);
 
-      let next_pc    = trap_info.pc;
 `ifdef ISA_CHERI
-      let new_pcc    = trap_info.pcc;
+      let next_pcc   = trap_info.pcc;
+      let next_pc    = getOffset(next_pcc);
+`else
+      let next_pc    = trap_info.pc;
 `endif
       let new_mstatus= trap_info.mstatus;
       let mcause     = trap_info.mcause;
@@ -1540,7 +1550,7 @@ module mkCPU (CPU_IFC);
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
 `ifdef ISA_CHERI
-      rg_pcc <= new_pcc;
+      rg_pcc <= cast(next_pcc);
 `endif
       rg_state <= CPU_SPLIT_FETCH;
 
@@ -1681,6 +1691,7 @@ module mkCPU (CPU_IFC);
       WordXL   epc      = stage1.out.data_to_stage2.pc;
       Exc_Code exc_code = 0;    // "Unknown cause" for NMI
 `ifdef ISA_CHERI
+      let epcc = stage1.out.data_to_stage2.pcc;
       let cheri_exc_code = 0;
       let cheri_exc_reg  = 0;
 `endif
@@ -1691,7 +1702,11 @@ module mkCPU (CPU_IFC);
 
       // Take trap
       let trap_info <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
+`ifdef ISA_CHERI
+                 epcc,
+`else
 						     epc,
+`endif
 						     csr_regfile.nmi_pending,        // non-maskable interrupt
 						     (! csr_regfile.nmi_pending),    // interrupt_req,
 `ifdef ISA_CHERI
@@ -1700,9 +1715,11 @@ module mkCPU (CPU_IFC);
 `endif
 						     exc_code,
 						     0);             // tval
-      let next_pc       = trap_info.pc;
 `ifdef ISA_CHERI
-      let new_pcc       = trap_info.pcc;
+      let next_pcc      = trap_info.pcc;
+      let next_pc       = getOffset(next_pcc);
+`else
+      let next_pc       = trap_info.pc;
 `endif
       let new_mstatus   = trap_info.mstatus;
       let mcause        = trap_info.mcause;
@@ -1721,7 +1738,7 @@ module mkCPU (CPU_IFC);
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
 `ifdef ISA_CHERI
-      rg_pcc <= new_pcc;
+      rg_pcc <= cast(next_pcc);
 `endif
       rg_state <= CPU_SPLIT_FETCH;
 

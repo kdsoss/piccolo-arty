@@ -1132,14 +1132,15 @@ CSR_Addr   csr_addr_hpmcounter31h  = 12'hC9F;    // Upper 32 bits of performance
 
 // Information from the CSR on a new trap. 
 typedef struct {
-   Addr        pc;
 `ifdef ISA_CHERI
-   CapReg      pcc;
+   CapPipe     pcc;
+`else
+   Addr        pc;
 `endif
    WordXL      mstatus;
    WordXL      mcause;
    Priv_Mode   priv;
-} Trap_Info deriving (Bits, Eq, FShow);
+} Trap_Info_CSR deriving (Bits, FShow);
 
 // ================================================================
 // 'C' Extension ("compressed" instructions)

@@ -164,15 +164,15 @@ endfunction
 // Trap information
 
 typedef struct {
-   Addr      epc;
 `ifdef ISA_CHERI
-   CapReg pcc;
+   CapPipe epcc_top;
    CHERI_Exc_Code cheri_exc_code;
    Bit#(6) cheri_exc_reg;
 `endif
+   Addr      epc;
    Exc_Code  exc_code;
    Addr      tval;
-   } Trap_Info
+   } Trap_Info_Pipe
 deriving (Bits, FShow);
 
 // ================================================================
@@ -199,7 +199,7 @@ typedef struct {
 
    Control                control;
 
-   Trap_Info              trap_info;
+   Trap_Info_Pipe              trap_info;
 
    // feedback
    WordXL                 next_pc;
@@ -271,6 +271,9 @@ deriving (Eq, Bits, FShow);
 typedef struct {
    Priv_Mode  priv;
    Addr       pc;
+`ifdef ISA_CHERI
+   CapPipe    pcc;
+`endif
    Instr      instr;    // For debugging. Just funct3, funct7 are enough for
                         // functionality.
 `ifdef RVFI_DII
@@ -388,7 +391,7 @@ endinstance
 
 typedef struct {
    Stage_OStatus          ostatus;
-   Trap_Info              trap_info;    // relevant if ostatus == OSTATUS_NONPIPE
+   Trap_Info_Pipe         trap_info;    // relevant if ostatus == OSTATUS_NONPIPE
 
 `ifdef ISA_CHERI
    // Whether a capability bounds check succeeded

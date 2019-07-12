@@ -115,9 +115,13 @@ interface CSR_RegFile_IFC;
    method WordXL read_satp;
 
    // CSR trap actions
-   method ActionValue #(Trap_Info)
+   method ActionValue #(Trap_Info_CSR)
           csr_trap_actions (Priv_Mode  from_priv,
+`ifdef ISA_CHERI
+          CapPipe    pcc,
+`else
 			    Word       pc,
+`endif
 			    Bool       nmi,          // non-maskable interrupt
 			    Bool       interrupt,    // other interrupt
 `ifdef ISA_CHERI
@@ -128,15 +132,11 @@ interface CSR_RegFile_IFC;
 			    Word       xtval);
 
    // CSR RET actions (return from exception)
-   method ActionValue #(
+   method ActionValue #(Tuple3#(
 `ifdef ISA_CHERI
-                        Tuple4
+                               CapPipe,
 `else
-                        Tuple3
-`endif
-                               #(Addr,
-`ifdef ISA_CHERI
-                                       CapReg,
+                               Addr,
 `endif
    Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
 
@@ -243,10 +243,6 @@ function MISA misa_reset_value;
    ms.mxl = misa_mxl_128;
 `else
    ms.mxl = misa_mxl_zero;
-`endif
-
-`ifdef ISA_CHERI
-//TODO CHERI ccsr register, etc.
 `endif
 
 `ifdef ISA_PRIV_U
@@ -356,14 +352,30 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    CSR_MIE_IFC       csr_mie       <- mkCSR_MIE;
    CSR_MIP_IFC       csr_mip       <- mkCSR_MIP;
 
-   Reg #(MTVec)      rg_mtvec      <- mkRegU;
    Reg #(MCounteren) rg_mcounteren <- mkRegU;
 
    Reg #(Word)       rg_mscratch <- mkRegU;
-   Reg #(Word)       rg_mepc     <- mkRegU;
    Reg #(MCause)     rg_mcause   <- mkRegU;
    Reg #(XCCSR)      rg_mccsr    <- mkRegU;
    Reg #(Word)       rg_mtval    <- mkRegU;
+
+`ifdef ISA_CHERI
+   Reg #(CapReg)     rg_mtcc      <- mkReg(nullCap);
+   CapPipe           rg_mtcc_unpacked = cast(rg_mtcc);
+   Reg #(CapReg)     rg_mtdc      <- mkReg(nullCap);
+   CapPipe           rg_mtdc_unpacked = cast(rg_mtdc);
+   Reg #(CapReg)     rg_mscratchc <- mkReg(nullCap);
+   CapPipe           rg_mscratchc_unpacked = cast(rg_mscratchc);
+   Reg #(CapReg)     rg_mepcc     <- mkReg(nullCap);
+   CapPipe           rg_mepcc_unpacked = cast(rg_mepcc);
+
+   let               rg_mtvec = word_to_mtvec(getOffset(rg_mtcc_unpacked));
+   let               rg_mepc  = getOffset(rg_mepcc_unpacked);
+`else
+   Reg #(MTVec)      rg_mtvec    <- mkRegU;
+   Reg #(Word)       rg_mepc     <- mkRegU;
+`endif
+
 
    // RegFile #(Bit #(2), WordXL)  rf_pmpcfg   <- mkRegFileFull;
    // Vector #(16, Reg #(WordXL))  vrg_pmpaddr <- replicateM (mkRegU);
@@ -419,7 +431,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       csr_mie.reset;
       csr_mip.reset;
 
+`ifdef ISA_CHERI
+      rg_mtcc       <= soc_map.m_mtcc_reset_value;
+      rg_mepcc      <= soc_map.m_mepcc_reset_value;
+`else
       rg_mtvec      <= word_to_mtvec (truncate (soc_map.m_mtvec_reset_value));
+`endif
       rg_mcause     <= word_to_mcause (0);    // Supposed to be the cause of the reset.
 `ifdef ISA_PRIV_S
       rg_medeleg    <= 0;
@@ -855,7 +872,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	       csr_addr_mtvec:      begin
 				       let mtvec = word_to_mtvec (wordxl);
 				       result    = mtvec_to_word (mtvec);
+`ifdef ISA_CHERI
+               rg_mtcc <= cast(update_scr_via_csr(rg_mtcc_unpacked, result));
+`else
 				       rg_mtvec <= mtvec;
+`endif
 				    end
 	       csr_addr_mcounteren: begin
 				       let mcounteren = word_to_mcounteren(wordxl);
@@ -868,7 +889,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 				    end
 	       csr_addr_mepc:       begin
 				       result   = wordxl;
+`ifdef ISA_CHERI
+               rg_mepcc <= cast(update_scr_via_csr(rg_mepcc_unpacked, result));
+`else
 				       rg_mepc <= result;
+`endif
 				    end
 	       csr_addr_mcause:     begin
 				       let mcause = word_to_mcause (wordxl);
@@ -1135,9 +1160,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    endmethod
 
    // CSR Trap actions
-   method ActionValue #(Trap_Info)
+   method ActionValue #(Trap_Info_CSR)
           csr_trap_actions (Priv_Mode  from_priv,
+`ifdef ISA_CHERI
+          CapPipe    pcc,
+`else
 			    WordXL     pc,
+`endif
 			    Bool       nmi,          // non-maskable interrupt
 			    Bool       interrupt,    // other interrupt
 `ifdef ISA_CHERI
@@ -1150,7 +1179,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: CSR_Regfile.csr_trap_actions:", rg_mcycle);
 	 $display ("    from priv %0d  pc 0x%0h  interrupt %0d  exc_code %0d  xtval 0x%0h",
-		   from_priv, pc, pack (interrupt), exc_code, xtval);
+		   from_priv,
+`ifdef ISA_CHERI
+       getOffset(pcc)
+`else
+       pc
+`endif
+                     , pack (interrupt), exc_code, xtval);
 `ifdef ISA_PRIV_S
 	 fa_show_trap_csrs (s_Priv_Mode, csr_mip.fv_read, csr_mie.fv_read, 0, 0, rg_scause,
 			    csr_mstatus.fv_sstatus_read,
@@ -1185,9 +1220,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       Addr exc_pc      = (extend (rg_mtvec.base)) << 2;
 
       if (nmi) begin
+`ifdef ISA_CHERI
+   rg_mepcc   <= cast(pcc);
+`else
 	 rg_mepc    <= pc;
-	 rg_mcause  <= xcause;
+`endif
 	 rg_mtval   <= xtval;
+	 rg_mcause  <= xcause;
 `ifdef ISA_CHERI
    rg_mccsr   <= xccsr;
 `endif
@@ -1195,9 +1234,14 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 is_vectored = False;
       end
       else if (new_priv == m_Priv_Mode) begin
+`ifdef ISA_CHERI
+   rg_mepcc   <= cast(pcc);
+	 rg_mccsr   <= xccsr;
+`else
 	 rg_mepc    <= pc;
-	 rg_mcause  <= xcause;
+`endif
 	 rg_mtval   <= xtval;
+	 rg_mcause  <= xcause;
       end
 `ifdef ISA_PRIV_S
       else if (new_priv == s_Priv_Mode) begin
@@ -1216,6 +1260,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       Addr vector_offset = (extend (exc_code)) << 2;
       if (interrupt && is_vectored)
 	 exc_pc = exc_pc + vector_offset;
+   CapPipe exc_pcc  = setOffset(rg_mtcc_unpacked, exc_pc).value; //TODO representability check
 
       if (cfg_verbosity > 1) begin
 	 $write ("    Return: new pc 0x%0h  ", exc_pc);
@@ -1225,9 +1270,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	 $display ("");
       end
 
-      return (Trap_Info {pc       : exc_pc,                     // New PC
+      return (Trap_Info_CSR {
 `ifdef ISA_CHERI
-                         pcc      : soc_map.m_mtcc_reset_value, // New PCC TODO
+                         pcc      : cast(exc_pcc),  //New PCC
+`else
+                         pc       : exc_pc,                     // New PC
 `endif
 			 mstatus  : new_status,                 // New mstatus/sstatus/ustatus
 			 mcause   : mcause_to_word  (xcause),   // New mcause
@@ -1235,33 +1282,26 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    endmethod: csr_trap_actions
 
    // CSR RET actions (return from exception)
-   method ActionValue #(
+   method ActionValue #(Tuple3#(
 `ifdef ISA_CHERI
-                        Tuple4
+                                CapPipe,
 `else
-                        Tuple3
-`endif
-                              #(Addr,
-`ifdef ISA_CHERI
-                                      CapReg,
+                                Addr,
 `endif
                                       Priv_Mode, Word)) csr_ret_actions (Priv_Mode from_priv);
       match { .new_mstatus, .to_priv } = fv_new_mstatus_on_ret (misa, csr_mstatus.fv_read, from_priv);
       csr_mstatus.fa_write (misa, new_mstatus);
       WordXL next_pc = rg_mepc;
+      CapPipe next_pcc = rg_mepcc_unpacked;
 `ifdef ISA_PRIV_S
       if (from_priv != m_Priv_Mode)
 	 next_pc = rg_sepc;
 `endif
-      return
+      return tuple3 (
 `ifdef ISA_CHERI
-             tuple4
+                    next_pcc,
 `else
-             tuple3
-`endif
-                    (next_pc,
-`ifdef ISA_CHERI
-                              ?,  //TODO new PCC
+                    next_pc,
 `endif
                               to_priv, new_mstatus);
    endmethod

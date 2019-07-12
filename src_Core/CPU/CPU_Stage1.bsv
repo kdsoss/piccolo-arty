@@ -244,7 +244,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    let fall_through_pc = pc + (imem.is_i32_not_i16 ? 4 : 2);
 
-   let next_pc = ((alu_outputs.control == CONTROL_BRANCH)
+   let next_pc_local = ((alu_outputs.control == CONTROL_BRANCH)
 		 ? alu_outputs.addr
 		 : fall_through_pc);
 
@@ -263,7 +263,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                        rs2_data:       rs2_val_bypassed,
 `endif
                        pc_rdata:       getBase(rg_pcc_unpacked) + pc,
-                       pc_wdata:       getBase(alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked) + next_pc, //TODO what should get reported? This or offset into pcc?
+                       pc_wdata:       getBase(alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked) + next_pc_local,
                        mem_wdata:      truncate(cap_val2),
                        rd_addr:        alu_outputs.rd,
                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
@@ -274,6 +274,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    let data_to_stage2 = Data_Stage1_to_Stage2 {
         pc              : pc
+`ifdef ISA_CHERI
+      , pcc             : alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked
+`endif
       , instr           : instr
 `ifdef RVFI_DII
       , instr_seq       : tpl_2(imem.instr)
@@ -336,10 +339,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       else if (imem.exc) begin
 	 output_stage1.ostatus   = OSTATUS_NONPIPE;
 	 output_stage1.control   = CONTROL_TRAP;
-	 output_stage1.trap_info = Trap_Info {epc:      pc,
+	 output_stage1.trap_info = Trap_Info_Pipe {epc:      pc,
 					      exc_code: imem.exc_code,
+`ifdef ISA_CHERI
                 cheri_exc_code : imem.exc_code == exc_code_CHERI ? exc_code_CHERI_Length : exc_code_CHERI_None, //TODO
                 cheri_exc_reg : imem.exc_code == exc_code_CHERI ? {1, scr_addr_PCC} : 0,
+                epcc_top: alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked,
+`endif
 					      tval:     imem.tval};
 	 output_stage1.data_to_stage2 = data_to_stage2;
       end
@@ -367,16 +373,19 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 else if (alu_outputs.exc_code == exc_code_BREAKPOINT)
 	    tval = pc;                                         // The faulting virtual address
 
-	 let trap_info = Trap_Info {epc:      pc,
+	 let trap_info = Trap_Info_Pipe {epc:      pc,
 				    exc_code: alu_outputs.exc_code,
+`ifdef ISA_CHERI
             cheri_exc_code: alu_outputs.cheri_exc_code,
             cheri_exc_reg: alu_outputs.cheri_exc_reg,
+            epcc_top: alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked,
+`endif
 				    tval:     tval};
 
 	 output_stage1.ostatus        = ostatus;
 	 output_stage1.control        = alu_outputs.control;
 	 output_stage1.trap_info      = trap_info;
-	 output_stage1.next_pc        = next_pc;
+	 output_stage1.next_pc        = next_pc_local;
 `ifdef ISA_CHERI
      output_stage1.next_pcc       = alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked;
      output_stage1.next_ddc       = alu_outputs.ddc_changed ? alu_outputs.ddc : rg_ddc_unpacked;

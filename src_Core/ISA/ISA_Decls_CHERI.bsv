@@ -105,6 +105,15 @@ SCR_Addr scr_addr_MTDC = 29;
 SCR_Addr scr_addr_MScatchC = 30;
 SCR_Addr scr_addr_MEPCC = 31;
 
+function CapPipe update_scr_via_csr (CapPipe old_scr, Word new_csr);
+    let new_scr = setOffset(old_scr, new_csr);
+    let ret = new_scr.value;
+    if (!new_scr.exact || isSealed(old_scr)) begin
+        ret = setValidCap(ret, False);
+    end
+    return ret;
+endfunction
+
 // Instruction field encodings
 
 // Top-level opcodes
