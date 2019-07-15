@@ -108,7 +108,7 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
     
     return RVFI_DII_Execution {
         rvfi_order:     order,
-        rvfi_trap:      ( isTrap ? (exc[0] == 1'b0 && exc < 7) : (False) ),
+        rvfi_trap:      isTrap,
         rvfi_halt:      (halted) ? True : (data_s1_s2.instr == ecall_insn),
         rvfi_intr:      handler,
         rvfi_insn:      data_s1_s2.instr,
