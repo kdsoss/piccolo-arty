@@ -200,16 +200,14 @@ module mkCPU (CPU_IFC);
    Reg #(Priv_Mode)  rg_cur_priv <- mkReg (m_Priv_Mode);
 
 `ifdef ISA_CHERI
-   // ----------------
-   // PCC: Offset is kept constant (same as installed) and changed when reported. TODO something more sophisticated?
-   Reg#(CapReg) rg_pcc <- mkRegU;
-   Reg#(CapReg) rg_ddc <- mkRegU;
-`endif
-
+   Reg#(PCC_T) rg_next_pcc <- mkRegU;
+   Reg#(CapPipe) rg_next_ddc <- mkRegU;
+`else
    // Save next_pc across split-phase FENCE.I and other split-phase ops. This
    // register is also used for initiating fetches on a trap or external
    // interrupt
    Reg #(WordXL) rg_next_pc <- mkRegU;
+`endif
 
    // Save sstatus_SUM and mstatus_MXR to initiate fetches on an external
    // interrupt
@@ -357,28 +355,30 @@ module mkCPU (CPU_IFC);
    // Set rg_halt on debugger stop request or dcsr.step step request
 
    function Action fa_start_ifetch (
+`ifdef ISA_CHERI
+                    PCC_T pcc
+                  , CapPipe ddc
+`else
                     Word next_pc
+`endif
                   , Priv_Mode priv
 `ifdef RVFI_DII
                   , UInt#(SEQ_LEN) next_seq
-`endif
-`ifdef ISA_CHERI
-                  , CapReg pcc
-                  , CapReg ddc
 `endif
                   , Bit #(1) mstatus_MXR
                   , Bit #(1) sstatus_SUM);
       action
 	 // Initiate the fetch
 	 stage1.enq (
+`ifdef ISA_CHERI
+             pcc
+           , ddc
+`else
              next_pc
+`endif
 		   , priv
 `ifdef RVFI_DII
            , next_seq
-`endif
-`ifdef ISA_CHERI
-           , pcc
-           , ddc
 `endif
            , sstatus_SUM
            , mstatus_MXR
@@ -405,24 +405,22 @@ module mkCPU (CPU_IFC);
 	 Bit #(1) sstatus_SUM = 0;
 `endif
 
-	 fa_start_ifetch (resume_pc, rg_cur_priv
+	 fa_start_ifetch (
+`ifdef ISA_CHERI
+                                              setPC(fromCapReg(resume_pcc),resume_pc).value
+                                            , cast(resume_ddc)
+`else
+                                              resume_pc
+`endif
+                                            , rg_cur_priv
 `ifdef RVFI_DII
                                             , 0
-`endif
-`ifdef ISA_CHERI
-                                            , resume_pcc
-                                            , resume_ddc
 `endif
                                             , mstatus_MXR, sstatus_SUM);
 	 stage1.set_full (True);
 
 	 stage2.set_full (False);
 	 stage3.set_full (False);
-
-`ifdef ISA_CHERI
-     rg_pcc <= resume_pcc;
-     rg_ddc <= resume_ddc;
-`endif
 
 	 rg_state <= CPU_RUNNING;
 
@@ -459,7 +457,11 @@ module mkCPU (CPU_IFC);
 `endif
 
       $display ("    Stage1: pc 0x%08h instr 0x%08h priv %0d",
+`ifdef ISA_CHERI
+    getPC(stage1.out.data_to_stage2.pcc),
+`else
 		stage1.out.data_to_stage2.pc,
+`endif
 		stage1.out.data_to_stage2.instr,
 		stage1.out.data_to_stage2.priv);
       $display ("        ", fshow (stage1.out));
@@ -540,8 +542,8 @@ module mkCPU (CPU_IFC);
 
       WordXL dpc = truncate (soc_map.m_pc_reset_value);
 `ifdef ISA_CHERI
-      CapReg dpcc = almightyCap;
-      CapReg dddc = almightyCap;
+      CapReg dpcc = soc_map.m_pcc_reset_value;
+      CapReg dddc = soc_map.m_ddc_reset_value;
 `endif
 
       f_reset_rsps.enq (rg_run_on_reset);
@@ -668,11 +670,6 @@ module mkCPU (CPU_IFC);
    rule rl_dmem_commit (stage2.out.check_success);
        near_mem.dmem.commit;
    endrule
-
-   //TODO remove
-   rule rl_imem_commit (True);
-       imem.commit;
-   endrule
 `endif
 
 `ifdef ISA_C
@@ -750,13 +747,16 @@ module mkCPU (CPU_IFC);
 `else
 	    Bit #(1) sstatus_SUM = 0;
 `endif
-	    fa_start_ifetch (stage1.out.next_pc, rg_cur_priv
+	    fa_start_ifetch (
+`ifdef ISA_CHERI
+                           cast(stage1.out.next_pcc)
+                         , cast(stage1.out.next_ddc)
+`else
+                           stage1.out.next_pc
+`endif
+                         , rg_cur_priv
 `ifdef RVFI_DII
                                                         , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                         , cast(stage1.out.next_pcc)
-                         , cast(stage1.out.next_ddc)
 `endif
                          , mstatus_MXR, sstatus_SUM);
 	    stage1_full = True;
@@ -777,19 +777,26 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage2_nonpipe", mcycle);
 
-      let epc      = stage2.out.trap_info.epc;
       let exc_code = stage2.out.trap_info.exc_code;
 `ifdef ISA_CHERI
-      let epcc_top     = stage2.out.trap_info.epcc_top;
+      let epcc     = stage2.out.trap_info.epcc;
+      let eddc     = stage2.out.trap_info.eddc;
+      let epc      = getPC(epcc);
       let cheri_exc_code = stage2.out.trap_info.cheri_exc_code;
       let cheri_exc_reg  = stage2.out.trap_info.cheri_exc_reg;
+`else
+      let epc      = stage2.out.trap_info.epc;
 `endif
       let tval     = stage2.out.trap_info.tval;
       let instr    = stage2.out.data_to_stage3.instr;
 
       // Take trap, save trap information for next phase
       let trap_info <- csr_regfile.csr_trap_actions (rg_cur_priv,    // from priv
-						     cast(setOffset(epcc_top, epc).value), //TODO should always be representable (and in bounds)
+`ifdef ISA_CHERI
+                 epcc,
+`else
+                 epc,
+`endif
 						     False,          // non-maskable interrupt
 						     False,          // interrupt_req
 `ifdef ISA_CHERI
@@ -800,8 +807,9 @@ module mkCPU (CPU_IFC);
 						     tval);
 
 `ifdef ISA_CHERI
-      let next_pcc   = trap_info.pcc;
-      let next_pc    = getOffset(next_pcc);
+      PCC_T next_pcc = fromCapReg(trap_info.pcc);
+      let next_pc    = getPC(next_pcc);
+      let next_ddc   = eddc;
 `else
       let next_pc    = trap_info.pc;
 `endif
@@ -811,7 +819,12 @@ module mkCPU (CPU_IFC);
 
       // Save new privilege and pc for ifetch
       rg_cur_priv <= new_priv;
+`ifdef ISA_CHERI
+      rg_next_pcc <= next_pcc;
+      rg_next_ddc <= next_ddc;
+`else
       rg_next_pc  <= next_pc;
+`endif
 
       // Note old MSTATUS.MXR and SSTATUS.SUM for initiating FETCH in next phase
       rg_mstatus_MXR <= mstatus [19];
@@ -823,9 +836,6 @@ module mkCPU (CPU_IFC);
 
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq;
-`endif
-`ifdef ISA_CHERI
-      rg_pcc      <= cast(next_pcc);
 `endif
       rg_state    <= CPU_SPLIT_FETCH;
 
@@ -905,7 +915,13 @@ module mkCPU (CPU_IFC);
 	 rg_state <= CPU_TRAP;
 
 	 // Debug
-	 fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, instr, rg_cur_priv);
+	 fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                 getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                 stage1.out.data_to_stage2.pc,
+`endif
+                                 instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    rl_stage1_CSRR_W: Trap on CSR permissions: Rs1 %0d Rs1_val 0x%0h csr 0x%0h Rd %0d",
 		      rs1, rs1_val, csr_addr, rd);
@@ -957,7 +973,13 @@ module mkCPU (CPU_IFC);
 `endif
 
 	 // Debug
-	 fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, instr, rg_cur_priv);
+	 fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                 getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                 stage1.out.data_to_stage2.pc,
+`endif
+                                 instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    S1: write CSRRW/CSRRWI Rs1 %0d Rs1_val 0x%0h csr 0x%0h csr_val 0x%0h Rd %0d",
 		      rs1, rs1_val, csr_addr, csr_val, rd);
@@ -1005,7 +1027,13 @@ module mkCPU (CPU_IFC);
 	 rg_state <= CPU_TRAP;
 
 	 // Debug
-	 fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, instr, rg_cur_priv);
+	 fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                  getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                  stage1.out.data_to_stage2.pc,
+`endif
+                                  instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    rl_stage1_CSRR_S_or_C: Trap on CSR permissions: Rs1 %0d Rs1_val 0x%0h csr 0x%0h Rd %0d",
 		      rs1, rs1_val, csr_addr, rd);
@@ -1060,7 +1088,13 @@ module mkCPU (CPU_IFC);
 `endif
 
 	 // Debug
-	 fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, instr, rg_cur_priv);
+	 fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                 getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                 stage1.out.data_to_stage2.pc,
+`endif
+                                 instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    S1: write CSRR_S_or_C: Rs1 %0d Rs1_val 0x%0h csr 0x%0h csr_val 0x%0h Rd %0d",
 		      rs1, rs1_val, csr_addr, csr_val, rd);
@@ -1072,7 +1106,12 @@ module mkCPU (CPU_IFC);
    // Restart the pipe after a CSRRX stall
 
    rule rl_stage1_restart_after_csrrx (rg_state == CPU_CSRRX_RESTART);
+`ifdef ISA_CHERI
+      let next_pcc   = stage1.out.next_pcc;
+      let next_ddc   = stage1.out.next_ddc;
+`else
       let next_pc    = stage1.out.next_pc;
+`endif
 
       // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
       Bit #(1) mstatus_MXR = mstatus [19];
@@ -1082,13 +1121,16 @@ module mkCPU (CPU_IFC);
       Bit #(1) sstatus_SUM = 0;
 `endif
 
-      fa_start_ifetch (next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                             next_pcc
+                                           , next_ddc
+`else
+                                             next_pc
+`endif
+                                           , rg_cur_priv
 `ifdef RVFI_DII
                                            , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                                           , cast(stage1.out.next_pcc)
-                                           , cast(stage1.out.next_ddc)
 `endif
                                            , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1096,7 +1138,13 @@ module mkCPU (CPU_IFC);
       rg_state <= CPU_RUNNING;
       if (cur_verbosity > 1)
 	 $display ("%0d: rl_stage1_restart_after_csrrx: minstret:%0d  pc:%0x  cur_priv:%0d",
-		   mcycle, minstret, stage1.out.next_pc, rg_cur_priv);
+		   mcycle, minstret,
+`ifdef ISA_CHERI
+                        next_pcc,
+`else
+                        next_pc,
+`endif
+                        rg_cur_priv);
    endrule
 
    // ================================================================
@@ -1128,7 +1176,11 @@ module mkCPU (CPU_IFC);
 `endif
       // Save new privilege and pc for ifetch
       rg_cur_priv <= new_priv;
+`ifdef ISA_CHERI
+      rg_next_pcc <= next_pcc;
+`else
       rg_next_pc  <= next_pc;
+`endif
 
       // Note MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
       rg_mstatus_MXR <= mstatus [19];
@@ -1140,9 +1192,6 @@ module mkCPU (CPU_IFC);
 
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
-`endif
-`ifdef ISA_CHERI
-      rg_pcc <= cast(next_pcc);
 `endif
       rg_state    <= CPU_SPLIT_FETCH;
 
@@ -1164,7 +1213,13 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                     getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                     stage1.out.data_to_stage2.pc,
+`endif
+                                     stage1.out.data_to_stage2.instr, rg_cur_priv);
       if (cur_verbosity != 0)
 	 $display ("    xRET: next_pc:0x%0h  new mstatus:0x%0h  new priv:%0d", next_pc, new_mstatus, new_priv);
    endrule: rl_stage1_xRET
@@ -1181,10 +1236,11 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_FENCE_I", mcycle);
 
       // Save stage1.out.next_pc since it will be destroyed by FENCE.I op
-      rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
-      rg_pcc <= cast(stage1.out.next_pcc);
-      rg_ddc <= cast(stage1.out.next_ddc);
+      rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`else
+      rg_next_pc <= stage1.out.next_pc;
 `endif
       near_mem.server_fence_i.request.put (?);
       rg_state <= CPU_FENCE_I;
@@ -1199,7 +1255,13 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                     getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                     stage1.out.data_to_stage2.pc,
+`endif
+                                     stage1.out.data_to_stage2.instr, rg_cur_priv);
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage1_FENCE_I", mcycle);
    endrule
@@ -1230,13 +1292,16 @@ module mkCPU (CPU_IFC);
       rg_handler <= False;
 `endif
 
-      fa_start_ifetch (rg_next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                                rg_next_pcc
+                                              , rg_next_ddc
+`else
+                                                rg_next_pc
+`endif
+                                              , rg_cur_priv
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                                              , rg_pcc
-                                              , rg_ddc
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1256,10 +1321,11 @@ module mkCPU (CPU_IFC);
 			 && (stage1.out.control == CONTROL_FENCE));
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_FENCE", mcycle);
 
-      rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
-      rg_pcc <= cast(stage1.out.next_pcc);
-      rg_ddc <= cast(stage1.out.next_ddc);
+      rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`else
+      rg_next_pc <= stage1.out.next_pc;
 `endif
       near_mem.server_fence.request.put (?);
       rg_state <= CPU_FENCE;
@@ -1274,7 +1340,13 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                     getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                     stage1.out.data_to_stage2.pc,
+`endif
+                                     stage1.out.data_to_stage2.instr, rg_cur_priv);
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage1_FENCE", mcycle);
    endrule
@@ -1305,13 +1377,16 @@ module mkCPU (CPU_IFC);
       rg_handler <= False;
 `endif
 
-      fa_start_ifetch (rg_next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                                rg_next_pcc
+                                              , rg_next_ddc
+`else
+                                                rg_next_pc
+`endif
+                                              , rg_cur_priv
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                                              , rg_pcc
-                                              , rg_ddc
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1339,10 +1414,11 @@ module mkCPU (CPU_IFC);
 			      && (stage1.out.control == CONTROL_SFENCE_VMA));
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_SFENCE_VMA", mcycle);
 
-      rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
-      rg_pcc <= cast(stage1.out.next_pcc);
-      rg_ddc <= cast(stage1.out.next_ddc);
+      rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`else
+      rg_next_pc <= stage1.out.next_pc;
 `endif
       // Tell Near_Mem to do its SFENCE_VMA
       near_mem.sfence_vma;
@@ -1358,7 +1434,13 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                    getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                    stage1.out.data_to_stage2.pc,
+`endif
+                                    stage1.out.data_to_stage2.instr, rg_cur_priv);
       if (cur_verbosity > 1)
 	 $display ("%0d: CPU.rl_stage1_SFENCE_VMA", mcycle);
    endrule: rl_stage1_SFENCE_VMA
@@ -1387,13 +1469,16 @@ module mkCPU (CPU_IFC);
       rg_handler <= False;
 `endif
 
-      fa_start_ifetch (rg_next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                                rg_next_pcc
+                                              , rg_next_ddc
+`else
+                                                rg_next_pc
+`endif
+                                              , rg_cur_priv
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                                              , rg_pcc
-                                              , rg_ddc
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1413,10 +1498,11 @@ module mkCPU (CPU_IFC);
 		       && (stage1.out.control == CONTROL_WFI));
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_WFI", mcycle);
 
-      rg_next_pc <= stage1.out.next_pc;
 `ifdef ISA_CHERI
-      rg_pcc <= cast(stage1.out.next_pcc);
-      rg_ddc <= cast(stage1.out.next_ddc);
+      rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`else
+      rg_next_pc <= stage1.out.next_pc;
 `endif
       rg_state   <= CPU_WFI_PAUSED;
 
@@ -1430,7 +1516,13 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, stage1.out.data_to_stage2.pc, stage1.out.data_to_stage2.instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                     getPC(stage1.out.data_to_stage2.pcc),
+`else
+                                     stage1.out.data_to_stage2.pc,
+`endif
+                                     stage1.out.data_to_stage2.instr, rg_cur_priv);
       if (cur_verbosity > 1)
 	 $display ("    CPU.rl_stage1_WFI");
    endrule: rl_stage1_WFI
@@ -1462,13 +1554,16 @@ module mkCPU (CPU_IFC);
       rg_handler <= False;
 `endif
 
-      fa_start_ifetch (rg_next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                                rg_next_pcc
+                                              , rg_next_ddc
+`else
+                                                rg_next_pc
+`endif
+                                              , rg_cur_priv
 `ifdef RVFI_DII
                                               , stage1.out.data_to_stage2.instr_seq + 1
-`endif
-`ifdef ISA_CHERI
-                                              , rg_pcc
-                                              , rg_ddc
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1502,19 +1597,26 @@ module mkCPU (CPU_IFC);
 			    && (! break_into_Debug_Mode)));
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_trap", mcycle);
 
-      let epc      = stage1.out.trap_info.epc;
       let exc_code = stage1.out.trap_info.exc_code;
 `ifdef ISA_CHERI
-      let epcc_top = stage1.out.trap_info.epcc_top;
+      let epcc = stage1.out.trap_info.epcc;
+      let epc  = getPC(epcc);
+      let eddc = stage1.out.trap_info.eddc;
       let cheri_exc_code = stage1.out.trap_info.cheri_exc_code;
       let cheri_exc_reg  = stage1.out.trap_info.cheri_exc_reg;
+`else
+      let epc      = stage1.out.trap_info.epc;
 `endif
       let tval     = stage1.out.trap_info.tval;
       let instr    = stage1.out.data_to_stage2.instr;
 
       // Take trap, save trap information for next phase
       let trap_info <- csr_regfile.csr_trap_actions (rg_cur_priv, // from priv
-						     cast(setOffset(epcc_top, epc).value),
+`ifdef ISA_CHERI
+						     epcc,
+`else
+                 epc,
+`endif
 						     False,       // non-maskable interrupt
 						     False,       // interrupt_req
 `ifdef ISA_CHERI
@@ -1525,8 +1627,9 @@ module mkCPU (CPU_IFC);
 						     tval);
 
 `ifdef ISA_CHERI
-      let next_pcc   = trap_info.pcc;
-      let next_pc    = getOffset(next_pcc);
+      PCC_T next_pcc = fromCapReg(trap_info.pcc);
+      let next_pc    = getPC(next_pcc);
+      let next_ddc   = eddc;
 `else
       let next_pc    = trap_info.pc;
 `endif
@@ -1536,7 +1639,12 @@ module mkCPU (CPU_IFC);
 
       // Save new privilege and pc for ifetch
       rg_cur_priv <= new_priv;
+`ifdef ISA_CHERI
+      rg_next_pcc <= next_pcc;
+      rg_next_ddc <= next_ddc;
+`else
       rg_next_pc  <= next_pc;
+`endif
 
       // Note old MSTATUS.MXR and SSTATUS.SUM for initiating FETCH in next phase
       rg_mstatus_MXR <= mstatus [19];
@@ -1548,9 +1656,6 @@ module mkCPU (CPU_IFC);
 
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
-`endif
-`ifdef ISA_CHERI
-      rg_pcc <= cast(next_pcc);
 `endif
       rg_state <= CPU_SPLIT_FETCH;
 
@@ -1590,10 +1695,22 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Debug
-      fa_emit_instr_trace (minstret, epc, instr, rg_cur_priv);
+      fa_emit_instr_trace (minstret,
+`ifdef ISA_CHERI
+                                     getPC(epcc),
+`else
+                                     epc,
+`endif
+                                           instr, rg_cur_priv);
       if (cur_verbosity != 0) begin
 	 $display ("%0d: CPU.rl_stage1_trap: priv:%0d  mcause:0x%0h  epc:0x%0h",
-		   mcycle, rg_cur_priv, mcause, epc);
+		   mcycle, rg_cur_priv, mcause,
+`ifdef ISA_CHERI
+                                    getPC(epcc)
+`else
+                                    epc
+`endif
+            );
 	 $display ("    tval:0x%0h  new pc:0x%0h  new mstatus:0x%0h", tval, next_pc, new_mstatus);
       end
    endrule : rl_stage1_trap
@@ -1605,13 +1722,16 @@ module mkCPU (CPU_IFC);
    // paths from stage2 and stage3 status to IFetch
 
    rule rl_trap_fetch (rg_state == CPU_SPLIT_FETCH);
-      fa_start_ifetch (rg_next_pc, rg_cur_priv
+      fa_start_ifetch (
+`ifdef ISA_CHERI
+                                                rg_next_pcc
+                                              , rg_next_ddc
+`else
+                                                rg_next_pc
+`endif
+                                              , rg_cur_priv
 `ifdef RVFI_DII
                                               , rg_next_seq
-`endif
-`ifdef ISA_CHERI
-                                              , rg_pcc
-                                              , rg_ddc
 `endif
                                               , rg_mstatus_MXR, rg_sstatus_SUM);
       stage1.set_full (True);
@@ -1633,7 +1753,11 @@ module mkCPU (CPU_IFC);
 				     && break_into_Debug_Mode);
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_trap_BREAK_to_Debug_Mode", mcycle);
 
+`ifdef ISA_CHERI
+      let pc    = getPC(stage1.out.data_to_stage2.pcc);
+`else
       let pc    = stage1.out.data_to_stage2.pc;
+`endif
       let instr = stage1.out.data_to_stage2.instr;
 
       $display ("%0d: CPU.rl_trap_BREAK_to_Debug_Mode: PC 0x%08h instr 0x%08h", mcycle, pc, instr);
@@ -1688,12 +1812,15 @@ module mkCPU (CPU_IFC);
 
       let instr = stage1.out.data_to_stage2.instr;
 
-      WordXL   epc      = stage1.out.data_to_stage2.pc;
       Exc_Code exc_code = 0;    // "Unknown cause" for NMI
 `ifdef ISA_CHERI
       let epcc = stage1.out.data_to_stage2.pcc;
+      let epc  = getPC(epcc);
+      let eddc = stage1.out.data_to_stage2.ddc;
       let cheri_exc_code = 0;
       let cheri_exc_reg  = 0;
+`else
+      WordXL   epc      = stage1.out.data_to_stage2.pc;
 `endif
 
       if (csr_regfile.interrupt_pending (rg_cur_priv) matches tagged Valid .ec
@@ -1716,8 +1843,9 @@ module mkCPU (CPU_IFC);
 						     exc_code,
 						     0);             // tval
 `ifdef ISA_CHERI
-      let next_pcc      = trap_info.pcc;
-      let next_pc       = getOffset(next_pcc);
+      PCC_T next_pcc    = fromCapReg(trap_info.pcc);
+      let next_pc       = getPC(next_pcc);
+      let next_ddc      = eddc;
 `else
       let next_pc       = trap_info.pc;
 `endif
@@ -1726,7 +1854,12 @@ module mkCPU (CPU_IFC);
       let new_priv      = trap_info.priv;
 
       // Prepare the next_pc into stage1, for enq as the interrupt is taken
+`ifdef ISA_CHERI
+      rg_next_pcc <= next_pcc;
+      rg_next_ddc <= next_ddc;
+`else
       rg_next_pc  <= next_pc;
+`endif
 
       // Save new privilege
       rg_cur_priv <= new_priv;
@@ -1736,9 +1869,6 @@ module mkCPU (CPU_IFC);
 
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
-`endif
-`ifdef ISA_CHERI
-      rg_pcc <= cast(next_pcc);
 `endif
       rg_state <= CPU_SPLIT_FETCH;
 
@@ -1769,7 +1899,11 @@ module mkCPU (CPU_IFC);
 			&& stage1_stop);
       if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_stop", mcycle);
 
+`ifdef ISA_CHERI
+      let pc    = getPC(stage1.out.data_to_stage2.pcc);    // We'll retry this instruction on 'continue'
+`else
       let pc    = stage1.out.data_to_stage2.pc;    // We'll retry this instruction on 'continue'
+`endif
       let instr = stage1.out.data_to_stage2.instr;
 
       // Report CPI only stop-req, but not on step-req (where it's not very useful)

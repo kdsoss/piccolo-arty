@@ -160,16 +160,49 @@ function Tuple2 #(Bool, WordFL) fn_fpr_bypass (FBypass bypass, RegName rd, WordF
 endfunction
 `endif
 
+`ifdef ISA_CHERI
+typeclass PCC#(type t);
+    function Exact#(t) setPC (t oldPCC, Addr newPC);
+    function Addr getPC (t pcc);
+    function Bool inBounds (t pcc);
+    function t fromCapReg(CapReg pcc);
+    function CapReg toCapReg(t pcc);
+endtypeclass
+
+instance PCC#(CapPipe);
+    function Exact#(CapPipe) setPC (CapPipe oldPCC, Addr newPC);
+        return setOffset(oldPCC, newPC);
+    endfunction
+    function Addr getPC (CapPipe pcc);
+        return getOffset(pcc);
+    endfunction
+    function Bool inBounds (CapPipe pcc);
+        return isInBounds(pcc, False);
+    endfunction
+    function CapPipe fromCapReg(CapReg pcc);
+        return cast(pcc);
+    endfunction
+    function CapReg toCapReg(CapPipe pcc);
+        return cast(pcc);
+    endfunction
+endinstance
+
+typedef CapPipe PCC_T;
+
+`endif
+
 // ================================================================
 // Trap information
 
 typedef struct {
 `ifdef ISA_CHERI
-   CapPipe epcc_top;
+   PCC_T epcc;
+   CapPipe eddc;
    CHERI_Exc_Code cheri_exc_code;
    Bit#(6) cheri_exc_reg;
-`endif
+`else
    Addr      epc;
+`endif
    Exc_Code  exc_code;
    Addr      tval;
    } Trap_Info_Pipe
@@ -202,11 +235,12 @@ typedef struct {
    Trap_Info_Pipe              trap_info;
 
    // feedback
-   WordXL                 next_pc;
 
 `ifdef ISA_CHERI
    CapPipe                next_pcc;
    CapPipe                next_ddc;
+`else
+   WordXL                 next_pc;
 `endif
 
    // feedforward data
@@ -220,17 +254,41 @@ instance FShow #(Output_Stage1);
       if (x.ostatus == OSTATUS_EMPTY)
 	 fmt = fmt + $format (" EMPTY");
       else if (x.ostatus == OSTATUS_BUSY)
-	 fmt = fmt + $format (" BUSY pc:%h", x.data_to_stage2.pc);
+	 fmt = fmt + $format (" BUSY pc:%h",
+`ifdef ISA_CHERI
+                                      getPC(x.data_to_stage2.pcc)
+`else
+                                      x.data_to_stage2.pc
+`endif
+                       );
       else begin
 	 if (x.ostatus == OSTATUS_NONPIPE) begin
-	    fmt = fmt + $format (" NONPIPE: pc:%h", x.data_to_stage2.pc);
+	    fmt = fmt + $format (" NONPIPE: pc:%h",
+`ifdef ISA_CHERI
+                                             getPC(x.data_to_stage2.pcc)
+`else
+                                             x.data_to_stage2.pc
+`endif
+                          );
 	    fmt = fmt + $format (" ", fshow (x.control));
 	    fmt = fmt + $format (" ", fshow (x.trap_info));
 	 end
 	 else
-	    fmt = fmt + $format (" PIPE: ", fshow (x.control), " ", fshow (x.data_to_stage2));
+	    fmt = fmt + $format (" PIPE: ", fshow (x.control), " ", fshow (
+`ifdef ISA_CHERI
+                                      getPC(x.data_to_stage2.pcc)
+`else
+                                      x.data_to_stage2.pc
+`endif
+                                                                    ));
 
-	 fmt = fmt + $format (" next_pc 0x%08h", x.next_pc);
+	 fmt = fmt + $format (" next_pc 0x%08h",
+`ifdef ISA_CHERI
+                                          getPC(x.next_pcc)
+`else
+                                          x.next_pc
+`endif
+                       );
       end
       return fmt;
    endfunction
@@ -270,9 +328,11 @@ deriving (Eq, Bits, FShow);
 
 typedef struct {
    Priv_Mode  priv;
-   Addr       pc;
 `ifdef ISA_CHERI
-   CapPipe    pcc;
+   PCC_T      pcc;
+   CapPipe    ddc;
+`else
+   Addr       pc;
 `endif
    Instr      instr;    // For debugging. Just funct3, funct7 are enough for
                         // functionality.
@@ -373,7 +433,13 @@ typedef struct {
 
 instance FShow #(Data_Stage1_to_Stage2);
    function Fmt fshow (Data_Stage1_to_Stage2 x);
-      Fmt fmt =   $format ("data_to_Stage 2 {pc:%h  instr:%h  priv:%0d\n", x.pc, x.instr, x.priv);
+      Fmt fmt =   $format ("data_to_Stage 2 {pc:%h  instr:%h  priv:%0d\n",
+`ifdef ISA_CHERI
+                                                                           getPC(x.pcc)
+`else
+                                                                           x.pc
+`endif
+                                                                         , x.instr, x.priv);
       fmt = fmt + $format ("            op_stage2:", fshow (x.op_stage2), "  rd:%0d\n", x.rd);
 `ifdef ISA_F
       fmt = fmt + $format ("            addr:%h  val1:%h  val2:%h  val3:%h}",

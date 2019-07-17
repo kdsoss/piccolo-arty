@@ -32,6 +32,8 @@ mkCPU_Stage1;
 // BSV library imports
 
 import FIFOF        :: *;
+import FIFO         :: *;
+import SpecialFIFOs :: *;
 import GetPut       :: *;
 import ClientServer :: *;
 import ConfigReg    :: *;
@@ -79,13 +81,16 @@ interface CPU_Stage1_IFC;
 
    // ---- Input
    (* always_ready *)
-   method Action enq (Addr next_pc, Priv_Mode priv
+   method Action enq (
+`ifdef ISA_CHERI
+                                                    PCC_T pcc
+                                                  , CapPipe ddc
+`else
+                                                    Addr next_pc
+`endif
+                                                  , Priv_Mode priv
 `ifdef RVFI_DII
                                                   , UInt#(SEQ_LEN) seq_req
-`endif
-`ifdef ISA_CHERI
-                                                  , CapReg pcc
-                                                  , CapReg ddc
 `endif
                                                   , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
 
@@ -116,10 +121,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    Reg #(Bool) rg_full  <- mkReg (False);
 
 `ifdef ISA_CHERI
-   Reg #(CapReg) rg_pcc <- mkRegU;
-   Reg #(CapReg) rg_ddc <- mkRegU; //TODO should this be state here?
-   CapPipe rg_pcc_unpacked = cast(rg_pcc);
-   CapPipe rg_ddc_unpacked = cast(rg_ddc);
+   Reg #(PCC_T) rg_pcc <- mkRegU;
+   Reg #(CapPipe) rg_ddc <- mkRegU;
+   let f_commit <- mkPipelineFIFO;
 `endif
 
 
@@ -135,11 +139,20 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       f_reset_rsps.enq (?);
    endrule
 
+   rule rl_commit(f_commit.first);
+      imem.commit;
+      f_commit.deq;
+   endrule
+
+   rule rl_noCommit(!f_commit.first);
+      f_commit.deq;
+   endrule
+
    // ----------------
    // ALU
 
 `ifdef ISA_CHERI
-   let   pc             = imem.pc - getBase(rg_pcc_unpacked); //TODO latch pc instead?
+   let   pc             = getPC(rg_pcc);
 `else
    let   pc             = imem.pc;
 `endif
@@ -211,8 +224,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
         cur_priv        : cur_priv
       , pc              : pc
 `ifdef ISA_CHERI
-      , pcc             : rg_pcc_unpacked
-      , ddc             : rg_ddc_unpacked
+      , pcc             : rg_pcc
+      , ddc             : rg_ddc
 `endif
       , is_i32_not_i16  : imem.is_i32_not_i16
       , instr           : instr
@@ -248,6 +261,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		 ? alu_outputs.addr
 		 : fall_through_pc);
 
+   let next_pcc_local = setPC(alu_outputs.pcc, next_pc_local).value; //TODO unrepresentable?
+   let next_ddc_local = alu_outputs.ddc;
+
 `ifdef RVFI
    CapReg tmp_val2 = cast(alu_outputs.cap_val2);
    CapMem cap_val2 = cast(tmp_val2);
@@ -262,8 +278,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                        rs1_data:       rs1_val_bypassed,
                        rs2_data:       rs2_val_bypassed,
 `endif
-                       pc_rdata:       getBase(rg_pcc_unpacked) + pc,
-                       pc_wdata:       getBase(alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked) + next_pc_local,
+                       pc_rdata:       getPC(rg_pcc),
+                       pc_wdata:       getPC(next_pcc_local),
                        mem_wdata:      truncate(cap_val2),
                        rd_addr:        alu_outputs.rd,
                        rd_alu:         (alu_outputs.op_stage2 == OP_Stage2_ALU),
@@ -273,9 +289,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
 
    let data_to_stage2 = Data_Stage1_to_Stage2 {
-        pc              : pc
 `ifdef ISA_CHERI
-      , pcc             : alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked
+        pcc             : rg_pcc
+      , ddc             : rg_ddc
+`else
+        pc              : pc
 `endif
       , instr           : instr
 `ifdef RVFI_DII
@@ -339,12 +357,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       else if (imem.exc) begin
 	 output_stage1.ostatus   = OSTATUS_NONPIPE;
 	 output_stage1.control   = CONTROL_TRAP;
-	 output_stage1.trap_info = Trap_Info_Pipe {epc:      pc,
+	 output_stage1.trap_info = Trap_Info_Pipe {
 					      exc_code: imem.exc_code,
 `ifdef ISA_CHERI
                 cheri_exc_code : imem.exc_code == exc_code_CHERI ? exc_code_CHERI_Length : exc_code_CHERI_None, //TODO
                 cheri_exc_reg : imem.exc_code == exc_code_CHERI ? {1, scr_addr_PCC} : 0,
-                epcc_top: alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked,
+                epcc: rg_pcc,
+                eddc: rg_ddc,
+`else
+                epc: pc,
 `endif
 					      tval:     imem.tval};
 	 output_stage1.data_to_stage2 = data_to_stage2;
@@ -373,22 +394,26 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 else if (alu_outputs.exc_code == exc_code_BREAKPOINT)
 	    tval = pc;                                         // The faulting virtual address
 
-	 let trap_info = Trap_Info_Pipe {epc:      pc,
+	 let trap_info = Trap_Info_Pipe {
 				    exc_code: alu_outputs.exc_code,
 `ifdef ISA_CHERI
             cheri_exc_code: alu_outputs.cheri_exc_code,
             cheri_exc_reg: alu_outputs.cheri_exc_reg,
-            epcc_top: alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked,
+            epcc: rg_pcc,
+            eddc: rg_ddc,
+`else
+            epc:  pc,
 `endif
-				    tval:     tval};
+				    tval: tval};
 
 	 output_stage1.ostatus        = ostatus;
 	 output_stage1.control        = alu_outputs.control;
 	 output_stage1.trap_info      = trap_info;
-	 output_stage1.next_pc        = next_pc_local;
 `ifdef ISA_CHERI
-     output_stage1.next_pcc       = alu_outputs.pcc_changed ? alu_outputs.pcc : rg_pcc_unpacked;
-     output_stage1.next_ddc       = alu_outputs.ddc_changed ? alu_outputs.ddc : rg_ddc_unpacked;
+   output_stage1.next_pcc       = next_pcc_local;
+   output_stage1.next_ddc       = next_ddc_local;
+`else
+	 output_stage1.next_pc        = next_pc_local;
 `endif
 	 output_stage1.data_to_stage2 = data_to_stage2;
 
@@ -412,22 +437,21 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    endmethod
 
    // ---- Input
-   method Action enq (Addr next_pc, Priv_Mode priv
+   method Action enq (
+`ifdef ISA_CHERI
+                                                    PCC_T next_pcc
+                                                  , CapPipe next_ddc
+`else
+                                                    Addr next_pc
+`endif
+                                                  , Priv_Mode priv
 `ifdef RVFI_DII
                                                   , UInt#(SEQ_LEN) seq_req
 `endif
-`ifdef ISA_CHERI
-                                                  , CapReg pcc
-                                                  , CapReg ddc
-`endif
                                                   , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
-      //TODO fetch bounds check
-`ifdef ISA_CHERI
-      CapPipe pccPipe = cast(pcc);
-`endif
       imem.req (f3_LW,
 `ifdef ISA_CHERI
-                      getBase(pccPipe) + next_pc, //TODO cast should be unnecessary.
+                      getPC(next_pcc),
 `else
                       next_pc,
 `endif
@@ -438,12 +462,20 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                                                                              );
 
 `ifdef ISA_CHERI
-      rg_pcc <= pcc;
-      rg_ddc <= ddc;
+      rg_pcc <= next_pcc;
+      f_commit.enq(inBounds(next_pcc));
+      rg_ddc <= next_ddc;
 `endif
+   $display("ddc: ", fshow(rg_ddc));
 
       if (verbosity > 1)
-	 $display ("    CPU_Stage1.enq: 0x%08h", next_pc);
+	 $display ("    CPU_Stage1.enq: 0x%08h",
+`ifdef ISA_CHERI
+                                          getPC(next_pcc)
+`else
+                                          next_pc
+`endif
+            );
    endmethod
 
    method Action set_full (Bool full);

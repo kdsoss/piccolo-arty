@@ -121,9 +121,7 @@ typedef struct {
 `ifdef ISA_CHERI
    Bool    mem_allow_cap; //Whether load/store is allowed to preserve cap tag
 
-   Bool    pcc_changed;
    CapPipe pcc;
-   Bool    ddc_changed;
    CapPipe ddc;
 `endif
 
@@ -186,22 +184,20 @@ ALU_Outputs alu_outputs_base
 	       val1_cap_not_int: False,
 	       val2_cap_not_int: False,
 
-           pcc_changed : False,
-           pcc : ?,
-           ddc_changed : False,
-           ddc : ?,
+         pcc : ?,
+         ddc : ?,
 
-           check_enable       : False,
-           check_authority    : ?,
-           check_address_low  : ?,
-           check_address_high : ?,
-           check_inclusive    : ?,
+         check_enable       : False,
+         check_authority    : ?,
+         check_address_low  : ?,
+         check_address_high : ?,
+         check_inclusive    : ?,
 
-           mem_allow_cap      : False,
+         mem_allow_cap      : False,
 `endif
 
-           mem_width_code     : ?,
-           mem_unsigned       : False,
+         mem_width_code     : ?,
+         mem_unsigned       : False,
 
 	       trace_data: ?};
 
@@ -1229,10 +1225,6 @@ endfunction
 
 `ifdef ISA_CHERI
 
-// ----------------------------------------------------------------
-// CJALR
-//TODO remove duplication of some calculuations
-
 function ALU_Outputs fv_CHERI_exc(ALU_Outputs outputs, Bit#(6) regIdx, CHERI_Exc_Code exc_code);
   outputs.exc_code = exc_code_CHERI;
   outputs.cheri_exc_code = exc_code;
@@ -1270,7 +1262,6 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    end else begin
        alu_outputs.addr      = next_pc;
        alu_outputs.pcc       = rs1_val;
-       alu_outputs.pcc_changed = True;
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
@@ -1741,6 +1732,11 @@ endfunction
 
 function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    let alu_outputs = alu_outputs_base;
+
+`ifdef ISA_CHERI
+   alu_outputs.pcc = inputs.pcc;
+   alu_outputs.ddc = inputs.ddc;
+`endif
 
    if (inputs.decoded_instr.opcode == op_BRANCH)
       alu_outputs = fv_BRANCH (inputs);
