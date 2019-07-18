@@ -123,6 +123,9 @@ typedef struct {
 
    CapPipe pcc;
    CapPipe ddc;
+
+   Bool pcc_written;
+   Bool ddc_written;
 `endif
 
 `ifdef ISA_D
@@ -186,6 +189,9 @@ ALU_Outputs alu_outputs_base
 
          pcc : ?,
          ddc : ?,
+
+         pcc_written : False,
+         ddc_written : False,
 
          check_enable       : False,
          check_authority    : ?,
@@ -1262,6 +1268,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    end else begin
        alu_outputs.addr      = next_pc;
        alu_outputs.pcc       = rs1_val;
+       alu_outputs.pcc_written = True;
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
@@ -1733,11 +1740,6 @@ endfunction
 function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    let alu_outputs = alu_outputs_base;
 
-`ifdef ISA_CHERI
-   alu_outputs.pcc = inputs.pcc;
-   alu_outputs.ddc = inputs.ddc;
-`endif
-
    if (inputs.decoded_instr.opcode == op_BRANCH)
       alu_outputs = fv_BRANCH (inputs);
 
@@ -1870,6 +1872,11 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 					     ?,
 					     ?);
    end
+
+`ifdef ISA_CHERI
+   if (!alu_outputs.pcc_written) alu_outputs.pcc = inputs.pcc;
+   if (!alu_outputs.ddc_written) alu_outputs.ddc = inputs.ddc;
+`endif
 
    return alu_outputs;
 endfunction
