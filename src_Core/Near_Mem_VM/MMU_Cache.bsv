@@ -405,7 +405,7 @@ function Word128_Set fn_update_word128_set (Word128_Set   old_word128_set,
    Bit#(Cache_Cap_Tag_Width) tags = tpl_1(old_word128);
 
    //We assume that caps are the widest write width on the processor
-   let overwritten_idx = addr >> valueOf(TDiv#(CLEN,8));
+   let overwritten_idx = addr_lsbs >> valueOf(TLog#(TDiv#(CLEN,8)));
    tags[overwritten_idx] = width_code == w_SIZE_CAP ? pack(tag) : 0;
 `else
    let tags = 0;
