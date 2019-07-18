@@ -734,11 +734,10 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
        alu_outputs.val1 = getAddr(result.value);
        alu_outputs.val1_cap_not_int = result.exact;
    end else
-`else
+`endif
    begin
        alu_outputs.val1      = rd_val;
    end
-`endif
 `endif
 
    // Normal trace output (if no trap)
