@@ -466,7 +466,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       f_commit.enq(inBounds(next_pcc));
       rg_ddc <= next_ddc;
 `endif
-   $display("ddc: ", fshow(rg_ddc));
 
       if (verbosity > 1)
 	 $display ("    CPU_Stage1.enq: 0x%08h",

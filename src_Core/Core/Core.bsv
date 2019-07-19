@@ -95,7 +95,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
 `ifdef ISA_CHERI
    // AXI4 tagController
-   let tagController <- mkDbgTagControllerAXI(Valid("tagcontroller"));
+   let tagController <- mkTagControllerAXI;
 `else
    let shim <- mkAXI4Shim;
    let ug_shim <- toUnguarded_AXI4_Master(extendIDFields(shim.master, 1'b0));
