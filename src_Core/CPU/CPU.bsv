@@ -874,6 +874,92 @@ module mkCPU (CPU_IFC);
 		   mcause, epc, tval, next_pc, new_mstatus);
    endrule : rl_stage2_nonpipe
 
+`ifdef ISA_CHERI
+   // ================================================================
+   // Stage1: nonpipe special: SCR_W
+
+   rule rl_stage1_SCR_W (   (rg_state == CPU_RUNNING)
+			  && (! halting)
+			  && (stage3.out.ostatus == OSTATUS_EMPTY)
+			  && (stage2.out.ostatus == OSTATUS_EMPTY)
+			  && (stage1.out.ostatus == OSTATUS_NONPIPE)
+			  && (stage1.out.control == CONTROL_SCR_W));
+
+      if (cur_verbosity > 1) $display ("%0d: CPU.rl_stage1_SCR_W", mcycle);
+
+      let instr    = stage1.out.data_to_stage2.instr;
+      let scr_addr = instr_rs2    (instr);
+      let rs1      = instr_rs1    (instr);
+      let rd       = instr_rd     (instr);
+
+      let stage2_asr = getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs;
+      let stage2_val1= stage1.out.data_to_stage2.val1;
+
+      let rs1_val  = (stage2_val1);
+
+      Bool read_not_write = rs1 == 0;
+      Bool permitted = csr_regfile.access_permitted_scr (rg_cur_priv, scr_addr, read_not_write, stage2_asr);
+
+      if (! permitted) begin
+	 rg_state <= CPU_TRAP;
+
+	 // Debug
+	 fa_emit_instr_trace (minstret, getPC(stage1.out.data_to_stage2.pcc), instr, rg_cur_priv);
+	 if (cur_verbosity > 1) begin
+	    $display ("    rl_stage1_SCR_W: Trap on SCR permissions: Rs1 %0d Rs1_val 0x%0h csr 0x%0h Rd %0d",
+		      rs1, rs1_val, scr_addr, rd);
+	 end
+      end
+      else begin
+	 // Read the SCR only if Rd is not 0
+	 CapReg scr_val = ?;
+	 if (rd != 0) begin
+	    let m_scr_val = csr_regfile.read_scr (scr_addr);
+	    scr_val   = fromMaybe (?, m_scr_val);
+	 end
+
+	 // Writeback to GPR file
+	 let new_rd_val = scr_val;
+
+	 gpr_regfile.write_rd (rd, cast(new_rd_val));
+
+	 // Writeback to SCR file
+	 let new_scr_val <- csr_regfile.mav_scr_write (scr_addr, cast(rs1_val));
+
+	 // Accounting
+	 csr_regfile.csr_minstret_incr;
+
+	 // Restart the pipe
+	 rg_state <= CPU_CSRRX_RESTART;
+
+`ifdef INCLUDE_TANDEM_VERIF
+	 // Trace data
+	 let trace_data = stage1.out.data_to_stage2.trace_data;
+	 trace_data.op = TRACE_CSRRX;
+	 // trace_data.pc, instr_sz and instr    should already be set
+	 trace_data.rd = rd;
+	 trace_data.word1 = new_rd_val;
+	 trace_data.word2 = 1;                        // whether we've written csr or not
+	 trace_data.word3 = zeroExtend (csr_addr);
+	 trace_data.word4 = new_csr_val;
+	 f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
+`endif
+
+	 // Debug
+	 fa_emit_instr_trace (minstret, getPC(stage1.out.data_to_stage2.pcc), instr, rg_cur_priv);
+	 if (cur_verbosity > 1) begin
+	    $display ("    S1: write SRC_W Rs1 %0d Rs1_val 0x%0h scr 0x%0h scr_val 0x%0h Rd %0d",
+		      rs1, rs1_val, scr_addr, scr_val, rd);
+	 end
+      end
+   endrule: rl_stage1_SCR_W
+`endif
+
    // ================================================================
    // Stage1: nonpipe special: CSRRW and CSRRWI
 
@@ -909,7 +995,7 @@ module mkCPU (CPU_IFC);
 		      : extend (rs1));                    // CSRRWI
 
       Bool read_not_write = False;    // CSRRW always writes the CSR
-      Bool permitted = csr_regfile.access_permitted_1 (rg_cur_priv, csr_addr, read_not_write);
+      Bool permitted = csr_regfile.access_permitted_1 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs);
 
       if (! permitted) begin
 	 rg_state <= CPU_TRAP;
@@ -1021,7 +1107,7 @@ module mkCPU (CPU_IFC);
 		      : extend (rs1));                   // CSRRSI, CSRRCI
 
       Bool read_not_write = (rs1_val == 0);    // CSRR_S_or_C only reads, does not write CSR, if rs1_val == 0
-      Bool permitted = csr_regfile.access_permitted_2 (rg_cur_priv, csr_addr, read_not_write);
+      Bool permitted = csr_regfile.access_permitted_2 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs);
 
       if (! permitted) begin
 	 rg_state <= CPU_TRAP;
@@ -1703,13 +1789,14 @@ module mkCPU (CPU_IFC);
 `endif
                                            instr, rg_cur_priv);
       if (cur_verbosity != 0) begin
-	 $display ("%0d: CPU.rl_stage1_trap: priv:%0d  mcause:0x%0h  epc:0x%0h",
+	 $display ("%0d: CPU.rl_stage1_trap: priv:%0d  mcause:0x%0h  epc:0x%0h, cheri_exc_code: %0h",
 		   mcycle, rg_cur_priv, mcause,
 `ifdef ISA_CHERI
                                     getPC(epcc)
 `else
                                     epc
 `endif
+, stage1.out.trap_info.cheri_exc_code
             );
 	 $display ("    tval:0x%0h  new pc:0x%0h  new mstatus:0x%0h", tval, next_pc, new_mstatus);
       end

@@ -215,6 +215,9 @@ deriving (Bits, FShow);
 typedef enum {  CONTROL_STRAIGHT
 	      , CONTROL_BRANCH
 	      , CONTROL_CSRR_W
+`ifdef ISA_CHERI
+	      , CONTROL_SCR_W
+`endif
 	      , CONTROL_CSRR_S_or_C
 	      , CONTROL_FENCE
 	      , CONTROL_FENCE_I

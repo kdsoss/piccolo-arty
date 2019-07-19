@@ -67,6 +67,10 @@ interface CSR_RegFile_IFC;
    method Maybe #(Word) read_csr (CSR_Addr csr_addr);
    (* always_ready *)
    method Maybe #(Word) read_csr_port2 (CSR_Addr csr_addr);
+`ifdef ISA_CHERI
+   (* always_ready *)
+   method Maybe #(CapReg) read_scr (SCR_Addr scr_addr);
+`endif
 
    // CSR read (w. side effect)
    (* always_ready *)
@@ -75,6 +79,12 @@ interface CSR_RegFile_IFC;
    // CSR write (returning new value)
    (* always_ready *)
    method ActionValue #(WordXL) mav_csr_write (CSR_Addr csr_addr, WordXL word);
+
+`ifdef ISA_CHERI
+   // SCR write (returning new value)
+   (* always_ready *)
+   method ActionValue #(CapReg) mav_scr_write (SCR_Addr scr_addr, CapReg cap);
+`endif
 
 `ifdef ISA_F
    // Read FRM
@@ -158,9 +168,13 @@ interface CSR_RegFile_IFC;
 
    // Access permission
    (* always_ready *)
-   method Bool access_permitted_1 (Priv_Mode  priv, CSR_Addr  csr_addr, Bool  read_not_write);
+   method Bool access_permitted_1 (Priv_Mode  priv, CSR_Addr  csr_addr, Bool  read_not_write, Bool access_sys_regs);
    (* always_ready *)
-   method Bool access_permitted_2 (Priv_Mode  priv, CSR_Addr  csr_addr, Bool  read_not_write);
+   method Bool access_permitted_2 (Priv_Mode  priv, CSR_Addr  csr_addr, Bool  read_not_write, Bool access_sys_regs);
+`ifdef ISA_CHERI
+   (* always_ready *)
+   method Bool access_permitted_scr (Priv_Mode  priv, SCR_Addr  scr_addr, Bool  read_not_write, Bool access_sys_regs);
+`endif
 
    // Fault on reading counters?
    (* always_ready *)
@@ -627,6 +641,35 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       return result;
    endfunction: fv_csr_exists
 
+`ifdef ISA_CHERI
+   function Bool fv_scr_exists (SCR_Addr scr_addr);
+     let result =
+         scr_addr == scr_addr_MTCC ||
+         scr_addr == scr_addr_MTDC ||
+         scr_addr == scr_addr_MEPCC ||
+         scr_addr == scr_addr_MScratchC;
+
+     return result;
+   endfunction
+`endif
+
+`ifdef ISA_CHERI
+   function Maybe #(CapReg) fv_scr_read (SCR_Addr scr_addr);
+       Maybe #(CapReg) m_scr_value = tagged Invalid;
+
+       case (scr_addr)
+           //pcc and ddc handled externally
+
+           scr_addr_MTCC: m_scr_value = tagged Valid rg_mtcc;
+           scr_addr_MTDC: m_scr_value = tagged Valid rg_mtdc;
+           scr_addr_MScratchC: m_scr_value = tagged Valid rg_mscratchc;
+           scr_addr_MEPCC: m_scr_value = tagged Valid rg_mepcc;
+       endcase
+
+       return m_scr_value;
+   endfunction
+`endif
+
    // ----------------
    // CSR reads (no side effect)
    // Returns Invalid for invalid CSR addresses or access-mode violations
@@ -1020,8 +1063,48 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       endactionvalue
    endfunction: fav_csr_write
 
+`ifdef ISA_CHERI
+
+   // ----------------------------------------------------------------
+   // SCR writes
+
+   function ActionValue #(CapReg) fav_scr_write (SCR_Addr scr_addr, CapReg cap);
+      actionvalue
+	 Bool    success = True;
+	 CapReg  result  = nullCap;
+
+	    case (scr_addr)
+         scr_addr_MTCC: begin
+             rg_mtcc <= cap;
+             result = cap;
+         end
+         scr_addr_MTDC: begin
+             rg_mtdc <= cap;
+             result = cap;
+         end
+         scr_addr_MEPCC: begin
+             rg_mepcc <= cap;
+             result = cap;
+         end
+         scr_addr_MScratchC: begin
+             rg_mscratchc <= cap;
+             result = cap;
+         end
+	       default: success = False;
+	    endcase
+
+	 if ((! success) && (cfg_verbosity > 1))
+	    $display ("%0d: ERROR: SCR-write addr 0x%0h val ", fshow(cap), " not successful", rg_mcycle,
+		      scr_addr);
+
+	 return result;
+      endactionvalue
+   endfunction: fav_scr_write
+
+`endif
+
    // Access permission
-   function Bool fv_access_permitted (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write);
+   function Bool fv_access_permitted (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write, Bool access_sys_regs);
       Bool exists  = fv_csr_exists (csr_addr);    // Is this CSR implemented?
 
       Bool priv_ok = priv >= csr_addr [9:8];      // Accessible at current privilege?
@@ -1035,8 +1118,19 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
       Bool rw_ok = (read_not_write || (csr_addr [11:10] != 2'b11));
 
-      return (exists && priv_ok && (! tvm_fault) && rw_ok);
+      return (exists && priv_ok && (! tvm_fault) && rw_ok && access_sys_regs);
    endfunction: fv_access_permitted
+
+`ifdef ISA_CHERI
+   // Access permission
+   function Bool fv_access_permitted_scr (Priv_Mode  priv, SCR_Addr  scr_addr,  Bool read_not_write, Bool access_sys_regs);
+      Bool exists  = fv_scr_exists (scr_addr);    // Is this SCR implemented?
+
+      Bool priv_ok = priv == 3;
+
+      return (exists && access_sys_regs && priv_ok);
+   endfunction: fv_access_permitted_scr
+`endif
 
    // ================================================================
    // For debugging
@@ -1096,14 +1190,28 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       return fv_csr_read (csr_addr);
    endmethod
 
+`ifdef ISA_CHERI
+   method Maybe #(CapReg) read_scr (SCR_Addr scr_addr);
+      return fv_scr_read (scr_addr);
+   endmethod
+`endif
+
    // CSR read (w. side effect)
    method ActionValue #(Maybe #(Word)) mav_read_csr (CSR_Addr csr_addr);
       return fv_csr_read (csr_addr);
    endmethod
 
+`ifdef ISA_CHERI
    // CSR write
    method ActionValue #(WordXL) mav_csr_write (CSR_Addr csr_addr, WordXL word);
       let result <- fav_csr_write (csr_addr, word);
+      return result;
+   endmethod
+`endif
+
+   // SCR write
+   method ActionValue #(CapReg) mav_scr_write (SCR_Addr scr_addr, CapReg cap);
+      let result <- fav_scr_write (scr_addr, cap);
       return result;
    endmethod
 
@@ -1327,13 +1435,20 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       return rg_mcycle;
    endmethod
 
+`ifdef ISA_CHERI
    // Access permission
-   method Bool access_permitted_1 (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write);
-      return fv_access_permitted (priv, csr_addr, read_not_write);
+   method Bool access_permitted_scr (Priv_Mode  priv, SCR_Addr  scr_addr,  Bool read_not_write, Bool access_sys_regs);
+      return fv_access_permitted_scr (priv, scr_addr, read_not_write, access_sys_regs);
+   endmethod
+`endif
+
+   // Access permission
+   method Bool access_permitted_1 (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write, Bool access_sys_regs);
+      return fv_access_permitted (priv, csr_addr, read_not_write, access_sys_regs);
    endmethod
 
-   method Bool access_permitted_2 (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write);
-      return fv_access_permitted (priv, csr_addr, read_not_write);
+   method Bool access_permitted_2 (Priv_Mode  priv, CSR_Addr  csr_addr,  Bool read_not_write, Bool access_sys_regs);
+      return fv_access_permitted (priv, csr_addr, read_not_write, access_sys_regs);
    endmethod
 
    // Fault on reading counters?

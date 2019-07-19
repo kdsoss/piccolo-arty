@@ -102,7 +102,7 @@ SCR_Addr scr_addr_SEPCC = 15;
 
 SCR_Addr scr_addr_MTCC = 28;
 SCR_Addr scr_addr_MTDC = 29;
-SCR_Addr scr_addr_MScatchC = 30;
+SCR_Addr scr_addr_MScratchC = 30;
 SCR_Addr scr_addr_MEPCC = 31;
 
 function CapPipe update_scr_via_csr (CapPipe old_scr, Word new_csr);
