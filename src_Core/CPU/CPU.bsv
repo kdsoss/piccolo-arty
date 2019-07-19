@@ -2034,8 +2034,8 @@ module mkCPU (CPU_IFC);
       let dpc = csr_regfile.read_dpc;
       fa_restart (dpc
 `ifdef ISA_CHERI
-                  , almightyCap //TODO dpcc
-                  , almightyCap
+                  , rg_next_pcc
+                  , rg_next_ddc
 `endif
                   );
       $display ("%0d: CPU.rl_debug_run: restart at PC = 0x%0h", mcycle, dpc);
