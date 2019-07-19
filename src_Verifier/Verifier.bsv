@@ -116,7 +116,11 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
         rvfi_rs2_addr:  s1.rs2_addr,
         rvfi_rs1_data:  s1.rs1_data,
         rvfi_rs2_data:  s1.rs2_data,
+`ifdef ISA_CHERI
+        rvfi_pc_rdata:  getPC(data_s1_s2.pcc),
+`else
         rvfi_pc_rdata:  data_s1_s2.pc,
+`endif
         rvfi_pc_wdata:  isTrap ? next_pc : s1.pc_wdata,
         rvfi_mem_addr:  s1.mem_addr,
         // Although we know what rd *would* be, the fact that we're using this function

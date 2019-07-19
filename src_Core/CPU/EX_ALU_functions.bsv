@@ -121,10 +121,11 @@ typedef struct {
 `ifdef ISA_CHERI
    Bool    mem_allow_cap; //Whether load/store is allowed to preserve cap tag
 
-   Bool    pcc_changed;
    CapPipe pcc;
-   Bool    ddc_changed;
    CapPipe ddc;
+
+   Bool pcc_written;
+   Bool ddc_written;
 `endif
 
 `ifdef ISA_D
@@ -186,22 +187,23 @@ ALU_Outputs alu_outputs_base
 	       val1_cap_not_int: False,
 	       val2_cap_not_int: False,
 
-           pcc_changed : False,
-           pcc : ?,
-           ddc_changed : False,
-           ddc : ?,
+         pcc : ?,
+         ddc : ?,
 
-           check_enable       : False,
-           check_authority    : ?,
-           check_address_low  : ?,
-           check_address_high : ?,
-           check_inclusive    : ?,
+         pcc_written : False,
+         ddc_written : False,
 
-           mem_allow_cap      : False,
+         check_enable       : False,
+         check_authority    : ?,
+         check_address_low  : ?,
+         check_address_high : ?,
+         check_inclusive    : ?,
+
+         mem_allow_cap      : False,
 `endif
 
-           mem_width_code     : ?,
-           mem_unsigned       : False,
+         mem_width_code     : ?,
+         mem_unsigned       : False,
 
 	       trace_data: ?};
 
@@ -732,11 +734,10 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
        alu_outputs.val1 = getAddr(result.value);
        alu_outputs.val1_cap_not_int = result.exact;
    end else
-`else
+`endif
    begin
        alu_outputs.val1      = rd_val;
    end
-`endif
 `endif
 
    // Normal trace output (if no trap)
@@ -1229,10 +1230,6 @@ endfunction
 
 `ifdef ISA_CHERI
 
-// ----------------------------------------------------------------
-// CJALR
-//TODO remove duplication of some calculuations
-
 function ALU_Outputs fv_CHERI_exc(ALU_Outputs outputs, Bit#(6) regIdx, CHERI_Exc_Code exc_code);
   outputs.exc_code = exc_code_CHERI;
   outputs.cheri_exc_code = exc_code;
@@ -1270,7 +1267,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    end else begin
        alu_outputs.addr      = next_pc;
        alu_outputs.pcc       = rs1_val;
-       alu_outputs.pcc_changed = True;
+       alu_outputs.pcc_written = True;
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
@@ -1464,13 +1461,18 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     f3_cap_ThreeOp: begin
        case (funct7)
        f7_cap_CSpecialRW: begin
-           //TODO currently just returns DDC and PCC
-           if (inputs.decoded_instr.rs2 == 5'b0) begin
+           if (inputs.decoded_instr.rs2 == scr_addr_PCC) begin
                alu_outputs.cap_val1 = setOffset(inputs.pcc, inputs.pc).value;
                alu_outputs.val1_cap_not_int = True;
-           end else if (inputs.decoded_instr.rs2 == 5'b1) begin
+           end else if (inputs.decoded_instr.rs2 == scr_addr_DDC) begin
                alu_outputs.cap_val1 = inputs.ddc;
                alu_outputs.val1_cap_not_int = True;
+           end
+           if (inputs.decoded_instr.rs1 != 0) begin
+               if (inputs.decoded_instr.rs2 == scr_addr_DDC) begin
+                   alu_outputs.ddc = inputs.cap_rs1_val;
+                   alu_outputs.ddc_written = True;
+               end
            end
        end
        f7_cap_CSetBounds: begin
@@ -1874,6 +1876,11 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 					     ?,
 					     ?);
    end
+
+`ifdef ISA_CHERI
+   if (!alu_outputs.pcc_written) alu_outputs.pcc = inputs.pcc;
+   if (!alu_outputs.ddc_written) alu_outputs.ddc = inputs.ddc;
+`endif
 
    return alu_outputs;
 endfunction

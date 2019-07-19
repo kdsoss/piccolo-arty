@@ -147,6 +147,7 @@ Empty
       // Open connection to remote debug client
 `ifdef INCLUDE_GDB_CONTROL
 `ifndef IVERILOG
+`ifndef BLUESIM
       // Note: see 'CAVEAT FOR IVERILOG USERS' above
       let dmi_status <- c_debug_client_connect (dmi_default_tcp_port);
       if (dmi_status != dmi_status_ok) begin
@@ -156,6 +157,8 @@ Empty
       end
 `else
       $display ("Warning: Debug client connection not available in IVerilog");
+`endif
+      $display ("Warning: Debug client connection not available in Bluesim");
 `endif
 `endif
 

@@ -184,7 +184,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
    let data_to_stage3_base = Data_Stage2_to_Stage3 {priv:      rg_stage2.priv,
+`ifdef ISA_CHERI
+                pc:        getPC(rg_stage2.pcc),
+`else
 						    pc:        rg_stage2.pc,
+`endif
 						    instr:     rg_stage2.instr,
 `ifdef RVFI_DII
 						    instr_seq: rg_stage2.instr_seq,
@@ -201,14 +205,17 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 						    rd:        rg_stage2.rd,
 						    rd_val:    rg_stage2.val1};
 
-   let  trap_info_dmem = Trap_Info_Pipe {epc:      rg_stage2.pc,
+   let  trap_info_dmem = Trap_Info_Pipe {
 				    exc_code: dcache.exc_code,
 `ifdef ISA_CHERI
             cheri_exc_code: dcache.exc_code == exc_code_CHERI ? exc_code_CHERI_Length: exc_code_CHERI_None,
             cheri_exc_reg: ?, //TODO
-            epcc_top: cast(rg_stage2.pcc),
+            epcc: rg_stage2.pcc,
+            eddc: rg_stage2.ddc,
+`else
+            epc:  rg_stage2.pc,
 `endif
-				    tval:     rg_stage2.addr };
+				    tval: rg_stage2.addr };
 
 `ifdef ISA_F
    // The FBox can only generate ILLEGAL Instruction exceptions
@@ -218,11 +225,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
 `ifdef ISA_CHERI
-   let  trap_info_capbounds = Trap_Info_Pipe {epc:    rg_stage2.pc,
+   let  trap_info_capbounds = Trap_Info_Pipe {epcc:    rg_stage2.pcc,
+                       eddc: rg_stage2.ddc,
                        exc_code: exc_code_CHERI,
                        cheri_exc_code: exc_code_CHERI_Length,
                        cheri_exc_reg: ?, //TODO
-                       epcc_top: cast(rg_stage2.pcc),
                        tval:    0 }; //TODO ?
 `endif
 
