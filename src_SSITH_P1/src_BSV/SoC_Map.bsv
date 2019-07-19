@@ -104,6 +104,7 @@ interface SoC_Map_IFC;
    (* always_ready *)   method  Bit #(XLEN)  m_pc_reset_value;
 `ifdef ISA_CHERI
    (* always_ready *)   method  CapReg  m_pcc_reset_value;
+   (* always_ready *)   method  CapReg  m_ddc_reset_value;
    (* always_ready *)   method  CapReg  m_mtcc_reset_value;
    (* always_ready *)   method  CapReg  m_mepcc_reset_value;
 `endif
@@ -261,7 +262,8 @@ module mkSoC_Map (SoC_Map_IFC);
    Bit #(XLEN) nmivec_reset_value = ?;         // TODO
 
 `ifdef ISA_CHERI
-   CapReg pcc_reset_value  = almightyCap;
+   CapReg pcc_reset_value = almightyCap;
+   CapReg ddc_reset_value = almightyCap;
    CapPipe almightyPipe = almightyCap;
    CapReg mtcc_reset_value = cast(setOffset(almightyPipe, mtvec_reset_value).value);
    CapReg mepcc_reset_value = almightyCap;
@@ -307,6 +309,7 @@ module mkSoC_Map (SoC_Map_IFC);
 
 `ifdef ISA_CHERI
    method  CapReg  m_pcc_reset_value   = pcc_reset_value;
+   method  CapReg  m_ddc_reset_value   = ddc_reset_value;
    method  CapReg  m_mtcc_reset_value  = mtcc_reset_value;
    method  CapReg  m_mepcc_reset_value = mepcc_reset_value;
 `endif
