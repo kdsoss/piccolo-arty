@@ -1854,6 +1854,10 @@ module mkCPU (CPU_IFC);
 
       csr_regfile.write_dcsr_cause_priv (DCSR_CAUSE_EBREAK, rg_cur_priv);
       csr_regfile.write_dpc (pc);    // Where we'll resume on 'continue'
+`ifdef ISA_CHERI
+      rg_next_pcc <= stage1.out.data_to_stage2.pcc;
+      rg_next_ddc <= stage1.out.data_to_stage2.ddc;
+`endif
       rg_state <= CPU_GDB_PAUSING;
 
       // Flush both caches -- using the same interface as that used by FENCE_I
@@ -2006,6 +2010,10 @@ module mkCPU (CPU_IFC);
       DCSR_Cause cause= (rg_stop_req ? DCSR_CAUSE_HALTREQ : DCSR_CAUSE_STEP);
       csr_regfile.write_dcsr_cause_priv (cause, rg_cur_priv);
       csr_regfile.write_dpc (pc);    // We'll retry this instruction on 'continue'
+`ifdef ISA_CHERI
+      rg_next_pcc <= stage1.out.data_to_stage2.pcc;
+      rg_next_ddc <= stage1.out.data_to_stage2.ddc;
+`endif
       rg_state      <= CPU_GDB_PAUSING;
       rg_stop_req   <= False;
       rg_step_count <= 0;
@@ -2035,8 +2043,8 @@ module mkCPU (CPU_IFC);
       let dpc = csr_regfile.read_dpc;
       fa_restart (dpc
 `ifdef ISA_CHERI
-                  , rg_next_pcc
-                  , rg_next_ddc
+                  , toCapReg(rg_next_pcc)
+                  , cast(rg_next_ddc)
 `endif
                   );
       $display ("%0d: CPU.rl_debug_run: restart at PC = 0x%0h", mcycle, dpc);
