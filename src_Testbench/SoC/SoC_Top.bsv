@@ -408,7 +408,7 @@ module mkSoC_Top (SoC_Top_IFC);
    // NDM reset (all except Debug Module) request from debug module
 
    rule rl_reset_start (rg_state != SOC_RESETTING);
-      let req <- core.dm_ndm_reset_req_get.get;
+      let req <- core.ndm_reset_client.request.get;
 
       core.cpu_reset_server.request.put (?);
       mem0_controller.server_reset.request.put (?);
