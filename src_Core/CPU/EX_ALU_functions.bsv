@@ -155,6 +155,7 @@ typedef struct {
 
    Bool                check_enable;
    CapPipe             check_authority;
+   Bit #(6)            check_authority_idx;
    Bit#(XLEN)          check_address_low;
    Bit#(TAdd#(XLEN,1)) check_address_high;
    Bool                check_inclusive;
@@ -195,6 +196,7 @@ ALU_Outputs alu_outputs_base
 
          check_enable       : False,
          check_authority    : ?,
+         check_authority_idx : ?,
          check_address_low  : ?,
          check_address_high : ?,
          check_inclusive    : ?,
@@ -341,7 +343,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, branch_taken, inputs.pcc, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, branch_taken, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -377,7 +379,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -424,7 +426,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -1274,7 +1276,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
        alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc).value; //TODO factor this out. Note that ret_pc must be representable
        alu_outputs.val1_cap_not_int = True;
 `endif
-       alu_outputs = checkValidJump(alu_outputs, True, rs1_val, getBase(rs1_val) + next_pc);
+       alu_outputs = checkValidJump(alu_outputs, True, rs1_val, {0,inputs.rs1_idx}, getBase(rs1_val) + next_pc);
    end
 
    // Normal trace output (if no trap)
@@ -1297,6 +1299,7 @@ function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(
     end else begin
        alu_outputs.check_enable = True;
        alu_outputs.check_authority = cap;
+       alu_outputs.check_authority_idx  = zeroExtend(regIdx);
        alu_outputs.check_inclusive = True;
        let result = setBounds(cap, length);
        alu_outputs.cap_val1 = result.value;
@@ -1325,6 +1328,7 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    end
    alu_outputs.check_enable = True;
    alu_outputs.check_authority = authority;
+   alu_outputs.check_authority_idx = authIdx;
    alu_outputs.check_address_low = base;
    alu_outputs.check_address_high = zeroExtend(base) + (1 << widthCode);
    alu_outputs.check_inclusive = True;
@@ -1344,10 +1348,11 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    return alu_outputs;
 endfunction
 
-function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, WordXL target);
+function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, Bit#(6) authIdx, WordXL target);
    //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
    alu_outputs.check_enable = branchTaken;
    alu_outputs.check_authority = authority;
+   alu_outputs.check_authority_idx = authIdx;
    alu_outputs.check_address_low = target;
    alu_outputs.check_address_high = zeroExtend(target) + 2;
    alu_outputs.check_inclusive = True;
@@ -1417,6 +1422,7 @@ function ALU_Outputs sealCommon(ALU_Outputs alu_outputs, CapPipe sealee, Bit#(5)
         end else begin
             alu_outputs.check_enable = True;
             alu_outputs.check_authority = sealer;
+            alu_outputs.check_authority_idx = {0,sealerIdx};
             alu_outputs.check_address_low = sealer_addr;
             alu_outputs.check_address_high = zeroExtend(sealer_addr);
             alu_outputs.check_inclusive = False;
@@ -1525,6 +1531,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                end else begin
                    alu_outputs.check_enable = True;
                    alu_outputs.check_authority = ct_val;
+                   alu_outputs.check_authority_idx = {0,inputs.rs2_idx};
                    alu_outputs.check_address_low = ct_addr;
                    alu_outputs.check_address_high = zeroExtend(ct_addr);
                    alu_outputs.check_inclusive = False;
@@ -1551,6 +1558,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                end else begin
                    alu_outputs.check_enable = True;
                    alu_outputs.check_authority = cb_val;
+                   alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
                    alu_outputs.check_address_low = zeroExtend(getType(ct_val));
                    alu_outputs.check_address_high = zeroExtend(getType(ct_val));
                    alu_outputs.check_inclusive = False;
@@ -1629,6 +1637,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else begin
                alu_outputs.check_enable = True;
                alu_outputs.check_authority = cb_val;
+               alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
                alu_outputs.check_address_low = getBase(ct_val);
                alu_outputs.check_address_high = getTop(ct_val);
                alu_outputs.check_inclusive = True;

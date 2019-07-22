@@ -229,8 +229,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                        eddc: rg_stage2.ddc,
                        exc_code: exc_code_CHERI,
                        cheri_exc_code: exc_code_CHERI_Length,
-                       cheri_exc_reg: ?, //TODO
-                       tval:    0 }; //TODO ?
+                       cheri_exc_reg: rg_stage2.check_authority_idx,
+                       tval: rg_stage2.check_address_low };
 `endif
 
    // ----------------------------------------------------------------

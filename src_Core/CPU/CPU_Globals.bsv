@@ -378,6 +378,7 @@ typedef struct {
    // Does not check that authority is tagged, so only generates
    // Bounds exceptions
    CapPipe    check_authority;
+   Bit#(6)    check_authority_idx;
    Bit#(XLEN)     check_address_low;
    Bit#(TAdd#(XLEN,1))     check_address_high;
    Bool       check_enable;
