@@ -923,10 +923,12 @@ module mkCPU (CPU_IFC);
 
 	 gpr_regfile.write_rd (rd, new_rd_val);
 
+   CapPipe new_scr_val_unpacked = cast(scr_val);
+
 	 // Writeback to SCR file
    if (rs1 != 0) begin
 	    let new_scr_val <- csr_regfile.mav_scr_write (scr_addr, cast(rs1_val));
-      CapPipe new_scr_val_unpacked = cast(new_scr_val);
+      new_scr_val_unpacked = cast(new_scr_val);
    end
 
 	 // Accounting
@@ -942,9 +944,9 @@ module mkCPU (CPU_IFC);
 	 // trace_data.pc, instr_sz and instr    should already be set
 	 trace_data.rd = rd;
 	 trace_data.word1 = getAddr(new_rd_val);
-	 trace_data.word2 = rs1 != 0;                     // whether we've written csr or not
+	 trace_data.word2 = rs1 == 0 ? 0 : 1;                     // whether we've written csr or not
 	 trace_data.word3 = zeroExtend (scr_addr);
-	 trace_data.word4 = getAddr(rs1 == 0 ? scr_val : new_scr_val_unpacked);
+	 trace_data.word4 = getAddr(new_scr_val_unpacked);
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
       let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
