@@ -2176,7 +2176,7 @@ module mkCPU (CPU_IFC);
       let req <- pop (f_csr_reqs);
       Bit #(12) csr_addr = req.address;
       //So that GDB can tell us the ccsr, remap requests to mscatch to be mccsr. TODO remove
-      if (csr_addr == csr_addr_mscratch) begin
+      if (csr_addr == csr_addr_mhpmevent31) begin
         csr_addr = csr_addr_mccsr;
       end
       let m_data = csr_regfile.read_csr_port2 (csr_addr);
