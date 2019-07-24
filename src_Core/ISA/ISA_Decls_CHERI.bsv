@@ -149,7 +149,8 @@ Bit #(7) f7_cap_CSetOffset      = 7'h0f;
 Bit #(7) f7_cap_CIncOffset      = 7'h11;
 Bit #(7) f7_cap_CToPtr          = 7'h12;
 Bit #(7) f7_cap_CFromPtr        = 7'h13;
-// 7'h14-7'h1c unused
+Bit #(7) f7_cap_CSub            = 7'h14;
+// 7'h15-7'h1c unused
 Bit #(7) f7_cap_CBuildCap       = 7'h1d;
 Bit #(7) f7_cap_CCopyType       = 7'h1e;
 Bit #(7) f7_cap_CCSeal          = 7'h1f;

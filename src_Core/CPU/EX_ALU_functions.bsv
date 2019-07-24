@@ -1620,6 +1620,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = result.exact;
            end
        end
+       f7_cap_CSub: begin
+           alu_outputs.val1 = getAddr(cb_val) - getAddr(ct_val);
+       end
        f7_cap_CBuildCap: begin
            //TODO factor into subset test
            if (inputs.rs1_idx == 0) begin
