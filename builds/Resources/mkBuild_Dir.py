@@ -247,6 +247,16 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
     arch_split = arch.split('x');
     arch_std = arch_split[0]
 
+    # CHERI parameters
+    fo.write ("\n")
+    if (arch_std.startswith ("RV32")):
+        fo.write ("CAPSIZE = 64\n")
+    else:
+        fo.write ("CAPSIZE = 128\n")
+    fo.write ("TAGS_STRUCT = 0 128\n")
+    fo.write ("TAGS_ALIGN = 32\n")
+    fo.write ("\n")
+
     # RISC-V config macros passed into Bluespec 'bsc' compiler
     fo.write ("# ================================================================\n")
     fo.write ("# RISC-V config macros passed into Bluespec 'bsc' compiler\n")
