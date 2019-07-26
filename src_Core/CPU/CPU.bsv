@@ -949,7 +949,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = getAddr(new_scr_val_unpacked);
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rd == 0 ? Invalid : Valid(getAddr(new_rd_val)),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1057,7 +1057,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rd==0 ? Invalid : Valid(new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1172,7 +1172,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,rd==0 ? Invalid : Valid (new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1297,7 +1297,7 @@ module mkCPU (CPU_IFC);
       let td1 = mkTrace_RET (next_pc, td.instr_sz, td.instr, new_priv, new_mstatus);
       f_trace_data.enq (td1);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,Invalid,minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1377,7 +1377,7 @@ module mkCPU (CPU_IFC);
       // Resume pipe
       rg_state <= CPU_RUNNING;
 `ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,Invalid,minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1462,7 +1462,7 @@ module mkCPU (CPU_IFC);
       // Resume pipe
       rg_state <= CPU_RUNNING;
 `ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,Invalid,minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1554,7 +1554,7 @@ module mkCPU (CPU_IFC);
       // Resume pipe
       rg_state <= CPU_RUNNING;
 `ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,Invalid,minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1639,7 +1639,7 @@ module mkCPU (CPU_IFC);
       // Resume pipe (it will handle the interrupt, if one is pending)
       rg_state <= CPU_RUNNING;
 `ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,?,Invalid,minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1767,7 +1767,7 @@ module mkCPU (CPU_IFC);
       trace_data.word4 = tval;
       f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,next_pc,minstret,True,exc_code,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,next_pc,Invalid,minstret,True,exc_code,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= True;

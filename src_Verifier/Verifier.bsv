@@ -97,6 +97,7 @@ endfunction : getRVFIInfoCondensed
 function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
             Data_Stage1_to_Stage2   data_s1_s2,
             WordXL                  next_pc,
+            Maybe#(WordXL)          rwd,
             Bit#(64)                order,
             Bool                    isTrap,
             Exc_Code                exc,
@@ -125,8 +126,8 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
         rvfi_mem_addr:  s1.mem_addr,
         // Although we know what rd *would* be, the fact that we're using this function
         // means we can't have actually written to it.
-        rvfi_rd_addr:   0,
-        rvfi_rd_wdata:  0,
+        rvfi_rd_addr:   data_s1_s2.rd,
+        rvfi_rd_wdata:  fromMaybe(0, rwd),
         rvfi_mem_rmask: 0,
         rvfi_mem_wmask: 0,
         rvfi_mem_wdata: 0,
