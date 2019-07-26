@@ -1672,7 +1672,12 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                    alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                end
            end
-           alu_outputs = memCommon(alu_outputs, False, funct5rs2[2] == cap_mem_unsigned, funct5rs2[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.rs1_idx, ?);
+           if (widthCode > w_SIZE_MAX) begin
+               alu_outputs.control = CONTROL_TRAP;
+               alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+           end else begin
+               alu_outputs = memCommon(alu_outputs, False, funct5rs2[2] == cap_mem_unsigned, funct5rs2[3] == cap_mem_ddc, widthCode, inputs.ddc, inputs.cap_rs1_val, inputs.rs1_idx, ?);
+           end
        end
        f7_cap_Stores: begin
            let widthCode = funct5rd[2:0];
