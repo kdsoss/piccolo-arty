@@ -428,7 +428,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                 info_RVFI_s2.mem_wmask = getMemMask(rg_stage2.mem_width_code,rg_stage2.addr);
             // For SC however we do need to check that it was successful, otherwise we've not written.
             end else begin
+`ifdef ISA_CHERI
+                info_RVFI_s2.mem_wmask = ((getAddr(result) == 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
+`else
                 info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
+`endif
             end
         end
         `endif
