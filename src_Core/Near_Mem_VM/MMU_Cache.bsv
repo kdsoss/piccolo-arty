@@ -1183,7 +1183,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	       end
 	       else begin // do_write == False
 		  // SC fail
-		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, tuple2(0,1), unpack(0));
+		     // Hard-code address to 0 to ensure fn_extract_and_extend_bytes takes the LSBs of our 1 value.
+		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, 0, tuple2(0,1), unpack(0));
 		  if (cfg_verbosity > 1)
 		     $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
 	       end
