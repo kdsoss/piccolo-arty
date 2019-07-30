@@ -427,7 +427,7 @@ function Tuple2 #(Tuple2#(Bool, Bit #(128)),
 					WordXL     addr,      // lsbs indicate which 32b W in 64b D (.W)
 					Cache_Entry ld_val,   // value loaded from mem
 					Tuple2#(Bool, Bit #(128)) st_val);   // Value from CPU reg Rs2
-   Bit #(64) w1     = truncate(tpl_2(fn_extract_and_extend_bytes(funct3, True, addr, ld_val))); // XXX Check if "True" is sufficient for is_unsigned argument.
+   Bit #(64) w1     = truncate(tpl_2(fn_extract_and_extend_bytes(funct3, False, addr, ld_val)));
    Bit #(64) w2     = truncate(tpl_2(st_val));
    Int #(64) i1     = unpack (w1);    // Signed, for signed ops
    Int #(64) i2     = unpack (w2);    // Signed, for signed ops

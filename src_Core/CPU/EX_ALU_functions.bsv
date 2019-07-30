@@ -1185,6 +1185,15 @@ endfunction
 
 `ifdef ISA_A
 function ALU_Outputs fv_AMO (ALU_Inputs inputs);
+   IntXL  s_rs1_val = unpack (inputs.rs1_val);
+`ifdef ISA_CHERI
+   let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
+   let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val : getAddr(inputs.cap_rs1_val); //TODO DDC base should be cached
+`else
+   WordXL eaddr = pack (s_rs1_val);
+`endif
+
    let funct3 = inputs.decoded_instr.funct3;
    let funct5 = inputs.decoded_instr.funct5;
    let funct7 = inputs.decoded_instr.funct7;
@@ -1199,20 +1208,32 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 		    || (funct5 == f5_AMO_MIN)  || (funct5 == f5_AMO_MINU)
 		    || (funct5 == f5_AMO_MAX)  || (funct5 == f5_AMO_MAXU));
 
+   // TODO: Cap width
    Bool legal_width = (   (funct3 == f3_AMO_W)
 		       || ((xlen == 64) && (funct3 == f3_AMO_D)) );
 
-   let eaddr = inputs.rs1_val;
-
    let alu_outputs = alu_outputs_base;
+
+   let width_code = funct3;
+
    alu_outputs.control   = ((legal_f5 && legal_width) ? CONTROL_STRAIGHT : CONTROL_TRAP);
    alu_outputs.op_stage2 = OP_Stage2_AMO;
    alu_outputs.addr      = eaddr;
+   alu_outputs.mem_width_code = width_code;
+   alu_outputs.mem_unsigned = False;
+
+   alu_outputs = checkValidDereference(alu_outputs, authority, authorityIdx, eaddr, width_code, True, inputs.cap_rs2_val);
+
    alu_outputs.val1      = zeroExtend (inputs.decoded_instr.funct7);
 `ifdef ISA_D
    alu_outputs.val2      = extend (inputs.rs2_val);
 `else
+`ifdef ISA_CHERI
+   alu_outputs.cap_val2      = inputs.cap_rs2_val;
+   alu_outputs.val2_cap_not_int = width_code == w_SIZE_CAP;
+`else
    alu_outputs.val2      = inputs.rs2_val;
+`endif
 `endif
 
    // Normal trace output (if no trap)
