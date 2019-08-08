@@ -1008,7 +1008,11 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
 
 	    // MRET instruction
 	    else if (   (inputs.cur_priv >= m_Priv_Mode)
-		     && (inputs.decoded_instr.imm12_I == f12_MRET))
+		     && (inputs.decoded_instr.imm12_I == f12_MRET)
+`ifdef ISA_CHERI
+         && getHardPerms(inputs.pcc).accessSysRegs
+`endif
+                                               )
 	       begin
 		  alu_outputs.control = CONTROL_MRET;
 	       end
