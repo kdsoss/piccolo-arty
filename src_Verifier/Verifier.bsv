@@ -96,7 +96,7 @@ endfunction : getRVFIInfoCondensed
             
 function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
             Data_Stage1_to_Stage2   data_s1_s2,
-            WordXL                  next_pc,
+            Maybe#(WordXL)          next_pc,
             Maybe#(WordXL)          rwd,
             Bit#(64)                order,
             Bool                    isTrap,
@@ -122,7 +122,7 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
 `else
         rvfi_pc_rdata:  data_s1_s2.pc,
 `endif
-        rvfi_pc_wdata:  isTrap ? next_pc : s1.pc_wdata,
+        rvfi_pc_wdata:  fromMaybe(s1.pc_wdata, next_pc),
         rvfi_mem_addr:  s1.mem_addr,
         // Although we know what rd *would* be, the fact that we're using this function
         // means we can't have actually written to it.
