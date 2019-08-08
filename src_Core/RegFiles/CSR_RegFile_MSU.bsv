@@ -932,6 +932,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 				    end
 	       csr_addr_mepc:       begin
 				       result   = wordxl;
+               //TODO seems the following should be required upstream:
+`ifdef ISA_C
+               result[0] = 1'b0;
+`else
+               result[1:0] = 2'b0;
+`endif
 `ifdef ISA_CHERI
                rg_mepcc <= cast(update_scr_via_csr(rg_mepcc_unpacked, result));
 `else
@@ -1072,19 +1078,29 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       actionvalue
 	 Bool    success = True;
 	 CapReg  result  = nullCap;
+	 CapPipe capUnpacked = cast(cap);
 
 	    case (scr_addr)
          scr_addr_MTCC: begin
-             rg_mtcc <= cap;
-             result = cap;
+             capUnpacked = update_scr_via_csr(capUnpacked, mtvec_to_word(word_to_mtvec(getOffset(capUnpacked))));
+             // This can be done much more efficiently by breaking into the compressed cap format
+             rg_mtcc <= cast(capUnpacked);
+             result = cast(capUnpacked);
          end
          scr_addr_MTDC: begin
              rg_mtdc <= cap;
              result = cap;
          end
          scr_addr_MEPCC: begin
-             rg_mepcc <= cap;
-             result = cap;
+             let newOffset = getOffset(capUnpacked);
+`ifdef ISA_C
+             newOffset[0] = 1'b0;
+`else
+             newOffset[1:0] = 2'b0;
+`endif
+             capUnpacked = update_scr_via_csr(capUnpacked, newOffset);
+             rg_mepcc <= cast(capUnpacked);
+             result = cast(capUnpacked);
          end
          scr_addr_MScratchC: begin
              rg_mscratchc <= cap;
