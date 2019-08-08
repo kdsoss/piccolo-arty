@@ -1526,6 +1526,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = result.exact;
            end
        end
+       f7_cap_CSetAddr: begin
+           if (cb_tag && cb_sealed) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+           end else begin
+               let result = setAddr(cb_val, rt_val);
+               alu_outputs.cap_val1 = result.value;
+               alu_outputs.val1 = getAddr(result.value);
+               alu_outputs.val1_cap_not_int = result.exact;
+           end
+       end
        f7_cap_CIncOffset: begin
            alu_outputs = incOffsetCommon(alu_outputs, cb_val, inputs.rs1_idx, cb_tag, cb_sealed, rt_val);
        end

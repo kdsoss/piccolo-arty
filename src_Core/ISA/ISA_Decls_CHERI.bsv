@@ -145,7 +145,7 @@ Bit #(7) f7_cap_CUnseal         = 7'h0c;
 Bit #(7) f7_cap_CAndPerm        = 7'h0d;
 Bit #(7) f7_cap_CSetFlags       = 7'h0e;
 Bit #(7) f7_cap_CSetOffset      = 7'h0f;
-// 7'h10 unused
+Bit #(7) f7_cap_CSetAddr        = 7'h10;
 Bit #(7) f7_cap_CIncOffset      = 7'h11;
 Bit #(7) f7_cap_CToPtr          = 7'h12;
 Bit #(7) f7_cap_CFromPtr        = 7'h13;
