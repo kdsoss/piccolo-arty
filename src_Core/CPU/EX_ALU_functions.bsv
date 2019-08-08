@@ -766,7 +766,7 @@ function ALU_Outputs fv_LD (ALU_Inputs inputs, Maybe#(Bit#(3)) size);
 
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
    let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
-   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
 `endif
@@ -845,7 +845,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
    let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
-   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.ddc) + inputs.rs1_val + pack(imm_s) : getAddr(inputs.cap_rs1_val) + pack(imm_s); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val + imm_s);
 `endif
@@ -1189,7 +1189,7 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 `ifdef ISA_CHERI
    let authority = getFlags(inputs.pcc)[0] == 1'b0 ? inputs.ddc : inputs.cap_rs1_val;
    let authorityIdx = getFlags(inputs.pcc)[0] == 1'b0 ? {1,scr_addr_PCC} : {0,inputs.rs1_idx};
-   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getBase(inputs.ddc) + inputs.rs1_val : getAddr(inputs.cap_rs1_val); //TODO DDC base should be cached
+   WordXL eaddr = getFlags(inputs.pcc)[0] == 1'b0 ? getAddr(inputs.ddc) + inputs.rs1_val : getAddr(inputs.cap_rs1_val); //TODO DDC base should be cached
 `else
    WordXL eaddr = pack (s_rs1_val);
 `endif
@@ -1381,7 +1381,7 @@ function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, C
 endfunction
 
 function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Bool isUnsignedNotSigned, Bool useDDC, Bit#(3) widthCode, CapPipe ddc, CapPipe addr, Bit#(5) addrIdx, CapPipe data);
-   let eaddr = getAddr(addr) + (useDDC ? getBase(ddc) : 0);
+   let eaddr = getAddr(addr) + (useDDC ? getAddr(ddc) : 0);
 
    //width code must be checked externally
 
