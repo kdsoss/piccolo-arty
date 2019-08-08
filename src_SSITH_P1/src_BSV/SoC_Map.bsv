@@ -45,6 +45,13 @@ export  SoC_Map_IFC (..), mkSoC_Map;
 export  N_External_Interrupt_Sources;
 export  n_external_interrupt_sources;
 export  irq_num_uart16550_0;
+export  irq_num_axi_ethernet;
+export  irq_num_mm2s_introut;
+export  irq_num_s2mm_introut;
+export  irq_num_quad_spi_0;
+export  irq_num_uart16550_1;
+export  irq_num_iic_0;
+export  irq_num_quad_spi_1;
 
 // ================================================================
 // Bluespec library imports
@@ -76,8 +83,6 @@ interface SoC_Map_IFC;
    (* always_ready *)   method  Fabric_Addr  m_pcie_ecam_slave_bridge_addr_lim;
    */
 
-   (* always_ready *)   method  Range#(Wd_Addr)  m_flash_mem_addr_range;
-
    /* REMOVED?
    (* always_ready *)   method  Fabric_Addr  m_pcie_block_registers_addr_base;
    (* always_ready *)   method  Fabric_Addr  m_pcie_block_registers_addr_size;
@@ -87,7 +92,13 @@ interface SoC_Map_IFC;
    (* always_ready *)   method  Range#(Wd_Addr)  m_ethernet_0_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_dma_0_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_uart16550_0_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_uart16550_1_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_iic_0_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_axi_quad_spi_0_full_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_axi_quad_spi_0_lite_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_axi_quad_spi_1_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_gpio_0_addr_range;
+   (* always_ready *)   method  Range#(Wd_Addr)  m_gpio_1_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_boot_rom_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_ddr4_0_uncached_addr_range;
    (* always_ready *)   method  Range#(Wd_Addr)  m_ddr4_0_cached_addr_range;
@@ -148,14 +159,6 @@ module mkSoC_Map (SoC_Map_IFC);
    */
 
    // ----------------------------------------------------------------
-   // Flash Mem
-
-   let flash_mem_addr_range = Range {
-      base: 'h_4000_0000,
-      size: 'h_0001_0000    // 64K
-   };
-
-   // ----------------------------------------------------------------
    // PCIe Block Registers
 
    /* REMOVED?
@@ -194,10 +197,58 @@ module mkSoC_Map (SoC_Map_IFC);
    };
 
    // ----------------------------------------------------------------
+   // UART 1
+
+   let uart16550_1_addr_range = Range {
+      base: 'h_6234_0000,
+      size: 'h_0000_1000    // 4K
+   };
+
+   // ----------------------------------------------------------------
+   // I2C 0
+
+   let iic_0_addr_range = Range {
+      base: 'h_6231_0000,
+      size: 'h_0000_1000    // 4K
+   };
+
+   // ----------------------------------------------------------------
+   // SPI 0 Full AXI
+
+   let axi_quad_spi_0_full_addr_range = Range {
+      base: 'h_4000_0000,
+      size: 'h_1000_0000    // 256M
+   };
+
+   // ----------------------------------------------------------------
+   // SPI 0 Lite AXI
+
+   let axi_quad_spi_0_lite_addr_range = Range {
+      base: 'h_6234_0000,
+      size: 'h_0000_1000    // 4K
+   };
+
+   // ----------------------------------------------------------------
+   // SPI 1
+
+   let axi_quad_spi_1_addr_range = Range {
+      base: 'h_6232_0000,
+      size: 'h_0000_1000    // 4K
+   };
+
+   // ----------------------------------------------------------------
    // GPIO 0
 
    let gpio_0_addr_range = Range {
       base: 'h_6FFF_0000,
+      size: 'h_0001_0000    // 64K
+   };
+
+   // ----------------------------------------------------------------
+   // GPIO 0
+
+   let gpio_1_addr_range = Range {
+      base: 'h_6233_0000,
       size: 'h_0001_0000    // 64K
    };
 
@@ -243,12 +294,17 @@ module mkSoC_Map (SoC_Map_IFC);
       return (   inRange (plic_addr_range, addr)
 	      || inRange (near_mem_io_addr_range, addr)
 	   // || fn_is_pcie_ecam_slave_bridge_addr (addr)
-	      || inRange (flash_mem_addr_range, addr)
 	   // || fn_is_pcie_block_registers_addr (addr)
 	      || inRange (ethernet_0_addr_range, addr)
 	      || inRange (dma_0_addr_range, addr)
 	      || inRange (uart16550_0_addr_range, addr)
+	      || inRange (uart16550_1_addr_range, addr)
+	      || inRange (iic_0_addr_range, addr)
+	      || inRange (axi_quad_spi_0_full_addr_range, addr)
+	      || inRange (axi_quad_spi_0_lite_addr_range, addr)
+	      || inRange (axi_quad_spi_1_addr_range, addr)
 	      || inRange (gpio_0_addr_range, addr)
+	      || inRange (gpio_1_addr_range, addr)
 	      || inRange (boot_rom_addr_range, addr)
 	      || inRange (ddr4_0_uncached_addr_range, addr)
 	      );
@@ -281,21 +337,25 @@ module mkSoC_Map (SoC_Map_IFC);
    method  Fabric_Addr  m_pcie_ecam_slave_bridge_addr_lim  = pcie_ecam_slave_bridge_addr_lim;
    */
 
-   method  Range#(Wd_Addr)  m_flash_mem_addr_range = flash_mem_addr_range;
-
    /* REMOVED?
    method  Fabric_Addr  m_pcie_block_registers_addr_base = pcie_block_registers_addr_base;
    method  Fabric_Addr  m_pcie_block_registers_addr_size = pcie_block_registers_addr_size;
    method  Fabric_Addr  m_pcie_block_registers_addr_lim  = pcie_block_registers_addr_lim;
    */
 
-   method  Range#(Wd_Addr)  m_ethernet_0_addr_range      = ethernet_0_addr_range;
-   method  Range#(Wd_Addr)  m_dma_0_addr_range           = dma_0_addr_range;
-   method  Range#(Wd_Addr)  m_uart16550_0_addr_range     = uart16550_0_addr_range;
-   method  Range#(Wd_Addr)  m_gpio_0_addr_range          = gpio_0_addr_range;
-   method  Range#(Wd_Addr)  m_boot_rom_addr_range        = boot_rom_addr_range;
+   method  Range#(Wd_Addr)  m_ethernet_0_addr_range = ethernet_0_addr_range;
+   method  Range#(Wd_Addr)  m_dma_0_addr_range = dma_0_addr_range;
+   method  Range#(Wd_Addr)  m_uart16550_0_addr_range = uart16550_0_addr_range;
+   method  Range#(Wd_Addr)  m_uart16550_1_addr_range = uart16550_1_addr_range;
+   method  Range#(Wd_Addr)  m_iic_0_addr_range = iic_0_addr_range;
+   method  Range#(Wd_Addr)  m_axi_quad_spi_0_full_addr_range = axi_quad_spi_0_full_addr_range;
+   method  Range#(Wd_Addr)  m_axi_quad_spi_0_lite_addr_range = axi_quad_spi_0_lite_addr_range;
+   method  Range#(Wd_Addr)  m_axi_quad_spi_1_addr_range = axi_quad_spi_1_addr_range;
+   method  Range#(Wd_Addr)  m_gpio_0_addr_range = gpio_0_addr_range;
+   method  Range#(Wd_Addr)  m_gpio_1_addr_range = gpio_1_addr_range;
+   method  Range#(Wd_Addr)  m_boot_rom_addr_range = boot_rom_addr_range;
    method  Range#(Wd_Addr)  m_ddr4_0_uncached_addr_range = ddr4_0_uncached_addr_range;
-   method  Range#(Wd_Addr)  m_ddr4_0_cached_addr_range   = ddr4_0_cached_addr_range;
+   method  Range#(Wd_Addr)  m_ddr4_0_cached_addr_range = ddr4_0_cached_addr_range;
 
    method  Bool  m_is_mem_addr (Fabric_Addr addr) = fn_is_mem_addr (addr);
 
@@ -323,6 +383,13 @@ typedef  16  N_External_Interrupt_Sources;
 Integer  n_external_interrupt_sources = valueOf (N_External_Interrupt_Sources);
 
 Integer irq_num_uart16550_0 = 0;
+Integer irq_num_axi_ethernet = 1;
+Integer irq_num_mm2s_introut = 2;
+Integer irq_num_s2mm_introut = 3;
+Integer irq_num_quad_spi_0 = 4;
+Integer irq_num_uart16550_1 = 5;
+Integer irq_num_iic_0 = 6;
+Integer irq_num_quad_spi_1 = 7;
 
 // ================================================================
 
