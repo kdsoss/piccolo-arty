@@ -398,7 +398,7 @@ module mkPLIC (PLIC_IFC #(t_n_external_sources, t_n_targets, t_max_priority))
 	 $display ("            ", fshow (rda));
       end
 
-      if ((valueOf (Wd_Data) == 64) && ((addr_offset & 'h7) == 'h4))
+      if ((valueOf (Wd_Data_Periph) == 64) && ((addr_offset & 'h7) == 'h4))
 	 rdata = { rdata [31:0], 32'h0 };
 
       // Send read-response to bus
@@ -433,7 +433,7 @@ module mkPLIC (PLIC_IFC #(t_n_external_sources, t_n_targets, t_max_priority))
       end
 
       let addr_offset  = wra.awaddr - rg_addr_base;
-      let wdata32      = (((valueOf (Wd_Data) == 64) && ((addr_offset & 'h7) == 'h4))
+      let wdata32      = (((valueOf (Wd_Data_Periph) == 64) && ((addr_offset & 'h7) == 'h4))
 			  ? wrd.wdata [63:32]
 			  : wrd.wdata [31:0]);
       let bresp = OKAY;
