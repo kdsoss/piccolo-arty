@@ -1395,7 +1395,7 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    alu_outputs.mem_unsigned   = isStoreNotLoad ? False : isUnsignedNotSigned;
    alu_outputs.val2           = getAddr(data); //for stores
    alu_outputs.cap_val2       = data;
-   alu_outputs.val2_cap_not_int = widthCode == 4;
+   alu_outputs.val2_cap_not_int = widthCode == w_SIZE_CAP;
 
    let authority = useDDC ? ddc : addr;
    let authorityIdx = useDDC ? {1,scr_addr_PCC} : {0,addrIdx};
