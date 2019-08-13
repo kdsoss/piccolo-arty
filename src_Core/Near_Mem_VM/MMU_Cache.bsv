@@ -532,7 +532,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    SoC_Map_IFC soc_map <- mkSoC_Map;
 
 `ifdef ISA_CHERI
-   Wire #(Bool) dw_commit <- mkDWire(False);
+   Reg#(Bool) crg_commit[3] <- mkCReg(3,False);
 `endif
 
    // Reset request/response: REQUESTOR_RESET_IFC, REQUESTOR_FLUSH_IFC
@@ -1039,7 +1039,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 `ifdef ISA_CHERI
       // ---- Cancelled by Cap exception
-      if (!dw_commit) begin
+      if (!crg_commit[1]) begin
         rg_state <= MODULE_EXCEPTION_RSP;
         rg_exc_code <= exc_code_CHERI;
       end else
@@ -2015,6 +2015,10 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_mstatus_MXR <= mstatus_MXR;
       rg_satp        <= satp;
 
+`ifdef ISA_CHERI
+      crg_commit[2]  <= False;
+`endif
+
       // Initial default PA assumes no VM translation
       rg_pa <= fn_WordXL_to_PA (addr);
 
@@ -2039,7 +2043,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 `ifdef ISA_CHERI
    method Action commit;
-      dw_commit <= True;
+      crg_commit[0] <= True;
    endmethod
 `endif
 
