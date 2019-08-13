@@ -1269,6 +1269,7 @@ module mkCPU (CPU_IFC);
       rg_cur_priv <= new_priv;
 `ifdef ISA_CHERI
       rg_next_pcc <= next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
 `else
       rg_next_pc  <= next_pc;
 `endif
