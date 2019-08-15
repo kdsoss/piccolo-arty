@@ -106,6 +106,10 @@ interface Near_Mem_IO_AXI4_IFC;
 
    // Software interrupt
    interface Get #(Bool)  get_sw_interrupt_req;
+
+`ifdef DETERMINISTIC_TIMING
+    method Action give_minstret(Bit#(64) minstret);
+`endif
 endinterface
 
 // ================================================================
@@ -140,7 +144,13 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    // ----------------
    // Timer registers
 
+`ifdef DETERMINISTIC_TIMING
+   Wire #(Bit #(64)) w_minstret <- mkWire;
+   Reg #(Bit#(64)) offset <- mkReg(-1);
+   let sim_time = w_minstret - offset;
+`else
    Reg #(Bit #(64)) crg_time [2]    <- mkCReg (2, 1);
+`endif
    Reg #(Bit #(64)) crg_timecmp [2] <- mkCReg (2, 0);
 
    Reg #(Bool) rg_mtip <- mkConfigReg (True);
@@ -170,7 +180,11 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
       f_sw_interrupt_req.clear;
 
       rg_state        <= MODULE_STATE_READY;
+`ifdef DETERMINISTIC_TIMING
+      offset          <= -1;
+`else
       crg_time [1]    <= 1;
+`endif
       crg_timecmp [1] <= 0;
       rg_mtip         <= True;
       rg_msip         <= False;
@@ -188,7 +202,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    // ----------------------------------------------------------------
    // Keep time and generate interrupt
 
-   // Increment time, but saturate, do not wrap-around
+`ifndef DETERMINISTIC_TIMING
    (* fire_when_enabled, no_implicit_conditions *)
    rule rl_tick_timer (   (rg_state == MODULE_STATE_READY)
 		       && (crg_time [0] != '1)
@@ -196,10 +210,15 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 
       crg_time [0] <= crg_time [0] + 1;
    endrule
+`endif
 
    // Compare and generate timer interrupt request
 
+`ifdef DETERMINISTIC_TIMING
+   Bool new_mtip = (sim_time >= crg_timecmp [0]);
+`else
    Bool new_mtip = (crg_time [0] >= crg_timecmp [0]);
+`endif
 
    rule rl_compare ((rg_state == MODULE_STATE_READY)
 		    && (rg_mtip != new_mtip)
@@ -208,8 +227,14 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
       rg_mtip <= new_mtip;
       f_timer_interrupt_req.enq (new_mtip);
       if (cfg_verbosity > 1)
-	 $display ("%0d: Near_Mem_IO_AXI4.rl_compare: new MTIP = %0d, time = %0d, timecmp = %0d",
-		   cur_cycle, new_mtip, crg_time [0], crg_timecmp [0]);
+	 $display ("%0d: Near_Mem_IO_AXI4.rl_compare: new MTIP = %0d, sim_time = %0d, timecmp = %0d",
+		   cur_cycle, new_mtip,
+`ifdef DETERMINISTIC_TIMING
+                            sim_time,
+`else
+                            crg_time [0],
+`endif
+                            crg_timecmp [0]);
    endrule
 
    // ----------------------------------------------------------------
@@ -244,7 +269,11 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 
       else if (byte_addr == 'h_BFF8)
 	 // MTIME
+`ifdef DETERMINISTIC_TIMING
+	 rdata = truncate (sim_time);       // truncates for 32b fabrics
+`else
 	 rdata = truncate (crg_time [0]);       // truncates for 32b fabrics
+`endif
 
       // The following ALIGN4B reads are only needed for 32b fabrics
       else if (byte_addr == 'h_0004)
@@ -261,7 +290,11 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 
       else if (byte_addr == 'h_BFFC) begin
 	 // MTIMEH
+`ifdef DETERMINISTIC_TIMING
+	 Bit #(64) x64 = sim_time;
+`else
 	 Bit #(64) x64 = crg_time [0];
+`endif
 	 if (valueOf (Wd_Data) == 32)
 	    x64 = { 0, x64 [63:32] };
 	 rdata = zeroExtend (x64);    // extends for 64b fabrics
@@ -342,18 +375,31 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 	    $display ("    Writing MTIMECMP");
 	    $display ("        old MTIMECMP         = 0x%0h", old_timecmp);
 	    $display ("        new MTIMECMP         = 0x%0h", new_timecmp);
-	    $display ("        cur MTIME            = 0x%0h", crg_time [1]);
-	    $display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - crg_time [1]);
+`ifdef DETERMINISTIC_TIMING
+			$display ("        cur MTIME            = 0x%0h", sim_time);
+			$display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - sim_time);
+`else
+			$display ("        cur MTIME            = 0x%0h", crg_time [1]);
+			$display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - crg_time [1]);
+`endif
 	 end
       end
 
       else if (byte_addr == 'h_BFF8) begin
 	 // MTIME
-	 Bit #(64) old_time = crg_time [1];
+`ifdef DETERMINISTIC_TIMING
+		     Bit #(64) old_time = sim_time;
+`else
+		     Bit #(64) old_time = crg_time [1];
+`endif
 	 Bit #(64) new_time = fn_update_strobed_bytes (old_time,
 						       zeroExtend (wdata),
 						       zeroExtend (wstrb));
-	 crg_time [1] <= new_time;
+`ifdef DETERMINISTIC_TIMING
+		     offset <= w_minstret - new_time;
+`else
+		     crg_time [1] <= new_time;
+`endif
 
 	 if (cfg_verbosity > 1) begin
 	    $display ("    Writing MTIME");
@@ -384,14 +430,23 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 	    $display ("    Writing MTIMECMP");
 	    $display ("        old MTIMECMP         = 0x%0h", old_timecmp);
 	    $display ("        new MTIMECMP         = 0x%0h", new_timecmp);
-	    $display ("        cur MTIME            = 0x%0h", crg_time [1]);
-	    $display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - crg_time [1]);
+`ifdef DETERMINISTIC_TIMING
+			$display ("        cur MTIME            = 0x%0h", sim_time);
+			$display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - sim_time);
+`else
+			$display ("        cur MTIME            = 0x%0h", crg_time [1]);
+			$display ("        new MTIMECMP - MTIME = 0x%0h", new_timecmp - crg_time [1]);
+`endif
 	 end
       end
 
       else if (byte_addr == 'h_BFFC) begin
 	 // MTIMEH
-	 Bit #(64) old_time = crg_time [1];
+`ifdef DETERMINISTIC_TIMING
+		     Bit #(64) old_time = sim_time;
+`else
+		     Bit #(64) old_time = crg_time [1];
+`endif
 	 Bit #(64) x64      = zeroExtend (wdata);
 	 Bit #(8)  x64_strb = zeroExtend (wstrb);
 	 if (valueOf (Wd_Data) == 32) begin
@@ -399,7 +454,11 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 	    x64_strb = { x64_strb [3:0], 0 };
 	 end
 	 Bit #(64) new_time = fn_update_strobed_bytes (old_time, x64, x64_strb);
-	 crg_time [1] <= new_time;
+`ifdef DETERMINISTIC_TIMING
+		     offset <= w_minstret - new_time;
+`else
+		     crg_time [1] <= new_time;
+`endif
 
 	 if (cfg_verbosity > 1) begin
 	    $display ("    Writing MTIME");
@@ -475,6 +534,12 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
        return x;
      endmethod
    endinterface
+
+`ifdef DETERMINISTIC_TIMING
+   method Action give_minstret(Bit#(64) minstret);
+      w_minstret <= minstret;
+   endmethod
+`endif
 endmodule
 
 // ================================================================

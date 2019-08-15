@@ -92,6 +92,10 @@ interface CPU_IFC;
    (* always_ready, always_enabled *)
    method Action  nmi_req (Bool set_not_clear);
 
+`ifdef DETERMINISTIC_TIMING
+   method Bit#(64) take_minstret;
+`endif
+
    // ----------------
    // Set core's verbosity
 

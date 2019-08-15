@@ -396,7 +396,6 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    // mcycle is needed even for user-mode RDCYCLE instruction
    // It can be updated by a CSR instruction (in Priv_M), and by the clock
-   Reg #(Bit #(64))   rg_mcycle <- mkReg (0);
    RWire #(Bit #(64)) rw_mcycle <- mkRWire;    // Driven on CSRRx write to mcycle
 
    // minstret is needed even for user-mode RDINSTRET instructions
@@ -404,6 +403,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    Reg #(Bit #(64))   rg_minstret      <- mkReg (0);    // Needed even for user-mode instrs
    RWire #(Bit #(64)) rw_minstret      <- mkRWire;      // Driven on CSRRx write to minstret
    PulseWire          pw_minstret_incr <- mkPulseWire;
+
+`ifdef DETERMINISTIC_TIMING
+   let rg_mcycle = rg_minstret;
+`else
+   Reg #(Bit #(64))   rg_mcycle <- mkReg (0);
+`endif
 
    // Debug/Trace
    Reg #(WordXL)    rg_tselect <- mkRegU;
@@ -493,6 +498,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    // ----------------------------------------------------------------
    // CYCLE counter
 
+`ifndef DETERMINISTIC_TIMING
    (* no_implicit_conditions, fire_when_enabled *)
    rule rl_mcycle_incr;
       // Update due to CSRRx    TODO: fix this
@@ -503,6 +509,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       else
 	 rg_mcycle <= rg_mcycle + 1;
    endrule
+`endif
 
    // ----------------------------------------------------------------
    // INSTRET

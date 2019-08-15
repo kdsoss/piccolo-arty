@@ -104,6 +104,13 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    // Near_Mem_IO
    Near_Mem_IO_AXI4_IFC  near_mem_io <- mkNear_Mem_IO_AXI4;
 
+`ifdef DETERMINISTIC_TIMING
+   (*no_implicit_conditions, fire_when_enabled*)
+   rule rl_connect_minstret;
+     near_mem_io.give_minstret(cpu.take_minstret);
+   endrule
+`endif
+
    // PLIC (Platform-Level Interrupt Controller)
    PLIC_IFC_16_2_7  plic <- mkPLIC_16_2_7;
 
