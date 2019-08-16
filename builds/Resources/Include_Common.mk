@@ -111,7 +111,7 @@ isa_tests:
 tagsparams: $(REPO)/src_Testbench/SoC/TagTableStructure.bsv
 $(REPO)/src_Testbench/SoC/TagTableStructure.bsv: $(REPO)/libs/TagController/tagsparams.py
 	@echo "INFO: Re-generating CHERI tag controller parameters"
-	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0x80000000 --covered-mem-size 0x7ffff000 --top-addr 0xfffff000 -b $@
+	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0x80000000 --covered-mem-size 0x3ffff000 --top-addr 0xbffff000 -b $@
 	@echo "INFO: Re-generated CHERI tag controller parameters"
 compile: tagsparams
 
