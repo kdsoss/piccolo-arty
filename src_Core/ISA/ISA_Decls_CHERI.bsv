@@ -114,6 +114,8 @@ function CapPipe update_scr_via_csr (CapPipe old_scr, Word new_csr);
     return ret;
 endfunction
 
+RegName cCallRD = 31;
+
 // Instruction field encodings
 
 // Top-level opcodes

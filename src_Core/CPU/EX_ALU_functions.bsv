@@ -1545,6 +1545,46 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        f7_cap_CCSeal: begin
          alu_outputs = sealCommon(alu_outputs, cb_val, inputs.rs1_idx, ct_val, inputs.rs2_idx, True);
        end
+       f7_cap_CCall: begin
+           let isCCallFast = inputs.decoded_instr.rd == 5'b1;
+           if (inputs.decoded_instr.rd != 5'b0 && inputs.decoded_instr.rd != 5'b1) begin
+               alu_outputs.control = CONTROL_TRAP;
+               alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+           end else if (!cb_tag) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
+           end else if (!ct_tag) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
+           end else if (!cb_sealed) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+           end else if (!ct_sealed) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
+           end else if (getType(cb_val) != getType(ct_val)) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Type);
+           end else if (isCCallFast && !getHardPerms(cb_val).permitCCall) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_CCallPerm);
+           end else if (isCCallFast && !getHardPerms(ct_val).permitCCall) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_CCallPerm);
+           end else if (!getHardPerms(cb_val).permitExecute) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
+           end else if (getHardPerms(ct_val).permitExecute) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_XPerm);
+           end else if (!isInBounds(cb_val, False)) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Length);
+           end else if (!isCCallFast) begin
+               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Call);
+           end else begin
+               let target = {truncateLSB(cb_addr), 1'b0};
+
+               alu_outputs.val1_cap_not_int = True;
+               alu_outputs.cap_val1 = setType(ct_val, -1).value;
+               alu_outputs.rd = cCallRD;
+               alu_outputs.pcc_written = True;
+               alu_outputs.pcc = setType(cb_val, -1).value;
+
+               alu_outputs.control = CONTROL_BRANCH;
+               alu_outputs = checkValidJump(alu_outputs, True, cb_val, zeroExtend(inputs.rs1_idx), target);
+           end
+       end
        f7_cap_CUnseal: begin
            if (!cb_tag) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
@@ -1782,7 +1822,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
    end
    endcase
-    alu_outputs.rd = inputs.decoded_instr.rd;
 
    // Normal trace output (if no trap)
     alu_outputs.trace_data = mkTrace_I_RD (fall_through_pc (inputs),
