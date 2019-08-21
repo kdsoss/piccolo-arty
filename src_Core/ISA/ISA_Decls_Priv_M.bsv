@@ -467,7 +467,11 @@ endfunction
 
 function MTVec word_to_mtvec (WordXL x);
    return MTVec {base: truncate (x >> 2),
+`ifdef RVFI_DII
+                 mode: unpack (x[1] == 1 ? 0 : x[0])};
+`else
                  mode: unpack (x[0])};
+`endif
 endfunction
 
 // ================================================================
