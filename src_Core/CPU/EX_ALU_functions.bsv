@@ -1273,15 +1273,8 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
 
    next_pc [0] = 1'b0;
 
-   //TODO redundant base calculations
-   Bool misaligned_target = (next_pc [1] == 1'b1) || (getBase(rs1_val)[1:0] != 2'b0);
-`ifdef ISA_C
-   misaligned_target = (getBase(rs1_val)[0] == 1'b1);
-`endif
-
    let alu_outputs = alu_outputs_base;
-   alu_outputs.control   = (misaligned_target ? CONTROL_TRAP : CONTROL_BRANCH);
-   alu_outputs.exc_code  = exc_code_INSTR_ADDR_MISALIGNED;
+   alu_outputs.control   = CONTROL_BRANCH;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
 
@@ -1375,6 +1368,15 @@ endfunction
 
 function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, Bit#(6) authIdx, WordXL target);
    //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
+`ifdef ISA_C
+   Bool misaligned_target = getBase(authority)[0] != 1'b0;
+`else
+   Bool misaligned_target = (target [1] == 1'b1) || (getBase(authority)[1:0] != 2'b0);
+`endif
+   if (misaligned_target && branchTaken) begin
+       alu_outputs.control = CONTROL_TRAP;
+       alu_outputs.exc_code = exc_code_INSTR_ADDR_MISALIGNED;
+   end
    alu_outputs.check_enable = branchTaken;
    alu_outputs.check_authority = authority;
    alu_outputs.check_authority_idx = authIdx;
@@ -1479,8 +1481,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     CapPipe rd_val = ?; //TODO update this in all cases
 
     let alu_outputs = alu_outputs_base;
-    alu_outputs.rd = inputs.decoded_instr.rd; //TODO remove this in some cases?
-    alu_outputs.op_stage2 = OP_Stage2_ALU; //TODO remove this in some cases?
+    alu_outputs.rd = inputs.decoded_instr.rd;
+    alu_outputs.op_stage2 = OP_Stage2_ALU;
 
     case (funct3)
     f3_cap_CIncOffsetImmediate: begin
