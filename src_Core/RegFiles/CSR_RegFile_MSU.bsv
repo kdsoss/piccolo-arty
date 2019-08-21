@@ -603,6 +603,9 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 		     || (csr_addr == csr_addr_mtval)
 		     || (csr_addr == csr_addr_mip)
 
+`ifdef ISA_CHERI
+		     || (csr_addr == csr_addr_mccsr)
+`endif
 		     // TODO: Phys Mem Protection regs
 		     // (csr_addr == csr_pmpcfg0)
 		     // (csr_addr == csr_pmpcfg1)

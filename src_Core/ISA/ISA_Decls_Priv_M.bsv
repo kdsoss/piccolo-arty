@@ -183,7 +183,7 @@ CSR_Addr   csr_addr_dscratch0 = 12'h7B2;    // Debug scratch0
 CSR_Addr   csr_addr_dscratch1 = 12'h7B3;    // Debug scratch1
 
 `ifdef ISA_CHERI
-CSR_Addr   csr_addr_mccsr     = 12'h8C0;    // Machine Capability Control and Status
+CSR_Addr   csr_addr_mccsr     = 12'hBC0;    // Machine Capability Control and Status
 `endif
 
 // ================================================================
