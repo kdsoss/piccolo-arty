@@ -1619,7 +1619,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        end
        f7_cap_CTestSubset: begin
            //TODO make this a two-cycle instruction to reuse bounds check in next stage
-           let result = cb_tag == ct_tag && getBase(ct_val) >= getBase(cb_val) && getTop(ct_val) <= getTop(cb_val) && ((getPerms(ct_val) & getPerms(cb_val)) == getPerms(ct_val));
+           if (inputs.rs1_idx == 0) cb_val = inputs.ddc;
+           let result = isValidCap(cb_val) == ct_tag && getBase(ct_val) >= getBase(cb_val) && getTop(ct_val) <= getTop(cb_val) && ((getPerms(ct_val) & getPerms(cb_val)) == getPerms(ct_val));
            alu_outputs.val1 = zeroExtend(pack(result));
        end
        f7_cap_CCopyType: begin
@@ -1671,7 +1672,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                //TODO think about alternatives for this
            end
            if (!ct_tag) begin
-               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
+               alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs2_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
            end else if (cb_tag && cb_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
@@ -1687,9 +1688,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (rt_val == 0) begin
                alu_outputs.val1 = 0;
            end else if (!cb_tag) begin
-               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
+               alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+               alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
                let result = setOffset(cb_val, rt_val);
                alu_outputs.cap_val1 = result.value;
@@ -1709,9 +1710,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                //TODO think about alternatives for this
            end
            if (!cb_tag) begin
-               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
+               alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cb_sealed) begin
-               alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+               alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else if ((getPerms(cb_val) & getPerms(ct_val)) != getPerms(ct_val)) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Software);
            end else begin
