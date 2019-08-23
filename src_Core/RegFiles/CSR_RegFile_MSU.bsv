@@ -453,6 +453,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 `ifdef ISA_CHERI
       rg_mtcc       <= soc_map.m_mtcc_reset_value;
       rg_mepcc      <= soc_map.m_mepcc_reset_value;
+      rg_mccsr      <= XCCSR{cheri_exc_code: 0, cheri_exc_reg: 0};
 `else
       rg_mtvec      <= word_to_mtvec (truncate (soc_map.m_mtvec_reset_value));
 `endif
@@ -1361,16 +1362,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 `endif
 	 rg_mtval   <= xtval;
 	 rg_mcause  <= xcause;
-`ifdef ISA_CHERI
-   rg_mccsr   <= xccsr;
-`endif
 	 exc_pc      = rg_nmi_vector;
 	 is_vectored = False;
       end
       else if (new_priv == m_Priv_Mode) begin
 `ifdef ISA_CHERI
    rg_mepcc   <= cast(pcc);
-	 rg_mccsr   <= xccsr;
+	 if (exc_code == exc_code_CHERI) rg_mccsr   <= xccsr;
 `else
 	 rg_mepc    <= pc;
 `endif
