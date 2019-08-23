@@ -122,6 +122,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
 `ifdef ISA_CHERI
    Reg #(PCC_T) rg_pcc <- mkRegU;
+   Reg #(Bit#(TAdd#(XLEN,1))) rg_pcc_top <- mkRegU;
    Reg #(CapPipe) rg_ddc <- mkRegU;
    let f_commit <- mkPipelineFIFO;
 `endif
@@ -144,7 +145,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       f_commit.deq;
    endrule
 
-   rule rl_noCommit(!f_commit.first);
+   rule rl_nocommit(!f_commit.first);
       f_commit.deq;
    endrule
 
@@ -333,6 +334,11 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
       , priv            : cur_priv };
 
+
+`ifdef ISA_CHERI
+   let fetch_exc = checkValid(rg_pcc, rg_pcc_top, imem.is_i32_not_i16);
+`endif
+
    // ----------------
    // Combinational output function
 
@@ -349,6 +355,21 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.ostatus = OSTATUS_BUSY;
       end
 
+`ifdef ISA_CHERI
+      else if (isValid(fetch_exc)) begin
+	 output_stage1.ostatus   = OSTATUS_NONPIPE;
+	 output_stage1.control   = CONTROL_TRAP;
+	 output_stage1.trap_info = Trap_Info_Pipe {
+					      exc_code: exc_code_CHERI,
+                cheri_exc_code : fetch_exc.Valid,
+                cheri_exc_reg : {1, scr_addr_PCC},
+                epcc: rg_pcc,
+                eddc: rg_ddc,
+					      tval:     imem.tval};
+	 output_stage1.data_to_stage2 = data_to_stage2;
+      end
+`endif
+
       // Stall if bypass pending for rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
 	 output_stage1.ostatus = OSTATUS_BUSY;
@@ -360,14 +381,10 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 output_stage1.control   = CONTROL_TRAP;
 	 output_stage1.trap_info = Trap_Info_Pipe {
 					      exc_code: imem.exc_code,
-`ifdef ISA_CHERI
-                cheri_exc_code : imem.exc_code == exc_code_CHERI ? exc_code_CHERI_Length : exc_code_CHERI_None, //TODO
-                cheri_exc_reg : imem.exc_code == exc_code_CHERI ? {1, scr_addr_PCC} : 0,
+                cheri_exc_code : ?,
+                cheri_exc_reg : ?,
                 epcc: rg_pcc,
                 eddc: rg_ddc,
-`else
-                epc: pc,
-`endif
 					      tval:     imem.tval};
 	 output_stage1.data_to_stage2 = data_to_stage2;
       end
@@ -464,7 +481,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
 `ifdef ISA_CHERI
       rg_pcc <= next_pcc;
-      f_commit.enq(inBounds(next_pcc));
+      rg_pcc_top <= getTop(next_pcc);
+      f_commit.enq(checkPreValid(next_pcc));
       rg_ddc <= next_ddc;
 `endif
 

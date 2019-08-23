@@ -164,7 +164,8 @@ endfunction
 typeclass PCC#(type t);
     function Exact#(t) setPC (t oldPCC, Addr newPC);
     function Addr getPC (t pcc);
-    function Bool inBounds (t pcc);
+    function Bool checkPreValid (t pcc);
+    function Maybe#(CHERI_Exc_Code) checkValid (t pcc, Bit#(TAdd#(XLEN,1)) top, Bool is_i32_not_i16);
     function t fromCapReg(CapReg pcc);
     function CapReg toCapReg(t pcc);
 endtypeclass
@@ -176,8 +177,26 @@ instance PCC#(CapPipe);
     function Addr getPC (CapPipe pcc);
         return getOffset(pcc);
     endfunction
-    function Bool inBounds (CapPipe pcc);
-        return isInBounds(pcc, False);
+    // Check if a PCC dereference is valid before the instruction len is known
+    function Bool checkPreValid (CapPipe pcc);
+        //TODO alignment checks?
+        return  isValidCap(pcc)
+             && !isSealed(pcc)
+             && getHardPerms(pcc).permitExecute
+             && isInBounds(pcc, False);
+    endfunction
+    function Maybe#(CHERI_Exc_Code) checkValid (CapPipe pcc, Bit#(TAdd#(XLEN,1)) top, Bool is_i32_not_i16);
+        let toRet = Invalid;
+        //TODO alignment checks?
+        if (!isValidCap(pcc))
+            toRet = Valid(exc_code_CHERI_Tag);
+        else if (isSealed(pcc))
+            toRet = Valid(exc_code_CHERI_Seal);
+        else if (!getHardPerms(pcc).permitExecute)
+            toRet = Valid(exc_code_CHERI_XPerm);
+        else if (zeroExtend(getAddr(pcc)) + (is_i32_not_i16 ? 4 : 2) >= top)
+            toRet = Valid(exc_code_CHERI_Length);
+        return toRet;
     endfunction
     function CapPipe fromCapReg(CapReg pcc);
         return cast(pcc);
