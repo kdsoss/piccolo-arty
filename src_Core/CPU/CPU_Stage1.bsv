@@ -469,7 +469,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                                                   , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
       imem.req (f3_LW,
 `ifdef ISA_CHERI
-                      getPC(next_pcc),
+                      getAddr(next_pcc),
 `else
                       next_pc,
 `endif
