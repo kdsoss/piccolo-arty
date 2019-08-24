@@ -1683,6 +1683,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (inputs.rs1_idx == 0) begin
                cb_val = inputs.ddc;
                cb_tag = isValidCap(cb_val);
+               cb_sealed = isSealed(cb_val);
                //TODO think about alternatives for this
            end
            if (rt_val == 0) begin
