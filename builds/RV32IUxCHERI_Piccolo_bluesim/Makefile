@@ -8,6 +8,11 @@ REPO ?= ../..
 ARCH ?= RV32IUxCHERI
 
 TOPMODULE ?= $(TOPMODULE_NORMAL)  \
+
+CAPSIZE = 64
+TAGS_STRUCT = 0 128
+TAGS_ALIGN = 32
+
 # ================================================================
 # RISC-V config macros passed into Bluespec 'bsc' compiler
 
