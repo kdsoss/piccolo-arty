@@ -262,7 +262,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 		 ? alu_outputs.addr
 		 : fall_through_pc);
 
-   let next_pcc_local = setPC(alu_outputs.pcc, next_pc_local).value; //TODO unrepresentable?
+   let next_pcc_local = ((alu_outputs.control == CONTROL_CAPBRANCH)
+     ? alu_outputs.pcc
+     : setPC(rg_pcc, next_pc_local).value); //TODO unrepresentable?
    let next_ddc_local = alu_outputs.ddc;
 
 `ifdef RVFI
@@ -393,7 +395,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       // and non-pipe (CSRR_W, CSRR_S_or_C, FENCE.I, FENCE, SFENCE_VMA, xRET, WFI, TRAP)
       else begin
 	 let ostatus = (  (   (alu_outputs.control == CONTROL_STRAIGHT)
-			   || (alu_outputs.control == CONTROL_BRANCH))
+			   || (alu_outputs.control == CONTROL_BRANCH)
+			   || (alu_outputs.control == CONTROL_CAPBRANCH))
 			? OSTATUS_PIPE
 			: OSTATUS_NONPIPE);
 

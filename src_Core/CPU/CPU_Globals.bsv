@@ -235,6 +235,7 @@ typedef enum {  CONTROL_STRAIGHT
 	      , CONTROL_BRANCH
 	      , CONTROL_CSRR_W
 `ifdef ISA_CHERI
+        , CONTROL_CAPBRANCH
 	      , CONTROL_SCR_W
 `endif
 	      , CONTROL_CSRR_S_or_C

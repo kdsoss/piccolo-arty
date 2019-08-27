@@ -124,7 +124,6 @@ typedef struct {
    CapPipe pcc;
    CapPipe ddc;
 
-   Bool pcc_written;
    Bool ddc_written;
 `endif
 
@@ -191,7 +190,6 @@ ALU_Outputs alu_outputs_base
          pcc : ?,
          ddc : ?,
 
-         pcc_written : False,
          ddc_written : False,
 
          check_enable       : False,
@@ -1274,7 +1272,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
    next_pc [0] = 1'b0;
 
    let alu_outputs = alu_outputs_base;
-   alu_outputs.control   = CONTROL_BRANCH;
+   alu_outputs.control   = CONTROL_CAPBRANCH;
    alu_outputs.op_stage2 = OP_Stage2_ALU;
    alu_outputs.rd        = inputs.decoded_instr.rd;
 
@@ -1286,8 +1284,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
    end else begin
        alu_outputs.addr      = next_pc;
-       alu_outputs.pcc       = rs1_val;
-       alu_outputs.pcc_written = True;
+       alu_outputs.pcc       = setOffset(rs1_val, next_pc).value;
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
@@ -1580,10 +1577,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1_cap_not_int = True;
                alu_outputs.cap_val1 = setType(ct_val, -1).value;
                alu_outputs.rd = cCallRD;
-               alu_outputs.pcc_written = True;
                alu_outputs.pcc = setType(cb_val, -1).value;
 
-               alu_outputs.control = CONTROL_BRANCH;
+               alu_outputs.control = CONTROL_CAPBRANCH;
                alu_outputs = checkValidJump(alu_outputs, True, cb_val, zeroExtend(inputs.rs1_idx), target);
            end
        end
@@ -1977,7 +1973,6 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    end
 
 `ifdef ISA_CHERI
-   if (!alu_outputs.pcc_written) alu_outputs.pcc = inputs.pcc;
    if (!alu_outputs.ddc_written) alu_outputs.ddc = inputs.ddc;
 `endif
 
