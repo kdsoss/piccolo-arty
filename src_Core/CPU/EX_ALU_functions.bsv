@@ -1231,12 +1231,7 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 `ifdef ISA_D
    alu_outputs.val2      = extend (inputs.rs2_val);
 `else
-`ifdef ISA_CHERI
-   alu_outputs.cap_val2      = inputs.cap_rs2_val;
-   alu_outputs.val2_cap_not_int = width_code == w_SIZE_CAP;
-`else
    alu_outputs.val2      = inputs.rs2_val;
-`endif
 `endif
 
    // Normal trace output (if no trap)
