@@ -745,7 +745,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 // Value loaded into rd (LOAD, LR, AMO, SC success/fail result)
 	 dw_output_ld_val     <= fn_extract_and_extend_bytes (width_code, is_unsigned, addr, ld_val);
 	 // Value stored into mem (STORE, SC, AMO final value stored)
-	 dw_output_st_amo_val <= tuple2(tpl_1(st_amo_val)[(addr[4:0] == 0) ? 1 : 0] == 1'b1, tpl_2(st_amo_val)); //TODO check for CHERI
+	 dw_output_st_amo_val <= tuple2(tpl_1(st_amo_val)[(valueOf(CLEN) == 64 && addr[4:0] == 0) ? 1 : 0] == 1'b1, tpl_2(st_amo_val)); //TODO check for CHERI
 	 if (cfg_verbosity > 1)
 	    $display ("%0d: %s.drive_mem_rsp: addr 0x%0h ld_val 0x%0h st_amo_val 0x%0h",
 		      cur_cycle, d_or_i, addr, ld_val, st_amo_val);

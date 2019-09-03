@@ -859,7 +859,8 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 `else
         || (funct3 == f3_SD)
 `endif
-`elsif RV64
+`endif
+`ifdef RV64
 		    || (funct3 == f3_SD)
 `endif
 `ifdef ISA_F
