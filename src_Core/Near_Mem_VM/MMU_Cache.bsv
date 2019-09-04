@@ -889,8 +889,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    rule rl_writeback_updated_PTE;
       match { .pa, .pte } <- pop (f_pte_writebacks);
-      let f3 = ((xlen == 32) ? 3'b010 : 3'b011); // TODO ?
-      fa_fabric_send_write_req (width_code, pa, zeroExtend (pte));
+      let width_code = ((xlen == 32) ? 3'b010 : 3'b011);
+      fa_fabric_send_write_req (width_code, pa, tuple2(False, zeroExtend (pte)));
    endrule
 `endif
 
@@ -1301,13 +1301,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Memory read-response is a level 1 PTE
       let mem_rsp <- get(master_xactor.slave.r);
 
-      Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
+      Bit #(128) x128 = mem_rsp.rdata;
       WordXL pte;
 
-      // PTE is 64b response (RV32 does not have Level 2 PTEs)
-      // TODO: this is ok only when Wd_Data == 64
-      // When Wd_Data == 32, have to do two transactions to get a PTE
-      pte = mem_rsp.rdata;
+      // PTE is lower or upper 64b word of 128b mem response
+      pte = x128 [63:0];
+      if (rg_pte_pa [3] == 1'b1)
+	 pte = x128 [127:64];
 
       // Bus error
       if (mem_rsp.rresp != OKAY) begin
@@ -1388,19 +1388,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Memory read-response is a level 1 PTE
       let mem_rsp <- get(master_xactor.slave.r);
 
-      Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
+      Bit #(128) x128 = mem_rsp.rdata;
       WordXL pte;
-`ifdef RV32
-      // PTE is lower or upper 32b word of 64b mem response
-      pte = x64 [31:0];
-      if ((valueOf (Wd_Data) == 64) && (rg_pte_pa [2] == 1'b1))
-	 pte = x64 [63:32];
-`else       // ifdef RV32
-      // PTE is 64b response
-      // TODO: this is ok only when Wd_Data == 64
-      // When Wd_Data == 32, have to do two transactions to get a PTE
-      pte = mem_rsp.rdata;
-`endif      // ifndef RV32
+      // PTE is lower or upper 64b word of 32b mem response
+      pte = x128 [63:0];
+      if (rg_pte_pa [3] == 1'b1)
+	 pte = x128 [127:64];
 
       // Bus error
       if (mem_rsp.rresp != OKAY) begin
@@ -1486,19 +1479,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Memory read-response is a level 0 PTE
       let mem_rsp <- get(master_xactor.slave.r);
 
-      Bit #(64) x64 = zeroExtend (mem_rsp.rdata);
+      Bit #(128) x128 = mem_rsp.rdata;
       WordXL pte;
-`ifdef RV32
       // PTE is lower or upper 32b word of 64b mem response
-      pte = x64 [31:0];
-      if ((valueOf (Wd_Data) == 64) && (rg_pte_pa [2] == 1'b1))
-	 pte = x64 [63:32];
-`else       // ifdef RV32
-      // PTE is 64b response
-      // TODO: this is ok only when Wd_Data == 64
-      // When Wd_Data == 32, have to do two transactions to get a PTE
-      pte = mem_rsp.rdata;
-`endif      // ifndef RV32
+      pte = x128 [63:0];
+      if (rg_pte_pa [3] == 1'b1)
+	 pte = x128 [127:64];
 
       // Bus error
       if (mem_rsp.rresp != OKAY) begin

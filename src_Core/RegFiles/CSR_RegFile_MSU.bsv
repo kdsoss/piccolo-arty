@@ -337,14 +337,29 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
    // sie     is a restricted view of mie
    // sip     is a restricted view of mip
 
-   Reg #(MTVec)      rg_stvec     <- mkRegU;
    // scounteren hardwired to 0 for now
 
    Reg #(Word)       rg_sscratch  <- mkRegU;
-   Reg #(Word)       rg_sepc      <- mkRegU;
    Reg #(MCause)     rg_scause    <- mkRegU;
-   Reg #(Word)       rg_stval     <- mkRegU;
+`ifdef ISA_CHERI
+   Reg #(XCCSR)      rg_sccsr     <- mkRegU;
+   Reg #(CapReg)     rg_stcc      <- mkReg(nullCap);
+   CapPipe           rg_stcc_unpacked = cast(rg_stcc);
+   Reg #(CapReg)     rg_stdc      <- mkReg(nullCap);
+   CapPipe           rg_stdc_unpacked = cast(rg_stdc);
+   Reg #(CapReg)     rg_sscratchc <- mkReg(nullCap);
+   CapPipe           rg_sscratchc_unpacked = cast(rg_sscratchc);
+   Reg #(CapReg)     rg_sepcc     <- mkReg(nullCap);
+   CapPipe           rg_sepcc_unpacked = cast(rg_sepcc);
 
+   let               rg_stvec = word_to_mtvec(getOffset(rg_stcc_unpacked));
+   let               rg_sepc  = getOffset(rg_sepcc_unpacked);
+`else
+   Reg #(MTVec)      rg_stvec     <- mkRegU;
+   Reg #(Word)       rg_sepc      <- mkRegU;
+`endif
+
+   Reg #(Word)       rg_stval     <- mkRegU;
    Reg #(WordXL)     rg_satp      <- mkRegU;
 
    Reg #(Bit #(16))  rg_medeleg   <- mkRegU;    // TODO: also in M-U systems with user-level traps
@@ -370,10 +385,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
    Reg #(Word)       rg_mscratch <- mkRegU;
    Reg #(MCause)     rg_mcause   <- mkRegU;
-   Reg #(XCCSR)      rg_mccsr    <- mkRegU;
    Reg #(Word)       rg_mtval    <- mkRegU;
 
 `ifdef ISA_CHERI
+   Reg #(XCCSR)      rg_mccsr    <- mkRegU;
    Reg #(CapReg)     rg_mtcc      <- mkReg(nullCap);
    CapPipe           rg_mtcc_unpacked = cast(rg_mtcc);
    Reg #(CapReg)     rg_mtdc      <- mkReg(nullCap);
@@ -439,7 +454,13 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
       // Supervisor-level CSRs
 `ifdef ISA_PRIV_S
+`ifdef ISA_CHERI
+      rg_stcc       <= soc_map.m_mtcc_reset_value;
+      rg_sepcc      <= soc_map.m_mepcc_reset_value;
+      rg_sccsr      <= XCCSR{cheri_exc_code: 0, cheri_exc_reg: 0};
+`else
       rg_stvec    <= word_to_mtvec (truncate (soc_map.m_mtvec_reset_value));
+`endif
       rg_scause   <= word_to_mcause (0);    // Supposed to be the cause of the reset.
       rg_satp     <= 0;
       //rg_scounteren <= mcounteren_reset_value;
@@ -743,6 +764,9 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	    csr_addr_stval:      m_csr_value = tagged Valid rg_stval;
 	    csr_addr_sip:        m_csr_value = tagged Valid (csr_mip.fv_sip_read);
 
+`ifdef ISA_CHERI
+      csr_addr_sccsr:      m_csr_value = tagged Valid (xccsr_to_word(rg_sccsr));
+`endif
 	    csr_addr_satp:       m_csr_value = tagged Valid rg_satp;
 
 	    csr_addr_medeleg:    m_csr_value = tagged Valid zeroExtend (rg_medeleg);
@@ -873,7 +897,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	       csr_addr_stvec:      begin
 				       let mtvec = word_to_mtvec (wordxl);
 				       result    = mtvec_to_word (mtvec);
+`ifdef ISA_CHERI
+               rg_stcc <= cast(update_scr_via_csr(rg_stcc_unpacked, result));
+`else
 				       rg_stvec <= mtvec;
+`endif
 				    end
 	       csr_addr_scounteren: noAction;
 
@@ -882,8 +910,18 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 				       rg_sscratch <= result;
 				    end
 	       csr_addr_sepc:       begin
-				       result       = wordxl;
-				       rg_sepc     <= result;
+				       result   = wordxl;
+               //TODO seems the following should be required upstream:
+`ifdef ISA_C
+               result[0] = 1'b0;
+`else
+               result[1:0] = 2'b0;
+`endif
+`ifdef ISA_CHERI
+               rg_sepcc <= cast(update_scr_via_csr(rg_sepcc_unpacked, result));
+`else
+				       rg_sepc <= result;
+`endif
 				    end
 	       csr_addr_scause:     begin
 				       let mcause   = word_to_mcause (wordxl);
@@ -1377,7 +1415,12 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       end
 `ifdef ISA_PRIV_S
       else if (new_priv == s_Priv_Mode) begin
+`ifdef ISA_CHERI
+   rg_sepcc   <= cast(pcc);
+   if (exc_code == exc_code_CHERI) rg_sccsr   <= xccsr;
+`else
 	 rg_sepc    <= pc;
+`endif
 	 rg_scause  <= xcause;
 	 rg_stval   <= xtval;
 
