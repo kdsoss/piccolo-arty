@@ -426,7 +426,7 @@ def run_command (command):
                                      stdout = subprocess.PIPE,
                                      stderr = subprocess.STDOUT,
                                      universal_newlines = True,
-                                     timeout=10.0)
+                                     timeout=20.0)
         else:
             # Python 3.6 and later
             result = subprocess.run (args = command,
@@ -434,7 +434,7 @@ def run_command (command):
                                      stdout = subprocess.PIPE,
                                      stderr = subprocess.STDOUT,
                                      encoding='utf-8',
-                                     timeout=10.0)
+                                     timeout=20.0)
     except subprocess.TimeoutExpired as exc:
         result = exc
     return result

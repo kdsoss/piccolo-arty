@@ -1472,9 +1472,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       WordXL next_pc = rg_mepc;
       CapPipe next_pcc = rg_mepcc_unpacked;
 `ifdef ISA_PRIV_S
-      if (from_priv != m_Priv_Mode)
+      if (from_priv != m_Priv_Mode) begin
 	 next_pc = rg_sepc;
    next_pcc = rg_sepcc_unpacked;
+      end
 `endif
       return tuple3 (
 `ifdef ISA_CHERI
