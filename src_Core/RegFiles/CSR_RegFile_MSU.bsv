@@ -1384,6 +1384,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
 `ifdef ISA_CHERI
       let xccsr = XCCSR {cheri_exc_reg: cheri_exc_reg, cheri_exc_code: cheri_exc_code};
+      let xtcc = ?;
 `endif
 
       let  xcause      = (nmi
@@ -1406,6 +1407,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       else if (new_priv == m_Priv_Mode) begin
 `ifdef ISA_CHERI
    rg_mepcc   <= cast(pcc);
+   xtcc        = rg_mtcc_unpacked;
 	 if (exc_code == exc_code_CHERI) rg_mccsr   <= xccsr;
 `else
 	 rg_mepc    <= pc;
@@ -1417,6 +1419,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       else if (new_priv == s_Priv_Mode) begin
 `ifdef ISA_CHERI
    rg_sepcc   <= cast(pcc);
+   xtcc        = rg_stcc_unpacked;
    if (exc_code == exc_code_CHERI) rg_sccsr   <= xccsr;
 `else
 	 rg_sepc    <= pc;
@@ -1435,7 +1438,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
       Addr vector_offset = (extend (exc_code)) << 2;
       if (interrupt && is_vectored)
 	 exc_pc = exc_pc + vector_offset;
-   CapPipe exc_pcc  = setOffset(rg_mtcc_unpacked, exc_pc).value; //TODO representability check
+   CapPipe exc_pcc  = setOffset(xtcc, exc_pc).value; //TODO representability check
 
       if (cfg_verbosity > 1) begin
 	 $write ("    Return: new pc 0x%0h  ", exc_pc);
@@ -1471,6 +1474,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 `ifdef ISA_PRIV_S
       if (from_priv != m_Priv_Mode)
 	 next_pc = rg_sepc;
+   next_pcc = rg_sepcc_unpacked;
 `endif
       return tuple3 (
 `ifdef ISA_CHERI
