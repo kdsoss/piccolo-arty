@@ -1457,7 +1457,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let funct5rd = inputs.decoded_instr.funct5rd;
     let funct7  = inputs.decoded_instr.funct7;
 
-    let rt_val = inputs.rs2_val;
+    let rs2_val = inputs.rs2_val;
 
     let cs1_val = inputs.cap_rs1_val;
     let cs1_tag = isValidCap(cs1_val);
@@ -1504,16 +1504,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
        end
        f7_cap_CSetBounds: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rt_val, False);
+           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rs2_val, False);
        end
        f7_cap_CSetBoundsExact: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rt_val, True);
+           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rs2_val, True);
        end
        f7_cap_CSetOffset: begin
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rt_val);
+               let result = setOffset(cs1_val, rs2_val);
                alu_outputs.cap_val1 = result.value;
                alu_outputs.val1 = getAddr(result.value);
                alu_outputs.val1_cap_not_int = result.exact;
@@ -1523,14 +1523,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setAddr(cs1_val, rt_val);
+               let result = setAddr(cs1_val, rs2_val);
                alu_outputs.cap_val1 = result.value;
                alu_outputs.val1 = getAddr(result.value);
                alu_outputs.val1_cap_not_int = result.exact;
            end
        end
        f7_cap_CIncOffset: begin
-           alu_outputs = incOffsetCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rt_val);
+           alu_outputs = incOffsetCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rs2_val);
        end
        f7_cap_CSeal: begin
          alu_outputs = sealCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs2_val, inputs.rs2_idx, False);
@@ -1643,7 +1643,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else if (cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               alu_outputs.cap_val1 = setPerms(cs1_val, pack(getPerms(cs1_val)) & truncate(rt_val));
+               alu_outputs.cap_val1 = setPerms(cs1_val, pack(getPerms(cs1_val)) & truncate(rs2_val));
                alu_outputs.val1_cap_not_int = True;
            end
        end
@@ -1651,7 +1651,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               alu_outputs.cap_val1 = setFlags(cs1_val, truncate(rt_val));
+               alu_outputs.cap_val1 = setFlags(cs1_val, truncate(rs2_val));
                alu_outputs.val1_cap_not_int = True;
            end
        end
@@ -1676,14 +1676,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                cs1_sealed = isSealed(cs1_val);
                //TODO think about alternatives for this
            end
-           if (rt_val == 0) begin
+           if (rs2_val == 0) begin
                alu_outputs.val1 = 0;
            end else if (!cs1_tag) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
            end else if (cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rt_val);
+               let result = setOffset(cs1_val, rs2_val);
                alu_outputs.cap_val1 = result.value;
                alu_outputs.val1 = getAddr(result.value);
                alu_outputs.val1_cap_not_int = result.exact;
