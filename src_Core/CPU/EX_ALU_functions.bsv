@@ -1259,10 +1259,10 @@ function ALU_Outputs fv_CHERI_exc(ALU_Outputs outputs, Bit#(6) regIdx, CHERI_Exc
   return outputs;
 endfunction
 
-function ALU_Outputs fv_CJALR (ALU_Inputs inputs);
+function ALU_Outputs fv_CJALR (ALU_Inputs inputs, WordXL cs1_offset);
    let rs1_val = inputs.cap_rs1_val;
 
-   Addr  next_pc   = getOffset(rs1_val);
+   Addr  next_pc   = cs1_offset;
    Addr  ret_pc    = fall_through_pc (inputs);
 
    next_pc [0] = 1'b0;
@@ -1463,6 +1463,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let cs1_tag = isValidCap(cs1_val);
     let cs1_addr = getAddr(cs1_val);
     let cs1_sealed = isSealed(cs1_val);
+
+    let cs1_offset = getOffset(cs1_val);
 
     let cs2_val = inputs.cap_rs2_val;
     let cs2_tag = isValidCap(cs2_val);
@@ -1785,7 +1787,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1 = getAddr(cs1_val);
            end
            f5rs2_cap_CGetOffset: begin
-               alu_outputs.val1 = getOffset(cs1_val);
+               alu_outputs.val1 = cs1_offset;
            end
            f5rs2_cap_CGetFlags: begin
                alu_outputs.val1 = zeroExtend(getFlags(cs1_val));
@@ -1794,7 +1796,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                alu_outputs.val1 = zeroExtend(getPerms(cs1_val));
            end
            f5rs2_cap_CJALR: begin
-               alu_outputs = fv_CJALR(inputs);
+               alu_outputs = fv_CJALR(inputs, cs1_offset);
            end
            f5rs2_cap_CGetType: begin
                alu_outputs.val1 = isSealed(cs1_val) ? zeroExtend(getType(cs1_val)) : -1;
