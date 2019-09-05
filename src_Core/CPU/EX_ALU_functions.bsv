@@ -1280,7 +1280,7 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs, WordXL cs1_offset);
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
    end else begin
        alu_outputs.addr      = next_pc;
-       alu_outputs.pcc       = setOffset(rs1_val, next_pc, False).value;
+       alu_outputs.pcc       = maskAddr(rs1_val, signExtend(2'b10));
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
