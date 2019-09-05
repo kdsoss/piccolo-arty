@@ -729,7 +729,7 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
 `else
 `ifdef ISA_CHERI
    if (getFlags(inputs.pcc)[0] == 1'b1) begin
-       let result = setOffset(inputs.pcc, rd_val); //TODO Factor this out.
+       let result = setOffset(inputs.pcc, rd_val, False); //TODO Factor this out.
        alu_outputs.cap_val1 = result.value;
        alu_outputs.val1 = getAddr(result.value);
        alu_outputs.val1_cap_not_int = result.exact;
@@ -1280,11 +1280,11 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs, WordXL cs1_offset);
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
    end else begin
        alu_outputs.addr      = next_pc;
-       alu_outputs.pcc       = setOffset(rs1_val, next_pc).value;
+       alu_outputs.pcc       = setOffset(rs1_val, next_pc, False).value;
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
-       alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc).value; //TODO factor this out. Note that ret_pc must be representable
+       alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc, False).value; //TODO factor this out. Note that ret_pc must be representable
        alu_outputs.val1_cap_not_int = True;
 `endif
        alu_outputs = checkValidJump(alu_outputs, True, rs1_val, {0,inputs.rs1_idx}, getBase(rs1_val) + next_pc);
@@ -1404,7 +1404,7 @@ function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(
     if (tag && sealed) begin
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Seal);
     end else begin
-        let result = setOffset(cap, getOffset(cap) + increment);
+        let result = setOffset(cap, increment, True);
         alu_outputs.cap_val1 = result.value;
         alu_outputs.val1 = getAddr(result.value);
         alu_outputs.val1_cap_not_int = result.exact;
@@ -1488,7 +1488,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
        case (funct7)
        f7_cap_CSpecialRW: begin
            if (inputs.decoded_instr.rs2 == scr_addr_PCC && inputs.decoded_instr.rs1 == 0) begin
-               alu_outputs.cap_val1 = setOffset(inputs.pcc, inputs.pc).value;
+               alu_outputs.cap_val1 = setOffset(inputs.pcc, inputs.pc, False).value;
                alu_outputs.val1_cap_not_int = True;
            end else if (inputs.decoded_instr.rs2 == scr_addr_DDC) begin
                alu_outputs.cap_val1 = inputs.ddc;
@@ -1515,7 +1515,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rs2_val);
+               let result = setOffset(cs1_val, rs2_val, False);
                alu_outputs.cap_val1 = result.value;
                alu_outputs.val1 = getAddr(result.value);
                alu_outputs.val1_cap_not_int = result.exact;
@@ -1685,7 +1685,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else if (cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rs2_val);
+               let result = setOffset(cs1_val, rs2_val, False);
                alu_outputs.cap_val1 = result.value;
                alu_outputs.val1 = getAddr(result.value);
                alu_outputs.val1_cap_not_int = result.exact;
