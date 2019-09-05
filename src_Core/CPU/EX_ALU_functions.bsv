@@ -24,6 +24,7 @@ package EX_ALU_functions;
 export
 ALU_Inputs (..),
 ALU_Outputs (..),
+Output_Select,
 fv_ALU;
 
 // ================================================================
@@ -102,6 +103,15 @@ endfunction
 // ================================================================
 // ALU outputs
 
+`ifdef ISA_CHERI
+typedef enum {
+  LITERAL,
+  SET_OFFSET,
+  SET_BOUNDS,
+  SET_ADDR
+  } Output_Select deriving (Bits, FShow, Eq);
+`endif
+
 typedef struct {
    Control    control;
    Exc_Code   exc_code;        // Relevant if control == CONTROL_TRAP
@@ -152,6 +162,11 @@ typedef struct {
    Bool       val1_cap_not_int;
    Bool       val2_cap_not_int;
 
+   Bool       internal_op_flag;
+   CapPipe    internal_op1;
+   WordXL     internal_op2;
+   Output_Select val1_source;
+
    Bool                check_enable;
    CapPipe             check_authority;
    Bit #(6)            check_authority_idx;
@@ -187,6 +202,13 @@ ALU_Outputs alu_outputs_base
 	       val1_cap_not_int: False,
 	       val2_cap_not_int: False,
 
+`ifdef ISA_CHERI
+         internal_op_flag : ?,
+         internal_op1 : ?,
+         internal_op2 : ?,
+         val1_source : LITERAL,
+`endif
+
          pcc : ?,
          ddc : ?,
 
@@ -211,13 +233,17 @@ ALU_Outputs alu_outputs_base
 // The fall-through PC is PC+4 for normal 32b instructions,
 // and PC+2 for 'C' (16b compressed) instructions.
 
-function Addr fall_through_pc (ALU_Inputs  inputs);
-   Addr next_pc = inputs.pc + 4;
+function Addr fall_through_pc_inc (ALU_Inputs inputs);
+   Addr inc = 4;
 `ifdef ISA_C
    if (! inputs.is_i32_not_i16)
-      next_pc = inputs.pc + 2;
+      inc = 2;
 `endif
-   return next_pc;
+   return inc;
+endfunction
+
+function Addr fall_through_pc (ALU_Inputs  inputs);
+   return inputs.pc + fall_through_pc_inc(inputs);
 endfunction
 
 // ================================================================
@@ -729,10 +755,10 @@ function ALU_Outputs fv_AUIPC (ALU_Inputs inputs);
 `else
 `ifdef ISA_CHERI
    if (getFlags(inputs.pcc)[0] == 1'b1) begin
-       let result = setOffset(inputs.pcc, rd_val, False); //TODO Factor this out.
-       alu_outputs.cap_val1 = result.value;
-       alu_outputs.val1 = getAddr(result.value);
-       alu_outputs.val1_cap_not_int = result.exact;
+       alu_outputs.val1_source = SET_OFFSET;
+       alu_outputs.internal_op1 = inputs.pcc;
+       alu_outputs.internal_op2 = pack(iv);
+       alu_outputs.internal_op_flag = True;
    end else
 `endif
    begin
@@ -1284,8 +1310,10 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs, WordXL cs1_offset);
 `ifdef ISA_D
        alu_outputs.val1      = extend (ret_pc);
 `else
-       alu_outputs.cap_val1  = setOffset(inputs.pcc, ret_pc, False).value; //TODO factor this out. Note that ret_pc must be representable
-       alu_outputs.val1_cap_not_int = True;
+       alu_outputs.val1_source = SET_OFFSET;
+       alu_outputs.internal_op1 = inputs.pcc;
+       alu_outputs.internal_op2 = fall_through_pc_inc(inputs);
+       alu_outputs.internal_op_flag = True;
 `endif
        alu_outputs = checkValidJump(alu_outputs, True, rs1_val, {0,inputs.rs1_idx}, getBase(rs1_val) + next_pc);
    end
@@ -1299,32 +1327,31 @@ function ALU_Outputs fv_CJALR (ALU_Inputs inputs, WordXL cs1_offset);
    return alu_outputs;
 endfunction
 
-//TODO make this an instance of single-instance function?
-function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(5) regIdx, Bool tag, Bool sealed,  WordXL length, Bool exactRequired);
+function ALU_Outputs setBoundsCommonExc(ALU_Outputs alu_outputs, CapPipe cap, Bit#(5) regIdx, Bool tag, Bool sealed);
     if (!tag) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Tag);
     end else if (sealed) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Seal);
     end else if (!isInBounds(cap, True)) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Length);
-    end else begin
-       alu_outputs.check_enable = True;
-       alu_outputs.check_authority = cap;
-       alu_outputs.check_authority_idx  = zeroExtend(regIdx);
-       alu_outputs.check_inclusive = True;
-       let result = setBounds(cap, length);
-       alu_outputs.cap_val1 = result.value;
-       alu_outputs.val1_cap_not_int = True;
-       //Since the result of the setBounds is smaller than the original pointer, and the rounding
-       //of the top and bottom does not depend on the other, this is safe, i.e. the result of
-       //rounding cannot take you outside of the authorising capability if the request was not.
-       //alu_outputs.check_address_low = getBase(alu_outputs.cap_val1);
-       alu_outputs.check_address_low = getAddr(cap); //TODO repeated computation
-       //alu_outputs.check_address_high = getTop(alu_outputs.cap_val1);
-       alu_outputs.check_address_high = zeroExtend(getAddr(cap)) + zeroExtend(length); //TODO much repeated computation
-       if (exactRequired && !result.exact) begin
-           alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Precision);
-       end
+    end
+    return alu_outputs;
+endfunction
+
+function ALU_Outputs setBoundsCommon(ALU_Outputs alu_outputs, CapPipe cap, WordXL length, Bool exactRequired);
+    alu_outputs.check_enable = True;
+    alu_outputs.check_authority = cap;
+    alu_outputs.check_inclusive = True;
+    let result = setBounds(cap, length);
+    alu_outputs.cap_val1 = result.value;
+    alu_outputs.val1_cap_not_int = True;
+    //Since the result of the setBounds is smaller than the original pointer, and the rounding
+    //of the top and bottom does not depend on the other, this is safe, i.e. the result of
+    //rounding cannot take you outside of the authorising capability if the request was not.
+    alu_outputs.check_address_low = getAddr(cap);
+    alu_outputs.check_address_high = zeroExtend(getAddr(cap)) + zeroExtend(length);
+    if (exactRequired && !result.exact) begin
+        alu_outputs = fv_CHERI_exc(alu_outputs, alu_outputs.check_authority_idx, exc_code_CHERI_Precision);
     end
     return alu_outputs;
 endfunction
@@ -1404,10 +1431,10 @@ function ALU_Outputs incOffsetCommon(ALU_Outputs alu_outputs, CapPipe cap, Bit#(
     if (tag && sealed) begin
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(regIdx), exc_code_CHERI_Seal);
     end else begin
-        let result = setOffset(cap, increment, True);
-        alu_outputs.cap_val1 = result.value;
-        alu_outputs.val1 = getAddr(result.value);
-        alu_outputs.val1_cap_not_int = result.exact;
+        alu_outputs.val1_source = SET_OFFSET;
+        alu_outputs.internal_op1 = cap;
+        alu_outputs.internal_op2 = increment;
+        alu_outputs.internal_op_flag = True;
     end
     return alu_outputs;
 endfunction
@@ -1482,13 +1509,18 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs = incOffsetCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, signExtend(inputs.decoded_instr.imm12_I));
     end
     f3_cap_CSetBoundsImmediate: begin
-        alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, zeroExtend(inputs.decoded_instr.imm12_I), False);
+        alu_outputs = setBoundsCommonExc(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed);
+        alu_outputs.val1_source = SET_BOUNDS;
+        alu_outputs.internal_op1 = cs1_val;
+        alu_outputs.internal_op2 = zeroExtend(inputs.decoded_instr.imm12_I);
+        alu_outputs.internal_op_flag = False;
+        alu_outputs.check_authority_idx  = zeroExtend(inputs.rs1_idx);
     end
     f3_cap_ThreeOp: begin
        case (funct7)
        f7_cap_CSpecialRW: begin
            if (inputs.decoded_instr.rs2 == scr_addr_PCC && inputs.decoded_instr.rs1 == 0) begin
-               alu_outputs.cap_val1 = setOffset(inputs.pcc, inputs.pc, False).value;
+               alu_outputs.cap_val1 = inputs.pcc;
                alu_outputs.val1_cap_not_int = True;
            end else if (inputs.decoded_instr.rs2 == scr_addr_DDC) begin
                alu_outputs.cap_val1 = inputs.ddc;
@@ -1506,29 +1538,38 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end
        end
        f7_cap_CSetBounds: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rs2_val, False);
+           alu_outputs = setBoundsCommonExc(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed);
+           alu_outputs.val1_source = SET_BOUNDS;
+           alu_outputs.internal_op1 = cs1_val;
+           alu_outputs.internal_op2 = rs2_val;
+           alu_outputs.internal_op_flag = False;
+           alu_outputs.check_authority_idx  = zeroExtend(inputs.rs1_idx);
        end
        f7_cap_CSetBoundsExact: begin
-           alu_outputs = setBoundsCommon(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed, rs2_val, True);
+           alu_outputs = setBoundsCommonExc(alu_outputs, cs1_val, inputs.rs1_idx, cs1_tag, cs1_sealed);
+           alu_outputs.val1_source = SET_BOUNDS;
+           alu_outputs.internal_op1 = cs1_val;
+           alu_outputs.internal_op2 = rs2_val;
+           alu_outputs.internal_op_flag = True;
+           alu_outputs.check_authority_idx  = zeroExtend(inputs.rs1_idx);
        end
        f7_cap_CSetOffset: begin
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rs2_val, False);
-               alu_outputs.cap_val1 = result.value;
-               alu_outputs.val1 = getAddr(result.value);
-               alu_outputs.val1_cap_not_int = result.exact;
+               alu_outputs.val1_source = SET_OFFSET;
+               alu_outputs.internal_op1 = cs1_val;
+               alu_outputs.internal_op2 = rs2_val;
+               alu_outputs.internal_op_flag = False;
            end
        end
        f7_cap_CSetAddr: begin
            if (cs1_tag && cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setAddr(cs1_val, rs2_val);
-               alu_outputs.cap_val1 = result.value;
-               alu_outputs.val1 = getAddr(result.value);
-               alu_outputs.val1_cap_not_int = result.exact;
+               alu_outputs.val1_source = SET_ADDR;
+               alu_outputs.internal_op1 = cs1_val;
+               alu_outputs.internal_op2 = rs2_val;
            end
        end
        f7_cap_CIncOffset: begin
@@ -1621,20 +1662,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else if (cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else if (cs2_sealed) begin
-               let result = setAddr(cs1_val, zeroExtend(getType(cs2_val)));
-               if (!result.exact) begin
-                   //Should be impossible
+               alu_outputs.val1_source = SET_ADDR;
+               alu_outputs.internal_op1 = cs1_val;
+               alu_outputs.internal_op2 = zeroExtend(getType(cs2_val));
                alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Precision);
-               end else begin
-                   alu_outputs.check_enable = True;
-                   alu_outputs.check_authority = cs1_val;
-                   alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-                   alu_outputs.check_address_low = zeroExtend(getType(cs2_val));
-                   alu_outputs.check_address_high = zeroExtend(getType(cs2_val));
-                   alu_outputs.check_inclusive = False;
-                   alu_outputs.cap_val1 = result.value;
-                   alu_outputs.val1_cap_not_int = True;
-               end
+               alu_outputs.check_enable = True;
+               alu_outputs.check_authority = cs1_val;
+               alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
+               alu_outputs.check_address_low = zeroExtend(getType(cs2_val));
+               alu_outputs.check_address_high = zeroExtend(getType(cs2_val));
+               alu_outputs.check_inclusive = False;
            end else begin
                alu_outputs.val1 = -1;
            end
@@ -1676,7 +1713,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                cs1_val = inputs.ddc;
                cs1_tag = isValidCap(cs1_val);
                cs1_sealed = isSealed(cs1_val);
-               //TODO think about alternatives for this
            end
            if (rs2_val == 0) begin
                alu_outputs.val1 = 0;
@@ -1685,10 +1721,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
            end else if (cs1_sealed) begin
                alu_outputs = fv_CHERI_exc(alu_outputs, inputs.rs1_idx == 0 ? {1'b1,scr_addr_DDC} : zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
            end else begin
-               let result = setOffset(cs1_val, rs2_val, False);
-               alu_outputs.cap_val1 = result.value;
-               alu_outputs.val1 = getAddr(result.value);
-               alu_outputs.val1_cap_not_int = result.exact;
+               alu_outputs.val1_source = SET_OFFSET;
+               alu_outputs.internal_op1 = cs1_val;
+               alu_outputs.internal_op2 = rs2_val;
+               alu_outputs.internal_op_flag = False;
            end
        end
        f7_cap_CSub: begin
@@ -1816,6 +1852,24 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
    default: begin
        alu_outputs.control = CONTROL_TRAP;
        alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
+   end
+   endcase
+
+   case(alu_outputs.val1_source)
+   SET_OFFSET: begin
+       let result = setOffset(alu_outputs.internal_op1, alu_outputs.internal_op2, alu_outputs.internal_op_flag);
+       alu_outputs.cap_val1 = result.value;
+       alu_outputs.val1 = getAddr(result.value);
+       alu_outputs.val1_cap_not_int = result.exact;
+   end
+   SET_BOUNDS: begin
+       alu_outputs = setBoundsCommon(alu_outputs, alu_outputs.internal_op1, alu_outputs.internal_op2, alu_outputs.internal_op_flag);
+   end
+   SET_ADDR: begin
+       let result = setAddr(alu_outputs.internal_op1, alu_outputs.internal_op2);
+       alu_outputs.cap_val1 = result.value;
+       alu_outputs.val1 = getAddr(result.value);
+       alu_outputs.val1_cap_not_int = result.exact;
    end
    endcase
 
