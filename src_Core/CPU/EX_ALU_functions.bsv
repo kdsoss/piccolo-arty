@@ -1380,6 +1380,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let check_cs2_not_sealed          = False;
     let check_cs1_sealed              = False;
     let check_cs2_sealed              = False;
+    let check_cs1_cs2_types_match     = False;
     let check_cs1_permit_ccall        = False;
     let check_cs2_permit_ccall        = False;
     let check_cs1_permit_x            = False;
@@ -1543,6 +1544,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     check_cs2_tagged = True;
                     check_cs1_sealed = True;
                     check_cs2_sealed = True;
+                    check_cs1_cs2_types_match = True;
                     check_cs1_permit_x = True;
                     check_cs2_no_permit_x = True;
 
@@ -1805,6 +1807,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
     else if (check_cs2_sealed             && isValidCap(cs2_val) && !isSealed(cs2_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
+    else if (check_cs1_cs2_types_match    && getType(cs1_val) != getType(cs2_val))
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Type);
     else if (check_cs1_permit_ccall       && !getHardPerms(cs1_val).permitCCall)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_CCallPerm);
     else if (check_cs2_permit_ccall       && !getHardPerms(cs2_val).permitCCall)
