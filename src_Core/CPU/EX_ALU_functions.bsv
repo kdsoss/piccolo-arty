@@ -1572,13 +1572,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 check_cs2_permit_unseal = True;
 
                 alu_outputs.check_enable = True;
-                alu_outputs.check_authority = cs1_val;
-                alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-                alu_outputs.check_address_low = getAddr(cs1_val);
-                alu_outputs.check_address_high = zeroExtend(getAddr(cs1_val));
+                alu_outputs.check_authority = cs2_val;
+                alu_outputs.check_authority_idx = {0,inputs.rs2_idx};
+                alu_outputs.check_address_low = getAddr(cs2_val);
+                alu_outputs.check_address_high = zeroExtend(getAddr(cs2_val));
                 alu_outputs.check_inclusive = False;
 
-                alu_outputs.cap_val1 = setType(cs2_val, -1).value; // Always representable now type bit is orthogonal
+                alu_outputs.cap_val1 = setType(cs1_val, -1).value; // Always representable now type bit is orthogonal
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CTestSubset: begin
@@ -1595,10 +1595,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     alu_outputs.internal_op2 = zeroExtend(getType(cs2_val));
 
                     alu_outputs.check_enable = True;
-                    alu_outputs.check_authority = cs2_val;
-                    alu_outputs.check_authority_idx = {0,inputs.rs2_idx};
-                    alu_outputs.check_address_low = zeroExtend(getType(cs1_val));
-                    alu_outputs.check_address_high = zeroExtend(getType(cs1_val));
+                    alu_outputs.check_authority = cs1_val;
+                    alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
+                    alu_outputs.check_address_low = zeroExtend(getType(cs2_val));
+                    alu_outputs.check_address_high = zeroExtend(getType(cs2_val));
                     alu_outputs.check_inclusive = False;
                 end else begin
                     alu_outputs.val1 = -1;
