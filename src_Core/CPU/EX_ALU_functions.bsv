@@ -1582,10 +1582,18 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CTestSubset: begin
-                //TODO make this a two-cycle instruction to reuse bounds check in next stage
                 if (inputs.rs1_idx == 0) cs1_val = inputs.ddc;
-                let result = isValidCap(cs1_val) == isValidCap(cs2_val) && getBase(cs2_val) >= getBase(cs1_val) && getTop(cs2_val) <= getTop(cs1_val) && ((getPerms(cs2_val) & getPerms(cs1_val)) == getPerms(cs2_val));
-                alu_outputs.val1 = zeroExtend(pack(result));
+                if (isValidCap(cs1_val) == isValidCap(cs2_val) &&
+                    ((getPerms(cs2_val) & getPerms(cs1_val)) == getPerms(cs2_val)) ) begin
+                    alu_outputs.check_enable = False; // We do not require the check to pass to avoid a trap
+                    alu_outputs.check_authority = cs1_val;
+                    alu_outputs.check_address_low = getBase(cs2_val);
+                    alu_outputs.check_address_high = getTop(cs2_val);
+                    alu_outputs.check_inclusive = True;
+                    alu_outputs.op_stage2 = OP_Stage2_TestSubset;
+                end else begin
+                    alu_outputs.val1 = zeroExtend(pack(False));
+                end
             end
             f7_cap_CCopyType: begin
                 check_cs1_tagged = True;

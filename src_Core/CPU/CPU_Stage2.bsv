@@ -262,8 +262,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       Output_Stage2 output_stage2 = ?;
 
 `ifdef ISA_CHERI
-     let check_success = rg_stage2.check_enable &&
-                         rg_stage2.check_address_low >= getBase(rg_stage2.check_authority) &&
+     let check_success =  rg_stage2.check_address_low >= getBase(rg_stage2.check_authority) &&
                          (rg_stage2.check_inclusive ? (rg_stage2.check_address_high <= getTop(rg_stage2.check_authority)) : (rg_stage2.check_address_high < getTop(rg_stage2.check_authority)));
 `endif
 
@@ -312,6 +311,28 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 					trace_data:      trace_data};
       end
+
+`ifdef ISA_CHERI
+      else if (   (rg_stage2.op_stage2 == OP_Stage2_TestSubset)) begin
+          let ostatus = OSTATUS_PIPE;
+          CapPipe result = nullWithAddr(zeroExtend(pack(check_success)));
+          let data_to_stage3 = data_to_stage3_base;
+          data_to_stage3.rd_valid = True;
+          data_to_stage3.rd_val = result;
+          let bypass = bypass_base;
+          bypass.bypass_state = BYPASS_RD_RDVAL;
+          bypass.rd_val       = result;
+`ifdef RVFI
+          let info_RVFI_s2 = info_RVFI_s2_base;
+          data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
+          output_stage2 = Output_Stage2 {ostatus:         ostatus,
+                 trap_info:       trap_info_dmem,
+                 data_to_stage3:  data_to_stage3,
+                 bypass:          bypass,
+                 trace_data:      ?};
+          end
+`endif
+`endif
 
       // This stage is doing a LOAD or AMO
       else if (   (rg_stage2.op_stage2 == OP_Stage2_LD)
@@ -645,7 +666,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       end
 `endif
 `ifdef ISA_CHERI
-      output_stage2.check_success = check_success;
+      output_stage2.check_success = rg_stage2.check_enable && check_success;
 `endif
       return output_stage2;
    endfunction
