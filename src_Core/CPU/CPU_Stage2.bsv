@@ -330,8 +330,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                  data_to_stage3:  data_to_stage3,
                  bypass:          bypass,
                  trace_data:      ?};
-          end
 `endif
+      end
 `endif
 
       // This stage is doing a LOAD or AMO
