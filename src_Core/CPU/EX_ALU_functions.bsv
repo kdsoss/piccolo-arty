@@ -315,7 +315,7 @@ endfunction
 // ================================================================
 // BRANCH
 
-function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
+function ALU_Outputs fv_BRANCH (ALU_Inputs inputs, WordXL pcc_base);
    let rs1_val = inputs.rs1_val;
    let rs2_val = inputs.rs2_val;
 
@@ -367,7 +367,7 @@ function ALU_Outputs fv_BRANCH (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, branch_taken, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, branch_taken, inputs.pcc, pcc_base, {1,scr_addr_PCC}, pcc_base + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -380,7 +380,7 @@ endfunction
 // ----------------------------------------------------------------
 // JAL
 
-function ALU_Outputs fv_JAL (ALU_Inputs inputs);
+function ALU_Outputs fv_JAL (ALU_Inputs inputs, WordXL pcc_base);
    IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
    Addr  next_pc = pack (unpack (inputs.pc) + offset);
    Addr  ret_pc  = fall_through_pc (inputs);
@@ -403,7 +403,7 @@ function ALU_Outputs fv_JAL (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, pcc_base, {1,scr_addr_PCC}, pcc_base + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -418,7 +418,7 @@ endfunction
 // ----------------------------------------------------------------
 // JALR
 
-function ALU_Outputs fv_JALR (ALU_Inputs inputs);
+function ALU_Outputs fv_JALR (ALU_Inputs inputs, WordXL pcc_base);
    let rs1_val = inputs.rs1_val;
    let rs2_val = inputs.rs2_val;
 
@@ -450,7 +450,7 @@ function ALU_Outputs fv_JALR (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, {1,scr_addr_PCC}, getBase(inputs.pcc) + next_pc);
+   alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, pcc_base, {1,scr_addr_PCC}, pcc_base + next_pc);
 `endif
 
    // Normal trace output (if no trap)
@@ -1315,12 +1315,12 @@ function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe auth
    return alu_outputs;
 endfunction
 
-function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, Bit#(6) authIdx, WordXL target);
+function ALU_Outputs checkValidJump(ALU_Outputs alu_outputs, Bool branchTaken, CapPipe authority, WordXL authority_base, Bit#(6) authIdx, WordXL target);
    //Note that we only check the first two bytes of the target instruction are in bounds in the jump.
 `ifdef ISA_C
-   Bool misaligned_target = getBase(authority)[0] != 1'b0;
+   Bool misaligned_target = authority_base[0] != 1'b0;
 `else
-   Bool misaligned_target = (target [1] == 1'b1) || (getBase(authority)[1:0] != 2'b0);
+   Bool misaligned_target = (target [1] == 1'b1) || (authority_base[1:0] != 2'b0);
 `endif
    if (misaligned_target && branchTaken) begin
        alu_outputs.control = CONTROL_TRAP;
@@ -1356,7 +1356,7 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    return alu_outputs;
 endfunction
 
-function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
+function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_base);
     let funct3  = inputs.decoded_instr.funct3;
     let funct5rs2 = inputs.decoded_instr.funct5rs2;
     let funct5rd = inputs.decoded_instr.funct5rd;
@@ -1365,9 +1365,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let rs2_val = inputs.rs2_val;
 
     let cs1_val = inputs.cap_rs1_val;
+
+    let cs1_base = getBase(cs1_val);
     let cs1_offset = getOffset(cs1_val);
 
     let cs2_val = inputs.cap_rs2_val;
+
+    let cs2_base = getBase(cs2_val);
+    let cs2_top = getTop(cs2_val);
 
     let alu_outputs = alu_outputs_base;
     alu_outputs.rd = inputs.decoded_instr.rd;
@@ -1375,9 +1380,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
 
     let check_cs1_tagged              = False;
     let check_cs2_tagged              = False;
+    let check_ddc_tagged              = False;
     let check_cs1_sealed_with_type    = False;
     let check_cs1_not_sealed          = False;
     let check_cs2_not_sealed          = False;
+    let check_ddc_not_sealed          = False;
     let check_cs1_sealed              = False;
     let check_cs2_sealed              = False;
     let check_cs1_cs2_types_match     = False;
@@ -1390,6 +1397,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
     let check_cs2_points_to_cs1_type  = False;
     let check_cs2_addr_valid_type     = False;
     let check_cs2_perm_subset_cs1     = False;
+    let check_cs2_perm_subset_ddc     = False;
 
     if (inputs.decoded_instr.opcode == op_AUIPC) begin
         alu_outputs = fv_AUIPC (inputs);
@@ -1557,7 +1565,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                         alu_outputs.pcc = setType(cs1_val, -1).value;
                         alu_outputs.control = CONTROL_CAPBRANCH;
                         let target = {truncateLSB(getAddr(cs1_val)), 1'b0};
-                        alu_outputs = checkValidJump(alu_outputs, True, cs1_val, zeroExtend(inputs.rs1_idx), target);
+                        alu_outputs = checkValidJump(alu_outputs, True, cs1_val, cs1_base, zeroExtend(inputs.rs1_idx), target);
                     end else begin
                         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Call);
                     end
@@ -1582,13 +1590,14 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CTestSubset: begin
-                if (inputs.rs1_idx == 0) cs1_val = inputs.ddc;
-                if (isValidCap(cs1_val) == isValidCap(cs2_val) &&
-                    ((getPerms(cs2_val) & getPerms(cs1_val)) == getPerms(cs2_val)) ) begin
+                let local_cs1_val = cs1_val;
+                if (inputs.rs1_idx == 0) local_cs1_val = inputs.ddc;
+                if (isValidCap(local_cs1_val) == isValidCap(cs2_val) &&
+                    ((getPerms(cs2_val) & getPerms(local_cs1_val)) == getPerms(cs2_val)) ) begin
                     alu_outputs.check_enable = False; // We do not require the check to pass to avoid a trap
-                    alu_outputs.check_authority = cs1_val;
-                    alu_outputs.check_address_low = getBase(cs2_val);
-                    alu_outputs.check_address_high = getTop(cs2_val);
+                    alu_outputs.check_authority = local_cs1_val;
+                    alu_outputs.check_address_low = cs2_base;
+                    alu_outputs.check_address_high = cs2_top;
                     alu_outputs.check_inclusive = True;
                     alu_outputs.op_stage2 = OP_Stage2_TestSubset;
                 end else begin
@@ -1626,23 +1635,33 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CToPtr: begin
-                if (inputs.rs2_idx == 0) cs2_val = inputs.ddc;
-
-                check_cs2_tagged = True;
+                if (inputs.rs2_idx == 0) begin
+                    check_ddc_tagged = True;
+                end else begin
+                    check_cs2_tagged = True;
+                end
                 check_cs1_not_sealed = True;
 
-                alu_outputs.val1 = isValidCap(cs1_val) ? getAddr(cs1_val) - getBase(cs2_val) : 0; //TODO long critical path
+                if (isValidCap(cs1_val)) begin
+                    alu_outputs.val1 = getAddr(cs1_val) - (inputs.rs2_idx == 0 ? ddc_base : cs2_base);
+                end else begin
+                    alu_outputs.val1 = 0;
+                end
             end
             f7_cap_CFromPtr: begin
-                if (inputs.rs1_idx == 0) cs1_val = inputs.ddc;
                 if (rs2_val == 0) begin
                     alu_outputs.val1 = 0;
                 end else begin
-                    check_cs1_tagged = True;
-                    check_cs1_not_sealed = True;
+                    if (inputs.rs1_idx == 0) begin
+                        check_ddc_tagged = True;
+                        check_ddc_not_sealed = True;
+                    end else begin
+                        check_cs1_tagged = True;
+                        check_cs1_not_sealed = True;
+                    end
 
                     alu_outputs.val1_source = SET_OFFSET;
-                    alu_outputs.internal_op1 = cs1_val;
+                    alu_outputs.internal_op1 = inputs.rs1_idx == 0 ? inputs.ddc : cs1_val;
                     alu_outputs.internal_op2 = rs2_val;
                     alu_outputs.internal_op_flag = False;
                 end
@@ -1651,19 +1670,24 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                 alu_outputs.val1 = getAddr(cs1_val) - getAddr(cs2_val);
             end
             f7_cap_CBuildCap: begin
-                if (inputs.rs1_idx == 0) cs1_val = inputs.ddc;
-                check_cs1_tagged = True;
-                check_cs1_not_sealed = True;
-                check_cs2_perm_subset_cs1 = True;
+                if (inputs.rs1_idx == 0) begin
+                    check_ddc_tagged = True;
+                    check_ddc_not_sealed = True;
+                    check_cs2_perm_subset_ddc = True;
+                end else begin
+                    check_cs1_tagged = True;
+                    check_cs1_not_sealed = True;
+                    check_cs2_perm_subset_cs1 = True;
+                end
 
                 alu_outputs.check_enable = True;
-                alu_outputs.check_authority = cs1_val;
+                alu_outputs.check_authority = inputs.rs1_idx == 0 ? inputs.ddc : cs1_val;
                 alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-                alu_outputs.check_address_low = getBase(cs2_val);
-                alu_outputs.check_address_high = getTop(cs2_val);
+                alu_outputs.check_address_low = cs2_base;
+                alu_outputs.check_address_high = cs2_top;
                 alu_outputs.check_inclusive = True;
 
-                if (zeroExtend(getBase(cs2_val)) > getTop(cs2_val)) begin //TODO make more efficient
+                if (zeroExtend(cs2_base) > cs2_top) begin
                     alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Length);
                 end
                 //TODO representability check? Should be unneccessary because arg is already represented so must be representable.
@@ -1711,7 +1735,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     alu_outputs.val1 = truncate(length);
                 end
                 f5rs2_cap_CGetBase: begin
-                    alu_outputs.val1 = getBase(cs1_val);
+                    alu_outputs.val1 = cs1_base;
                 end
                 f5rs2_cap_CGetTag: begin
                     alu_outputs.val1 = zeroExtend(pack(isValidCap(cs1_val)));
@@ -1757,7 +1781,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
                     alu_outputs.internal_op1 = inputs.pcc;
                     alu_outputs.internal_op2 = fall_through_pc_inc(inputs);
                     alu_outputs.internal_op_flag = True;
-                    alu_outputs = checkValidJump(alu_outputs, True, cs1_val, {0,inputs.rs1_idx}, getBase(cs1_val) + next_pc);
+                    alu_outputs = checkValidJump(alu_outputs, True, cs1_val, cs1_base, {0,inputs.rs1_idx}, cs1_base + next_pc);
                 end
                 f5rs2_cap_CGetType: begin
                     alu_outputs.val1 = isSealed(cs1_val) ? zeroExtend(getType(cs1_val)) : -1;
@@ -1805,12 +1829,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Tag);
     else if (check_cs2_tagged             && !isValidCap(cs2_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
+    else if (check_ddc_tagged             && !isValidCap(inputs.ddc))
+        alu_outputs = fv_CHERI_exc(alu_outputs, {1'b1, scr_addr_DDC}      , exc_code_CHERI_Tag);
     else if (check_cs1_sealed_with_type   && getKind(cs1_val) != SEALED_WITH_TYPE)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
     else if (check_cs1_not_sealed         && isValidCap(cs1_val) && isSealed(cs1_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
     else if (check_cs2_not_sealed         && isValidCap(cs2_val) && isSealed(cs2_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
+    else if (check_ddc_not_sealed         && isValidCap(inputs.ddc) && isSealed(inputs.ddc))
+        alu_outputs = fv_CHERI_exc(alu_outputs, {1'b1, scr_addr_DDC}      , exc_code_CHERI_Seal);
     else if (check_cs1_sealed             && isValidCap(cs1_val) && !isSealed(cs1_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
     else if (check_cs2_sealed             && isValidCap(cs2_val) && !isSealed(cs2_val))
@@ -1835,6 +1863,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs);
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Length);
     else if (check_cs2_perm_subset_cs1    && (getPerms(cs1_val) & getPerms(cs2_val)) != getPerms(cs2_val))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Software);
+    else if (check_cs2_perm_subset_ddc    && (getPerms(inputs.ddc) & getPerms(cs2_val)) != getPerms(cs2_val))
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Software);
 
     // Normal trace output (if no trap)
     //alu_outputs.trace_data = mkTrace_I_RD (fall_through_pc (inputs),
@@ -1852,14 +1882,17 @@ endfunction
 function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    let alu_outputs = alu_outputs_base;
 
+   let pcc_base = getBase(inputs.pcc);
+   let ddc_base = getBase(inputs.ddc);
+
    if (inputs.decoded_instr.opcode == op_BRANCH)
-      alu_outputs = fv_BRANCH (inputs);
+      alu_outputs = fv_BRANCH (inputs, pcc_base);
 
    else if (inputs.decoded_instr.opcode == op_JAL)
-      alu_outputs = fv_JAL (inputs);
+      alu_outputs = fv_JAL (inputs, pcc_base);
 
    else if (inputs.decoded_instr.opcode == op_JALR)
-      alu_outputs = fv_JALR (inputs);
+      alu_outputs = fv_JALR (inputs, pcc_base);
 
 `ifdef ISA_M
    // OP 'M' ops MUL/ MULH/ MULHSU/ MULHU/ DIV/ DIVU/ REM/ REMU
@@ -1971,7 +2004,7 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 
 `ifdef ISA_CHERI
    else if (   (inputs.decoded_instr.opcode == op_cap_Manip) || inputs.decoded_instr.opcode == op_AUIPC)
-      alu_outputs = fv_CHERI (inputs);
+      alu_outputs = fv_CHERI (inputs, pcc_base, ddc_base);
 `endif
 
    else begin
