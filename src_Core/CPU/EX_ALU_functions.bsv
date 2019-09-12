@@ -1854,7 +1854,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     else if (check_cs2_no_permit_x        && getHardPerms(cs2_val).permitExecute)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_XPerm);
     else if (check_cs2_permit_unseal      && !getHardPerms(cs2_val).permitUnseal)
-        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_UnsealPerm);
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_UnsealPerm);
     else if (check_cs2_permit_seal        && !getHardPerms(cs2_val).permitSeal)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_SealPerm);
     else if (check_cs2_points_to_cs1_type && getAddr(cs2_val) != zeroExtend(getType(cs1_val)))
