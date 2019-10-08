@@ -373,7 +373,6 @@ def do_worker (worker_num, args_dict, tap_out):
                                       num_passed,
                                       num_executed - num_passed))
         sys.stdout.write (message)
-        sys.stdout.write(("ok" if passed else "not ok") + " " + str(my_index + 1) + " - " + filenames[my_index] + "\n")
         tap_out.write(("ok" if passed else "not ok") + " " + str(my_index + 1) + " - " + filenames[my_index] + "\n")
 
 # ================================================================

@@ -42,12 +42,12 @@ build_all:
 .PHONY: build
 build:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) all
+	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) compile simulator
 	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
 
 .PHONY: test
 test:
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) test  isa_tests
+	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) isa_tests
 	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
 
 .PHONY: build_and_test
