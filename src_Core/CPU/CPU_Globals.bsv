@@ -354,6 +354,70 @@ typedef enum {  OP_Stage2_ALU         // Pass-through (non mem, M, FD, AMO)
 deriving (Eq, Bits, FShow);
 
 typedef struct {
+`ifdef ISA_CHERI
+`ifdef ISA_D
+`ifdef RV32
+`define FLOAT_BIGGER_THAN_INT
+`endif
+`endif
+`ifdef FLOAT_BIGGER_THAN_INT
+    Either#(CapPipe, WordFL) val;
+`else
+    CapPipe val;
+`endif
+`else
+`ifdef ISA_D
+    WordFL val;
+`else
+    WordXL val;
+`endif
+`endif
+   } Pipeline_Val deriving (Bits, FShow);
+
+`ifdef ISA_CHERI
+`ifdef FLOAT_BIGGER_THAN_INT
+    function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: Left(cap)};
+    function CapPipe extract_cap(Pipeline_Val val) =
+        case (val.val) matches
+            tagged Left .cap: cap;
+            default: error("Trying to extract cap from float");
+        endcase;
+    function Pipeline_Val embed_float(WordFL flt) = Pipeline_Val{val: Right(flt)};
+    function WordFL extract_float(Pipeline_Val val) =
+        case (val.val) matches
+            tagged Right .flt: return flt;
+            default: error("Trying to extract float from cap");
+        endcase;
+    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: Left(nullWithAddr(num))};
+    function WordXL extract_int(Pipeline_Val val) =
+        case (val.val) matches
+            tagged Left .cap: return getAddr(cap);
+            default: error("Trying to extract int from float");
+        endcase;
+`else
+    function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
+    function CapPipe extract_cap(Pipeline_Val val) = val.val;
+`ifdef ISA_D
+    function Pipeline_Val embed_flt(WordFL flt) = Pipeline_Val{val: nullWithAddr(flt)};
+    function WordFL extract_flt(Pipeline_Val val) = unpack(truncate(getAddr(val.val)));
+`endif
+    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: nullWithAddr(num)};
+    function WordXL extract_int(Pipeline_Val val) = getAddr(val.val);
+`endif
+`else
+`ifdef ISA_D
+    function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
+    function CapPipe extract_cap(Pipeline_Val val) = val.val;
+    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: num};
+    function WordXL extract_int(Pipeline_Val val) = val.val;
+`else
+    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: num};
+    function WordXL extract_int(Pipeline_Val val) = val.val;
+`endif
+`endif
+
+
+typedef struct {
    Priv_Mode  priv;
 `ifdef ISA_CHERI
    PCC_T      pcc;
@@ -370,29 +434,16 @@ typedef struct {
    RegName    rd;
    Addr       addr;     // Branch, jump: newPC
                         // Mem ops and AMOs: mem addr
-`ifdef ISA_D
-   // When D is enabled, the val from Stage1 to Stage2 should be sized to
-   // max (sizeOf (WordXL), sizeOf (WordFL))
-   // Using lower-level Bit types here as the data in vals always be raw bit
-   // data
-   WordFL     val1;     // OP_Stage2_ALU: rd_val
-                        // OP_Stage2_M and OP_Stage2_FD: arg1
 
-   WordFL     val2;     // OP_Stage2_ST: store-val;
-                        // OP_Stage2_M and OP_Stage2_FD: arg2
-`elsif ISA_CHERI
-   CapPipe    val1;     // OP_Stage2_ALU: rd_val
-                        // OP_Stage2_M and OP_Stage2_FD: arg1
+   Pipeline_Val val1;  // OP_Stage2_ALU: rd_val
+                       // OP_Stage2_M and OP_Stage2_FD: arg1
 
-   CapPipe    val2;     // OP_Stage2_ST: store-val;
-                        // OP_Stage2_M and OP_Stage2_FD: arg2
-`else
+   Pipeline_Val val2;  // OP_Stage2_ST: store-val;
+                       // OP_Stage2_M and OP_Stage2_FD: arg2
 
-   WordXL     val1;     // OP_Stage2_ALU: rd_val
-                        // OP_Stage2_M and OP_Stage2_FD: arg1
-
-   WordXL     val2;     // OP_Stage2_ST: store-val;
-                        // OP_Stage2_M and OP_Stage2_FD: arg2
+`ifdef ISA_F
+   Bool val1_flt_not_int;
+   Bool val2_flt_not_int;
 `endif
 
 `ifdef ISA_CHERI
@@ -546,17 +597,7 @@ typedef struct {
    Bit #(5)  fpr_flags;
 `endif
 
-`ifdef ISA_D
-   // When FP is enabled, the rd_val from Stage2 to Stage3 should be sized to
-   // max (sizeOf (WordXL), sizeOf (WordFL))
-   // Using lower-level Bit types here as the data in rd_val always be raw
-   // bit data
-   WordFL    rd_val;
-`elsif ISA_CHERI
-   CapPipe   rd_val;
-`else
-   WordXL    rd_val;
-`endif
+   Pipeline_Val rd_val;
    } Data_Stage2_to_Stage3
 deriving (Bits);
 

@@ -152,26 +152,13 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
    let bypass_base = Bypass {bypass_state: BYPASS_RD_NONE,
 			     rd:           rg_stage2.rd,
-`ifdef ISA_D
-			     // TODO: is this ifdef necessary? Can't we always truncate?
-			     rd_val:       truncate (rg_stage2.val1)
-`else
-			     rd_val:       rg_stage2.val1
-`endif
+			     rd_val:       extract_cap(rg_stage2.val1)
 			     };
 
 `ifdef ISA_F
    let fbypass_base = FBypass {bypass_state: BYPASS_RD_NONE,
 			       rd:           rg_stage2.rd,
-`ifdef ISA_D
-			       rd_val:       rg_stage2.val1
-`else
-`ifdef RV64
-			       rd_val:       extend (rg_stage2.val1)
-`else
-			       rd_val:       rg_stage2.val1
-`endif
-`endif
+			       rd_val:       extract_flt(rg_stage2.val1)
 			       };
 `endif
 
@@ -219,10 +206,17 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 `ifdef ISA_F
    // The FBox can only generate ILLEGAL Instruction exceptions
-   let  trap_info_fbox = Trap_Info {epc:      rg_stage2.pc,
+   let  trap_info_fbox = Trap_Info_Pipe {
+`ifdef ISA_CHERI
+            epcc:     rg_stage2.pcc,
+            eddc:     rg_stage2.ddc,
+            cheri_exc_code: ?,
+            cheri_exc_reg: ?,
+`else
+            epc:      rg_stage2.pc,
+`endif
 				    exc_code: exc_code_ILLEGAL_INSTRUCTION,
 				    tval:     0 };
-`endif
 
 `ifdef ISA_CHERI
    let  trap_info_capbounds = Trap_Info_Pipe {epcc:    rg_stage2.pcc,
@@ -318,7 +312,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
           CapPipe result = nullWithAddr(zeroExtend(pack(check_success)));
           let data_to_stage3 = data_to_stage3_base;
           data_to_stage3.rd_valid = True;
-          data_to_stage3.rd_val = result;
+          data_to_stage3.rd_val = embed_cap(result);
           let bypass = bypass_base;
           bypass.bypass_state = BYPASS_RD_RDVAL;
           bypass.rd_val       = result;
@@ -371,27 +365,20 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                if (funct3 == f3_FLW)
 `ifdef ISA_D
                   // needs nan-boxing when destined for a DP register file
-                  data_to_stage3.rd_val = fv_nanbox (dcache.word64);
+                  data_to_stage3.rd_val = embed_flt(fv_nanbox (truncate(tpl_2(dcache.word128))));
 `else
-                  data_to_stage3.rd_val = result;
+                  data_to_stage3.rd_val = embed_flt(result);
 `endif
                // A FLD result
                else
-                  data_to_stage3.rd_val = dcache.word64;
+                  data_to_stage3.rd_val = embed_flt(truncate(tpl_2(dcache.word128)));
             end
 
             // A GPR load in a FD system
             else
-`ifdef ISA_D
-               // rd_val is 64-bit to handle FP values
-               data_to_stage3.rd_val   = dcache.word64;
-`else
-               data_to_stage3.rd_val   = result;
 `endif
-`else
             // A GPR load in a non-FD system
-	    data_to_stage3.rd_val   = result;
-`endif
+	    data_to_stage3.rd_val   = embed_cap(result);
 
             // Update the bypass channel, if not trapping (NONPIPE)
 	    let bypass = bypass_base;
@@ -411,7 +398,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                // to stage3
                if (upd_fpr) begin
 		  fbypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-		  fbypass.rd_val       = data_to_stage3.rd_val;
+		  fbypass.rd_val       = extract_flt(data_to_stage3.rd_val);
                end
 
                // Bypassing GPR value in a FD system
@@ -563,14 +550,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 let data_to_stage3 = data_to_stage3_base;
 	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-`ifdef ISA_D
-	 data_to_stage3.rd_val   = extend (result);
-`else
-`ifdef ISA_CHERI
-	 data_to_stage3.rd_val   = nullWithAddr(result);
-`else
-	 data_to_stage3.rd_val   = result;
-`endif
+	 data_to_stage3.rd_val   = embed_int(result);
 `endif
 
 	 let bypass = bypass_base;
@@ -613,7 +593,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 let data_to_stage3      = data_to_stage3_base;
 	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd_val   = value;
+	 data_to_stage3.rd_val   = embed_flt(value);
          data_to_stage3.rd_in_fpr= rg_stage2.rd_in_fpr;
          data_to_stage3.upd_flags= True;
          data_to_stage3.fpr_flags= fflags;
@@ -627,7 +607,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_D
             fbypass.rd_val          = value;
 `else
-            fbypass.rd_val          = truncate (value);
+            fbypass.rd_val          = truncate(value);
 `endif
          end
 
@@ -636,9 +616,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             bypass.bypass_state     = ((ostatus==OSTATUS_PIPE) ? BYPASS_RD_RDVAL
                                                                : BYPASS_RD);
 `ifdef RV64
-            bypass.rd_val           = (value);
+            bypass.rd_val           = nullWithAddr(value);
 `else
-            bypass.rd_val           = truncate (value);
+            bypass.rd_val           = nullWithAddr(truncate(value));
 `endif
          end
 
@@ -684,7 +664,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_A
 	 Bool op_stage2_amo = (x.op_stage2 == OP_Stage2_AMO);
 `ifdef ISA_CHERI
-	 Bit #(7) amo_funct7 = getAddr(x.val1) [6:0];
+	 Bit #(7) amo_funct7 = getAddr(extract_cap(x.val1)) [6:0];
 `else
 	 Bit #(7) amo_funct7 = pack(x.val1) [6:0];
 `endif
@@ -715,8 +695,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 
 `ifdef ISA_CHERI
-        CapReg capReg = cast(x.val2);
-        CapMem capMem = cast(capReg);//TODO work out where to do these casts
+        CapReg capReg = cast(extract_cap(x.val2));
+        CapMem capMem = cast(capReg);
         Bit#(TSub#(SizeOf#(CapMem),1)) tagless = truncate(capMem);
 `endif
 
@@ -727,9 +707,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			amo_funct7,
 `endif
 			x.addr,
-`ifdef ISA_D
-			x.val2,
-`else
+`ifdef ISA_F
+			x.val2_flt_not_int ? tuple2(False,zeroExtend(pack(extract_flt(x.val2)))) :
 `ifdef ISA_CHERI
       tuple2(isValidCap(capMem) && x.mem_allow_cap, zeroExtend(tagless)),
 `else
@@ -768,23 +747,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    Bool is_OP_not_OP_32 = (x.instr [3] == 1'b0);
             mbox.req (is_OP_not_OP_32,
 		      funct3,
-`ifdef ISA_D
-`ifdef RV64
-		      x.val1,
-		      x.val2
-`else
-		      truncate (x.val1),
-		      truncate (x.val2)
-`endif
-`else
-`ifdef ISA_CHERI
-		      getAddr(x.val1),
-		      getAddr(x.val2)
-`else
-		      x.val1,
-		      x.val2
-`endif
-`endif
+		      extract_int(x.val1),
+		      extract_int(x.val2)
 		      );
 	 end
 `endif
@@ -802,8 +766,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 		      x.rounding_mode, // rm
 		      rs2,
 `ifdef ISA_D
-		      x.val1,
-		      x.val2,
+		      x.val1_flt_not_int ? extract_flt(x.val1) : zeroExtend(extract_int(x.val1)),
+		      x.val2_flt_not_int ? extract_flt(x.val2) : zeroExtend(extract_int(x.val2)),
 		      x.val3 
 `else
 `ifdef RV32

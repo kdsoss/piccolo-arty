@@ -156,6 +156,11 @@ typedef struct {
    Bit #(3)   rm;       // rounding mode
 `endif
 
+`ifdef ISA_F
+   Bool       val1_flt_not_int; //Whether val1 contains a floating point value
+   Bool       val2_flt_not_int; //Whether val2 contains a floating point value
+`endif
+
 `ifdef ISA_CHERI
    CapPipe    cap_val1;
    CapPipe    cap_val2;
@@ -192,6 +197,8 @@ ALU_Outputs alu_outputs_base
 	       val1      : ?,
 	       val2      : ?,
 `ifdef ISA_F
+         val1_flt_not_int : False,
+         val2_flt_not_int : False,
 	       val3      : ?,
 	       rd_in_fpr : False,
 	       rm        : ?,
@@ -920,6 +927,7 @@ function ALU_Outputs fv_ST (ALU_Inputs inputs);
 
    // The rs2_val would depend on the combination F/D-RV32/64 when FD is enabled
 `ifdef ISA_F
+   if (opcode == op_STORE_FP) alu_outputs.val2_flt_not_int = True;
 `ifdef ISA_D
 `ifdef RV64
    alu_outputs.val2      = (opcode == op_STORE_FP) ? inputs.frs2_val
@@ -1152,6 +1160,9 @@ function ALU_Outputs fv_FP (ALU_Inputs inputs);
    // Operand values
    // The first operand may be from the FPR or GPR
    let val1_from_gpr     = fv_fp_val1_from_gpr (opcode, funct7, rs2);
+
+   alu_outputs.val1_flt_not_int = !val1_from_gpr;
+   alu_outputs.val2_flt_not_int = True;
 
 `ifdef ISA_D
 `ifdef RV64
@@ -1989,7 +2000,7 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 
 `ifdef ISA_F
    else if (   (inputs.decoded_instr.opcode == op_LOAD_FP))
-      alu_outputs = fv_LD (inputs);
+      alu_outputs = fv_LD (inputs, Invalid);
 
    else if (   (inputs.decoded_instr.opcode == op_STORE_FP))
       alu_outputs = fv_ST (inputs);

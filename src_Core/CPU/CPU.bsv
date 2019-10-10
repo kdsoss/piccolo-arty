@@ -895,7 +895,7 @@ module mkCPU (CPU_IFC);
       let stage2_asr = getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs;
       let stage2_val1= stage1.out.data_to_stage2.val1;
 
-      let rs1_val  = (stage2_val1);
+      let rs1_val  = extract_cap(stage2_val1);
 
       Bool read_not_write = rs1 == 0;
       Bool permitted = csr_regfile.access_permitted_scr (rg_cur_priv, scr_addr, read_not_write, stage2_asr);
@@ -983,17 +983,7 @@ module mkCPU (CPU_IFC);
       let funct3   = instr_funct3 (instr);
       let rd       = instr_rd     (instr);
 
-`ifdef ISA_F
-      // With FP, the val is always Bit #(64)
-      // TODO: is this ifdef necessary? Can't we always use 'truncate'?
-      WordXL stage2_val1= truncate (stage1.out.data_to_stage2.val1);
-`else
-`ifdef ISA_CHERI
-      WordXL stage2_val1= getAddr(stage1.out.data_to_stage2.val1);
-`else
-      WordXL stage2_val1= stage1.out.data_to_stage2.val1;
-`endif
-`endif
+      WordXL stage2_val1= extract_int(stage1.out.data_to_stage2.val1);
 
       let rs1_val  = (  (funct3 == f3_CSRRW)
 		      ? stage2_val1                       // CSRRW
@@ -1096,16 +1086,7 @@ module mkCPU (CPU_IFC);
       let funct3   = instr_funct3 (instr);
       let rd       = instr_rd     (instr);
 
-`ifdef ISA_F
-      // With FP, the val is always Bit #(64)
-      WordXL stage2_val1= truncate (stage1.out.data_to_stage2.val1);
-`else
-`ifdef ISA_CHERI
-      WordXL stage2_val1= getAddr(stage1.out.data_to_stage2.val1);
-`else
-      WordXL stage2_val1= stage1.out.data_to_stage2.val1;
-`endif
-`endif
+      WordXL stage2_val1= extract_int(stage1.out.data_to_stage2.val1);
 
       let rs1_val  = (  ((funct3 == f3_CSRRS) || (funct3 == f3_CSRRC))
 		      ? stage2_val1                      // CSRRS,  CSRRC
