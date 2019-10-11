@@ -217,6 +217,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 				    exc_code: exc_code_ILLEGAL_INSTRUCTION,
 				    tval:     0 };
+`endif
 
 `ifdef ISA_CHERI
    let  trap_info_capbounds = Trap_Info_Pipe {epcc:    rg_stage2.pcc,
@@ -551,7 +552,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 let data_to_stage3 = data_to_stage3_base;
 	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
 	 data_to_stage3.rd_val   = embed_int(result);
-`endif
 
 	 let bypass = bypass_base;
 	 bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
@@ -709,11 +709,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.addr,
 `ifdef ISA_F
 			x.val2_flt_not_int ? tuple2(False,zeroExtend(pack(extract_flt(x.val2)))) :
-`ifdef ISA_CHERI
+`elsif ISA_CHERI
       tuple2(isValidCap(capMem) && x.mem_allow_cap, zeroExtend(tagless)),
 `else
       tuple2(False, zeroExtend(x.val2)),
-`endif
 `endif
 			mem_priv,
 			sstatus_SUM,
@@ -768,7 +767,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_D
 		      x.val1_flt_not_int ? extract_flt(x.val1) : zeroExtend(extract_int(x.val1)),
 		      x.val2_flt_not_int ? extract_flt(x.val2) : zeroExtend(extract_int(x.val2)),
-		      x.val3 
+		      x.val3
 `else
 `ifdef RV32
 		      extend (x.val1),

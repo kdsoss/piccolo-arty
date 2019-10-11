@@ -155,11 +155,9 @@ module mkCPU_Stage3 #(Bit #(4)         verbosity,
                fpr_regfile.write_rd (rg_stage3.rd, extract_flt(rg_stage3.rd_val));
             // Write to GPR in a FD system
             else
-               gpr_regfile.write_rd (rg_stage3.rd, extract_cap(rg_stage3.rd_val));
-`else
-            // Write to GPR in a non-FD system
-            gpr_regfile.write_rd (rg_stage3.rd, rg_stage3.rd_val);
 `endif
+            // Write to GPR in a non-FD system
+            gpr_regfile.write_rd (rg_stage3.rd, extract_cap(rg_stage3.rd_val));
 
 	    if (verbosity > 1)
 `ifdef ISA_F
