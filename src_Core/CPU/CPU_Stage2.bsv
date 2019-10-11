@@ -368,7 +368,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                   // needs nan-boxing when destined for a DP register file
                   data_to_stage3.rd_val = embed_flt(fv_nanbox (truncate(tpl_2(dcache.word128))));
 `else
-                  data_to_stage3.rd_val = embed_flt(result);
+                  data_to_stage3.rd_val = embed_flt(truncate(tpl_2(dcache.word128)));
 `endif
                // A FLD result
                else
@@ -593,7 +593,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 let data_to_stage3      = data_to_stage3_base;
 	 data_to_stage3.rd_valid = (ostatus == OSTATUS_PIPE);
-	 data_to_stage3.rd_val   = embed_flt(value);
+	 data_to_stage3.rd_val   = rg_stage2.rd_in_fpr ? embed_flt(unpack(truncate(value))) : embed_int(truncate(value));
          data_to_stage3.rd_in_fpr= rg_stage2.rd_in_fpr;
          data_to_stage3.upd_flags= True;
          data_to_stage3.fpr_flags= fflags;
@@ -709,7 +709,8 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.addr,
 `ifdef ISA_F
 			x.val2_flt_not_int ? tuple2(False,zeroExtend(pack(extract_flt(x.val2)))) :
-`elsif ISA_CHERI
+`endif
+`ifdef ISA_CHERI
       tuple2(isValidCap(capMem) && x.mem_allow_cap, zeroExtend(tagless)),
 `else
       tuple2(False, zeroExtend(x.val2)),
@@ -765,18 +766,15 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 		      x.rounding_mode, // rm
 		      rs2,
 `ifdef ISA_D
-		      x.val1_flt_not_int ? extract_flt(x.val1) : zeroExtend(extract_int(x.val1)),
-		      x.val2_flt_not_int ? extract_flt(x.val2) : zeroExtend(extract_int(x.val2)),
-		      x.val3
-`else
-`ifdef RV32
-		      extend (x.val1),
-		      extend (x.val2),
-`else
-		      x.val1,
-		      x.val2,
+		      x.val1_flt_not_int ? extract_flt(x.val1) :
 `endif
-		      extend (x.val3)
+                                         zeroExtend(extract_int(x.val1)),
+`ifdef ISA_D
+		      x.val2_flt_not_int ? extract_flt(x.val2) :
+`endif
+                                         zeroExtend(extract_int(x.val2))
+`ifdef ISA_F
+		      , extend (x.val3)
 `endif
 		      );
          end

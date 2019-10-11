@@ -383,7 +383,7 @@ typedef struct {
             default: error("Trying to extract cap from float");
         endcase;
     function Pipeline_Val embed_float(WordFL flt) = Pipeline_Val{val: Right(flt)};
-    function WordFL extract_float(Pipeline_Val val) =
+    function WordFL extract_flt(Pipeline_Val val) =
         case (val.val) matches
             tagged Right .flt: return flt;
             default: error("Trying to extract float from cap");
@@ -397,15 +397,15 @@ typedef struct {
 `else
     function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
     function CapPipe extract_cap(Pipeline_Val val) = val.val;
-`ifdef ISA_D
-    function Pipeline_Val embed_flt(WordFL flt) = Pipeline_Val{val: nullWithAddr(flt)};
+`ifdef ISA_F
+    function Pipeline_Val embed_flt(WordFL flt) = Pipeline_Val{val: nullWithAddr(zeroExtend(pack(flt)))};
     function WordFL extract_flt(Pipeline_Val val) = unpack(truncate(getAddr(val.val)));
 `endif
     function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: nullWithAddr(num)};
     function WordXL extract_int(Pipeline_Val val) = getAddr(val.val);
 `endif
 `else
-`ifdef ISA_D
+`ifdef ISA_F
     function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
     function CapPipe extract_cap(Pipeline_Val val) = val.val;
     function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: num};
