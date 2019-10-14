@@ -266,8 +266,8 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
 
     # RISC-V privilege levels
     fo.write ("\t-D ISA_PRIV_M")
-    if ("U" in arch_std [0:4]): fo.write ("  -D ISA_PRIV_U")
-    if ("S" in arch_std [0:4]): fo.write ("  -D ISA_PRIV_S")
+    if ("U" in arch_std): fo.write ("  -D ISA_PRIV_U")
+    if ("S" in arch_std): fo.write ("  -D ISA_PRIV_S")
     fo.write ("  \\\n")
 
     # If 'S', specify Virtual Memory scheme
