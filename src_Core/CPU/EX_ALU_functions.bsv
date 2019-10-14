@@ -1355,7 +1355,7 @@ function ALU_Outputs memCommon(ALU_Outputs alu_outputs, Bool isStoreNotLoad, Boo
    alu_outputs.addr           = eaddr;
    alu_outputs.mem_width_code = widthCode;
    alu_outputs.mem_unsigned   = isStoreNotLoad ? False : isUnsignedNotSigned;
-   alu_outputs.val2           = getAddr(data); //for stores
+   alu_outputs.val2           = zeroExtend(getAddr(data)); //for stores
    alu_outputs.cap_val2       = data;
    alu_outputs.val2_cap_not_int = widthCode == w_SIZE_CAP;
 
@@ -1654,7 +1654,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 check_cs1_not_sealed = True;
 
                 if (isValidCap(cs1_val)) begin
-                    alu_outputs.val1 = getAddr(cs1_val) - (inputs.rs2_idx == 0 ? ddc_base : cs2_base);
+                    alu_outputs.val1 = zeroExtend(getAddr(cs1_val) - (inputs.rs2_idx == 0 ? ddc_base : cs2_base));
                 end else begin
                     alu_outputs.val1 = 0;
                 end
@@ -1678,7 +1678,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end
             end
             f7_cap_CSub: begin
-                alu_outputs.val1 = getAddr(cs1_val) - getAddr(cs2_val);
+                alu_outputs.val1 = zeroExtend(getAddr(cs1_val) - getAddr(cs2_val));
             end
             f7_cap_CBuildCap: begin
                 if (inputs.rs1_idx == 0) begin
@@ -1742,11 +1742,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             f7_cap_TwoOp: begin
                 case (funct5rs2)
                 f5rs2_cap_CGetLen: begin
-                    let length = getLength(cs1_val);
-                    alu_outputs.val1 = truncate(length);
+                    Bit#(XLEN) length = truncate(getLength(cs1_val));
+                    alu_outputs.val1 = zeroExtend(length);
                 end
                 f5rs2_cap_CGetBase: begin
-                    alu_outputs.val1 = cs1_base;
+                    alu_outputs.val1 = zeroExtend(cs1_base);
                 end
                 f5rs2_cap_CGetTag: begin
                     alu_outputs.val1 = zeroExtend(pack(isValidCap(cs1_val)));
@@ -1763,10 +1763,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     alu_outputs.val1_cap_not_int = True;
                 end
                 f5rs2_cap_CGetAddr: begin
-                    alu_outputs.val1 = getAddr(cs1_val);
+                    alu_outputs.val1 = zeroExtend(getAddr(cs1_val));
                 end
                 f5rs2_cap_CGetOffset: begin
-                    alu_outputs.val1 = cs1_offset;
+                    alu_outputs.val1 = zeroExtend(cs1_offset);
                 end
                 f5rs2_cap_CGetFlags: begin
                     alu_outputs.val1 = zeroExtend(getFlags(cs1_val));
@@ -1811,7 +1811,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     SET_OFFSET: begin
         let result = setOffset(alu_outputs.internal_op1, alu_outputs.internal_op2, alu_outputs.internal_op_flag);
         alu_outputs.cap_val1 = result.value;
-        alu_outputs.val1 = getAddr(result.value);
+        alu_outputs.val1 = zeroExtend(getAddr(result.value));
         alu_outputs.val1_cap_not_int = result.exact;
     end
     SET_BOUNDS: begin
@@ -1831,7 +1831,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     SET_ADDR: begin
         let result = setAddr(cs1_val, alu_outputs.internal_op2);
         alu_outputs.cap_val1 = result.value;
-        alu_outputs.val1 = getAddr(result.value);
+        alu_outputs.val1 = zeroExtend(getAddr(result.value));
         alu_outputs.val1_cap_not_int = result.exact;
     end
     endcase

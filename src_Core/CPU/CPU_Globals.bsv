@@ -374,26 +374,27 @@ typedef struct {
 `endif
    } Pipeline_Val deriving (Bits, FShow);
 
+`ifdef FLOAT_BIGGER_THAN_INT
+   instance FShow#(Either#(a,b)) provisos (FShow#(a), FShow#(b));
+       function fshow(x) = case (x) matches
+                             tagged Left  .l: return fshow(l);
+                             tagged Right .r: return fshow(r);
+                           endcase;
+   endinstance
+`endif
+
 `ifdef ISA_CHERI
 `ifdef FLOAT_BIGGER_THAN_INT
     function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: Left(cap)};
     function CapPipe extract_cap(Pipeline_Val val) =
         case (val.val) matches
-            tagged Left .cap: cap;
-            default: error("Trying to extract cap from float");
+            tagged Left .cap: return cap;
+            tagged Right .flt: return nullWithAddr(truncate(flt));
         endcase;
-    function Pipeline_Val embed_float(WordFL flt) = Pipeline_Val{val: Right(flt)};
-    function WordFL extract_flt(Pipeline_Val val) =
-        case (val.val) matches
-            tagged Right .flt: return flt;
-            default: error("Trying to extract float from cap");
-        endcase;
+    function Pipeline_Val embed_flt(WordFL flt) = Pipeline_Val{val: Right(flt)};
+    function WordFL extract_flt(Pipeline_Val val) = val.val.Right;
     function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: Left(nullWithAddr(num))};
-    function WordXL extract_int(Pipeline_Val val) =
-        case (val.val) matches
-            tagged Left .cap: return getAddr(cap);
-            default: error("Trying to extract int from float");
-        endcase;
+    function WordXL extract_int(Pipeline_Val val) = getAddr(val.val.Left);
 `else
     function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
     function CapPipe extract_cap(Pipeline_Val val) = val.val;
