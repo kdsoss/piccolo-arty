@@ -1553,21 +1553,16 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     alu_outputs.val1_cap_not_int = True;
                 end
             end
-            f7_cap_CCall: begin
-                let isCCallFast = inputs.decoded_instr.rd == 5'b1;
-                if (inputs.decoded_instr.rd != 5'b0 && inputs.decoded_instr.rd != 5'b1) begin
-                    alu_outputs.control = CONTROL_TRAP;
-                    alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
-                end else begin
-                    check_cs1_tagged = True;
-                    check_cs2_tagged = True;
-                    check_cs1_sealed = True;
-                    check_cs2_sealed = True;
-                    check_cs1_cs2_types_match = True;
-                    check_cs1_permit_x = True;
-                    check_cs2_no_permit_x = True;
-
-                    if (isCCallFast) begin
+            f7_cap_TwoSrc: begin
+                case (inputs.decoded_instr.rd)
+                    rd_cap_CCall: begin
+                        check_cs1_tagged = True;
+                        check_cs2_tagged = True;
+                        check_cs1_sealed = True;
+                        check_cs2_sealed = True;
+                        check_cs1_cs2_types_match = True;
+                        check_cs1_permit_x = True;
+                        check_cs2_no_permit_x = True;
                         check_cs1_permit_ccall = True;
                         check_cs2_permit_ccall = True;
                         alu_outputs.val1_cap_not_int = True;
@@ -1577,10 +1572,9 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                         alu_outputs.control = CONTROL_CAPBRANCH;
                         let target = {truncateLSB(getAddr(cs1_val)), 1'b0};
                         alu_outputs = checkValidJump(alu_outputs, True, cs1_val, cs1_base, zeroExtend(inputs.rs1_idx), target);
-                    end else begin
-                        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Call);
                     end
-                end
+                    default: alu_outputs.control = CONTROL_TRAP;
+                endcase
             end
             f7_cap_CUnseal: begin
                 check_cs1_tagged = True;
