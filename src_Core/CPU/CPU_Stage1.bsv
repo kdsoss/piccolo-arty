@@ -309,8 +309,16 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , mem_unsigned    : alu_outputs.mem_unsigned
 `ifdef ISA_CHERI
       , mem_allow_cap   : alu_outputs.mem_allow_cap
-      , val1            : alu_outputs.val1_cap_not_int ? embed_cap(alu_outputs.cap_val1) : embed_int(truncate(alu_outputs.val1))
-      , val2            : alu_outputs.val2_cap_not_int ? embed_cap(alu_outputs.cap_val2) : embed_int(truncate(alu_outputs.val2))
+      , val1            : alu_outputs.val1_cap_not_int ? embed_cap(alu_outputs.cap_val1)
+`ifdef ISA_F
+                             : alu_outputs.val1_flt_not_int ? embed_flt(truncate(alu_outputs.val1))
+`endif
+                             : embed_int(truncate(alu_outputs.val1))
+      , val2            : alu_outputs.val2_cap_not_int ? embed_cap(alu_outputs.cap_val2)
+`ifdef ISA_F
+                             : alu_outputs.val2_flt_not_int ? embed_flt(truncate(alu_outputs.val2))
+`endif
+                             : embed_int(truncate(alu_outputs.val2))
 `else
       , val1            : alu_outputs.val1
       , val2            : alu_outputs.val2
