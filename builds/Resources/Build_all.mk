@@ -24,31 +24,31 @@ help:
 
 .PHONY: build_all
 build_all:
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=bluesim    build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=bluesim    build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=bluesim    build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=bluesim    build_and_test
 
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=verilator  build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=verilator  build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=verilator  build_and_test
+	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=verilator  build_and_test
 
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
+	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=iverilog   build_and_test_iverilog
+	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=iverilog   build_and_test_iverilog
+	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=iverilog   build_and_test_iverilog
+	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=iverilog   build_and_test_iverilog
 
 .PHONY: build
 build:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) compile simulator
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+	logsave  build_and_test.log  make -C  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM) compile simulator
+	mv  build_and_test.log  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM)$
 
 .PHONY: test
 test:
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) isa_tests
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+	logsave  build_and_test.log  make -C  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM) isa_tests
+	mv  build_and_test.log  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM)$
 
 .PHONY: build_and_test
 build_and_test: build test
@@ -56,8 +56,8 @@ build_and_test: build test
 .PHONY: build_and_test_iverilog
 build_and_test_iverilog:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM)  all
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)
+	logsave  build_and_test.log  make -C  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM)  all
+	mv  build_and_test.log  $(ARCH)_$(RVFI_DII)_$(CPU)_$(SIM)
 
 .phony: full_clean
 full_clean:

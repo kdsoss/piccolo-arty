@@ -57,10 +57,10 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoCondensed(
             Bool                    handler,
             Bool                    halted
             );
-            
+
     Data_RVFI_Stage2 s2 = data_s2_s3.info_RVFI_s2;
     Data_RVFI_Stage1 s1 = s2.stage1;
-    
+
     return RVFI_DII_Execution {
         rvfi_order:     order,
         // Not all traps are relevant in the Clifford-RVFI framework, e.g. page faults.
@@ -74,7 +74,7 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoCondensed(
         rvfi_rs1_data:  s1.rs1_data,
         rvfi_rs2_data:  s1.rs2_data,
 `ifdef ISA_CHERI
-        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : getAddr(data_s2_s3.rd_val),
+        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : extract_int(data_s2_s3.rd_val),
 `else
         rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : data_s2_s3.rd_val,
 `endif
@@ -85,15 +85,15 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoCondensed(
         rvfi_mem_rmask: s2.mem_rmask,
         rvfi_mem_wmask: s2.mem_wmask,
 `ifdef ISA_CHERI
-        rvfi_mem_rdata: getAddr(data_s2_s3.rd_val)
+        rvfi_mem_rdata: extract_int(data_s2_s3.rd_val)
 `else
         rvfi_mem_rdata: data_s2_s3.rd_val
 `endif
     };
 endfunction : getRVFIInfoCondensed
-            
-            
-            
+
+
+
 function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
             Data_Stage1_to_Stage2   data_s1_s2,
             Maybe#(WordXL)          next_pc,
@@ -104,9 +104,9 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoS1 (
             Bool                    handler,
             Bool                    halted
             );
-    
+
     Data_RVFI_Stage1 s1 = data_s1_s2.info_RVFI_s1;
-    
+
     return RVFI_DII_Execution {
         rvfi_order:     order,
         rvfi_trap:      isTrap,
