@@ -19,14 +19,13 @@
 
 usage_line = (
     "Usage:\n"
-    "    $ CMD  <repo>  <arch>  <sim>  <opt debug>  <opt tandem verif> <opt RVFI_DII>\n"
+    "    $ CMD  <repo>  <arch>  <sim>  <opt debug>  <opt tandem verif>\n"
     "  where\n"
     "    <repo>            is a path to the CPU source repo (such as Piccolo/Flute)\n"
     "    <arch>            is a word like RV32IMU, RV64ACIMSU, etc.\n"
     "    <sim>             is bluesim, verilator or iverilog\n"
     "    <debug>           if present, is 'debug'\n"
     "    <tandem verif>    if present, is 'tv'\n"
-    "    <RVFI_DII>        if present, is 'RVFI_DII'\n"
 )
 
 # ================================================================
@@ -126,9 +125,21 @@ def main (argv = None):
         tv = "_tv"
         opt_args = opt_args [1:]
 
-    if ((len (opt_args) > 0) and (opt_args [0] == "RVFI_DII")):
+    print(arch_std)
+    print(arch_split[1])
+
+    if ("RVFI_DII" in arch_std):
+        arch_std = arch_std.replace("_RVFI_DII","")
         rvfi_dii = "_RVFI_DII"
-        opt_args = opt_args [1:]
+
+    for ext in arch_split:
+        if ("RVFI_DII" in ext):
+            print("found in   " + ext)
+            rvfi_dii = "_RVFI_DII"
+
+    arch_split = list(map ((lambda x : x.replace("_RVFI_DII", "")), arch_split))
+
+    print(arch_split[1])
 
     if (len (opt_args) > 0):
         sys.stdout.write ("Error in optional command-line args (='{0}')\n".format (opt_args [0]))
