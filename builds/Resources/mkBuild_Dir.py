@@ -125,21 +125,15 @@ def main (argv = None):
         tv = "_tv"
         opt_args = opt_args [1:]
 
-    print(arch_std)
-    print(arch_split[1])
-
     if ("RVFI_DII" in arch_std):
         arch_std = arch_std.replace("_RVFI_DII","")
         rvfi_dii = "_RVFI_DII"
 
     for ext in arch_split:
         if ("RVFI_DII" in ext):
-            print("found in   " + ext)
             rvfi_dii = "_RVFI_DII"
 
     arch_split = list(map ((lambda x : x.replace("_RVFI_DII", "")), arch_split))
-
-    print(arch_split[1])
 
     if (len (opt_args) > 0):
         sys.stdout.write ("Error in optional command-line args (='{0}')\n".format (opt_args [0]))
