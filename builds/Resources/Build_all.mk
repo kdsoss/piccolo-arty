@@ -42,13 +42,11 @@ build_all:
 .PHONY: build
 build:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) simulator
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+	logsave  $(ARCH)_$(CPU)_$(SIM)/build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) simulator
 
 .PHONY: test
 test:
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) isa_tests
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
+	logsave  $(ARCH)_$(CPU)_$(SIM)/build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) isa_tests
 
 .PHONY: build_and_test
 build_and_test: build test
@@ -56,8 +54,7 @@ build_and_test: build test
 .PHONY: build_and_test_iverilog
 build_and_test_iverilog:
 	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM)
-	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM)  all
-	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)
+	logsave  $(ARCH)_$(CPU)_$(SIM)/build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM)  all
 
 .phony: full_clean
 full_clean:
