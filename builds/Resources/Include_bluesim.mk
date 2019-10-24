@@ -29,7 +29,7 @@ BSC_C_FLAGS += \
 	-Xc -O3 -Xc++ -O3 \
 
 .PHONY: simulator
-simulator:
+simulator: compile
 	@echo "INFO: linking bsc-compiled objects into Bluesim executable"
 	bsc -sim -parallel-sim-link 8 \
 		$(TMP_DIRS) \

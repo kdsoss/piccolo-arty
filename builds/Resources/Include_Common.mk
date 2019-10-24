@@ -30,7 +30,7 @@ help:
 	@echo '    make  full_clean   Restore to pristine state (pre-building anything)'
 
 .PHONY: all
-all: compile  simulator
+all: simulator
 
 # ================================================================
 # Search path for bsc for .bsv files
