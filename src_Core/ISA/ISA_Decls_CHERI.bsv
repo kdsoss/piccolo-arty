@@ -160,8 +160,17 @@ Bit #(7) f7_cap_CTestSubset     = 7'h20;
 // 7'h21-7'hfb unused
 Bit #(7) f7_cap_Stores          = 7'h7c;
 Bit #(7) f7_cap_Loads           = 7'h7d;
-Bit #(7) f7_cap_CCall           = 7'h7e;
+Bit #(7) f7_cap_TwoSrc          = 7'h7e;
 Bit #(7) f7_cap_TwoOp           = 7'h7f;
+
+// ================================================================
+// f7_cap_TwoSrc opcode subdivision
+
+// rd selects between 2-reg operations
+
+// 5'h00 unused
+Bit #(5) rd_cap_CCall          = 5'h01;
+// 5'h02-5'h1f unused
 
 // ================================================================
 // f7_cap_TwoOp opcode subdivision

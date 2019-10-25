@@ -19,14 +19,13 @@
 
 usage_line = (
     "Usage:\n"
-    "    $ CMD  <repo>  <arch>  <sim>  <opt debug>  <opt tandem verif> <opt RVFI_DII>\n"
+    "    $ CMD  <repo>  <arch>  <sim>  <opt debug>  <opt tandem verif>\n"
     "  where\n"
     "    <repo>            is a path to the CPU source repo (such as Piccolo/Flute)\n"
     "    <arch>            is a word like RV32IMU, RV64ACIMSU, etc.\n"
     "    <sim>             is bluesim, verilator or iverilog\n"
     "    <debug>           if present, is 'debug'\n"
     "    <tandem verif>    if present, is 'tv'\n"
-    "    <RVFI_DII>        if present, is 'RVFI_DII'\n"
 )
 
 # ================================================================
@@ -111,22 +110,6 @@ def main (argv = None):
         sys.stdout.write ("\n")
         return 1
 
-    arch = canonical_arch_string ("x".join([arch_std] + arch_split[1:]))
-    sys.stdout.write ("Canonical arch string is:  '{0}'\n".format (arch))
-
-    # ----------------
-    # Collect <sim> and check if legal
-
-    sim = argv [3].lower ()
-    if (not ((sim == 'bluesim') or
-             (sim == 'verilator') or
-             (sim == 'iverilog'))):
-        sys.stdout.write ("Error in command-line arg for <sim> (='{0}')\n".format (sim))
-        sys.stdout.write ("    Should be  'bluesim',  'verilator'  or  'iverilog'\n")
-        sys.stdout.write (usage_line.replace ("CMD", argv [0]))
-        sys.stdout.write ("\n")
-        return 1
-
     # ----------------
     # Collect optional <debug> and <tv> args
 
@@ -142,13 +125,35 @@ def main (argv = None):
         tv = "_tv"
         opt_args = opt_args [1:]
 
-    if ((len (opt_args) > 0) and (opt_args [0] == "RVFI_DII")):
+    if ("RVFI_DII" in arch_std):
+        arch_std = arch_std.replace("_RVFI_DII","")
         rvfi_dii = "_RVFI_DII"
-        opt_args = opt_args [1:]
+
+    for ext in arch_split:
+        if ("RVFI_DII" in ext):
+            rvfi_dii = "_RVFI_DII"
+
+    arch_split = list(map ((lambda x : x.replace("_RVFI_DII", "")), arch_split))
 
     if (len (opt_args) > 0):
         sys.stdout.write ("Error in optional command-line args (='{0}')\n".format (opt_args [0]))
         sys.stdout.write ("    Should be  'debug', 'tv' or 'RVFI_DII'\n")
+        sys.stdout.write (usage_line.replace ("CMD", argv [0]))
+        sys.stdout.write ("\n")
+        return 1
+
+    arch = canonical_arch_string ("x".join([arch_std] + arch_split[1:])) + rvfi_dii
+    sys.stdout.write ("Canonical arch string is:  '{0}'\n".format (arch))
+
+    # ----------------
+    # Collect <sim> and check if legal
+
+    sim = argv [3].lower ()
+    if (not ((sim == 'bluesim') or
+             (sim == 'verilator') or
+             (sim == 'iverilog'))):
+        sys.stdout.write ("Error in command-line arg for <sim> (='{0}')\n".format (sim))
+        sys.stdout.write ("    Should be  'bluesim',  'verilator'  or  'iverilog'\n")
         sys.stdout.write (usage_line.replace ("CMD", argv [0]))
         sys.stdout.write ("\n")
         return 1
@@ -210,6 +215,8 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
     else:
         sys.stdout.write ("Creating directory    '{0}'\n".format (dirname));
         os.mkdir (dirname)
+
+    arch = arch.replace("_RVFI_DII", "")
 
     # Create the Makefile (backing up existing copy, if any)
     Makefile_filename = os.path.join (dirname, "Makefile")

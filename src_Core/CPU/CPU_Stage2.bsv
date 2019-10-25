@@ -498,7 +498,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 data_to_stage3.rd       = 0;
 `ifdef RVFI
 `ifdef ISA_CHERI
-	 data_to_stage3.rd_val   = nullCap;
+	 data_to_stage3.rd_val   = embed_cap(nullCap);
 `else
 	 data_to_stage3.rd_val   = 0;
 `endif
