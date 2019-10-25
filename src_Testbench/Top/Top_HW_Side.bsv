@@ -122,8 +122,10 @@ Empty
 
       // ----------------
       // Start timing the simulation
+`ifndef IVERILOG
       Bit #(32) cycle_num <- cur_cycle;
       c_start_timing (zeroExtend (cycle_num));
+`endif
 
       // ----------------
       // Open file for Tandem Verification trace output
@@ -172,8 +174,10 @@ Empty
 		cur_cycle, soc_top.status, soc_top.status);
 
       // End timing the simulation
+`ifndef IVERILOG
       Bit #(32) cycle_num <- cur_cycle;
       c_end_timing (zeroExtend (cycle_num));
+`endif
 
       $finish (0);
    endrule
@@ -283,8 +287,10 @@ Empty
 	    $display ("Top_HW_Side.rl_debug_client_request_recv: SHUTDOWN");
 
 	    // End timing the simulation and print simulation speed stats
+`ifndef IVERILOG
 	    Bit #(32) cycle_num <- cur_cycle;
 	    c_end_timing (zeroExtend (cycle_num));
+`endif
 
 	    $finish (0);
 	 end

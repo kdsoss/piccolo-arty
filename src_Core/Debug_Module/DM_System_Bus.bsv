@@ -318,7 +318,7 @@ module mkDM_System_Bus (DM_System_Bus_IFC);
 		.fabric_data,
 		.fabric_strb,
 		.fabric_size} = fn_to_fabric_write_fields (rg_sbcs_sbaccess, sbaddress, data64);
-	 
+	
 	 // fabric_addr is always fabric-data-width aligned
 	 // fabric_data is properly lane-adjusted
 	 // fabric_strb identifies the lanes to be written

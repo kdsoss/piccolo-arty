@@ -47,7 +47,7 @@ import AXI4      :: *;
 // ================================================================
 // Project imports
 
-import ISA_Decls   :: *;
+import ISA_Decls :: *;
 
 import Fabric_Defs :: *;
 
@@ -89,7 +89,7 @@ interface Near_Mem_IFC;
    // SFENCE_VMA
    method Action sfence_vma;
 endinterface
-   
+
 // ================================================================
 // Near_Mem opcodes
 

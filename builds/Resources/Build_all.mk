@@ -6,6 +6,7 @@
 # This Makefile should be invoked in the 'builds' directory
 
 CPU=Piccolo
+REPO ?= ..
 
 .PHONY: help
 help:
@@ -22,26 +23,30 @@ help:
 	@echo "    Temporary note: iverilog tests are not automated, pending"
 	@echo "        fixing the C-import functionality."
 
-.PHONY: build_all
-build_all:
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
+.PHONY: build_all_bluesim
+build_all_bluesim:
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64AIMU     SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=bluesim    RVFI_DII=RVFI_DII  build_and_test
 
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
+.PHONY: build_all_verilator
+build_all_verilator:
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64AIMU     SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=verilator  RVFI_DII=RVFI_DII  build_and_test
 
-	make  -f Resources/Build_all.mk  ARCH=RV32AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV64AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
-	make  -f Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
+.PHONY: build_all_iverilog
+build_all_iverilog:
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV32ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64AIMU     SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
+	make  -f $(REPO)/builds/Resources/Build_all.mk  ARCH=RV64ADFIMSU  SIM=iverilog   RVFI_DII=RVFI_DII  build_and_test_iverilog
 
 .PHONY: build
 build:
-	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
+	$(REPO)/builds/Resources/mkBuild_Dir.py  $(REPO)  $(ARCH)  $(SIM) $(RVFI_DII)
 	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM) compile simulator
 	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)$
 
@@ -53,9 +58,11 @@ test:
 .PHONY: build_and_test
 build_and_test: build test
 
+build_all:  build_all_bluesim  build_all_verilator  build_all_iverilog
+
 .PHONY: build_and_test_iverilog
 build_and_test_iverilog:
-	Resources/mkBuild_Dir.py  ..  $(ARCH)  $(SIM) $(RVFI_DII)
+	$(REPO)/builds/Resources/mkBuild_Dir.py  $(REPO)  $(ARCH)  $(SIM) $(RVFI_DII)
 	logsave  build_and_test.log  make -C  $(ARCH)_$(CPU)_$(SIM)  all
 	mv  build_and_test.log  $(ARCH)_$(CPU)_$(SIM)
 

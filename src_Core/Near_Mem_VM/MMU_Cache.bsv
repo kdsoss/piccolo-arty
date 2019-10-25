@@ -494,8 +494,8 @@ endfunction
 function Reg #(t) fn_genNullRegIfc (t x) provisos (Literal#(t));
    return (
       interface Reg;
-         method _read = 0;
-         method _write (x) = noAction;
+         method _read = x;
+         method _write (y) = noAction;
       endinterface
    );
 endfunction
@@ -539,7 +539,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    FIFOF #(Requestor) f_reset_reqs <- mkFIFOF;
    Bool resetting = f_reset_reqs.notEmpty;
    FIFOF #(Requestor) f_reset_rsps <- mkFIFOF;
-   
+
    PulseWire req_called <- mkPulseWire();
 
    // Fabric request/response
@@ -589,7 +589,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `else
    // VM-SYNTH-OPT
    // Dummy registers in non-VM mode
-   Priv_Mode x = ?;
+   Priv_Mode x = m_Priv_Mode;
    Reg #(Priv_Mode)  rg_priv        = fn_genNullRegIfc (x);
 
    Bit #(1) y = ?;
@@ -816,53 +816,56 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       endaction
    endfunction
 
+   FIFOF #(Tuple3 #(Bit #(3), PA, Tuple2 #(Bool, Bit#(128)))) f_fabric_write_reqs <- mkFIFOF;
+
    // Send a write-request into the fabric
    function Action fa_fabric_send_write_req (Bit #(3)  width_code, PA  pa, Tuple2 #(Bool, Bit#(128))  st_val
                                                                                                            );
       action
-	 match {.fabric_addr,
-		.fabric_data,
-`ifdef ISA_CHERI
-        .fabric_wuser,
-`endif
-		.fabric_strb,
-		.fabric_size} = fn_to_fabric_write_fields (width_code, pa, st_val);
-
-`ifndef ISA_CHERI
-   let fabric_wuser = fabric_default_wuser;
-`endif
-
-
-	 let mem_req_wr_addr = AXI4_AWFlit {awid:     default_mid,
-					    awaddr:   fabric_addr,
-					    awlen:    0,           // burst len = awlen+1
-					    awsize:   fabric_size,
-					    awburst:  fabric_default_burst,
-					    awlock:   fabric_default_lock,
-					    awcache:  fabric_default_awcache,
-					    awprot:   fabric_default_prot,
-					    awqos:    fabric_default_qos,
-					    awregion: fabric_default_region,
-					    awuser:   fabric_default_awuser};
-
-	 let mem_req_wr_data = AXI4_WFlit {wdata:  fabric_data,
-					   wstrb:  fabric_strb,
-					   wlast:  True,
-					   wuser:  fabric_wuser};
-
-	 master_xactor.slave.aw.put(mem_req_wr_addr);
-	 master_xactor.slave.w.put(mem_req_wr_data);
-
-	 // Expect a fabric response
-	 ctr_wr_rsps_pending.incr;
-
-	 // Debugging
-	 if (cfg_verbosity > 1) begin
-	    $display ("            To fabric: ", fshow (mem_req_wr_addr));
-	    $display ("                       ", fshow (mem_req_wr_data));
-	 end
+	 f_fabric_write_reqs.enq (tuple3 (width_code, pa, st_val));
       endaction
    endfunction
+
+   rule rl_fabric_send_write_req;
+      match { .f3, .pa, .st_val } <- pop (f_fabric_write_reqs);
+
+      match {.fabric_addr,
+	     .fabric_data,
+`ifdef ISA_CHERI
+       .fabric_user,
+`endif
+	     .fabric_strb,
+	     .fabric_size} = fn_to_fabric_write_fields (f3, pa, st_val);
+
+      let mem_req_wr_addr = AXI4_AWFlit {awid:     default_mid,
+					  awaddr:   fabric_addr,
+					  awlen:    0,           // burst len = awlen+1
+					  awsize:   fabric_size,
+					  awburst:  fabric_default_burst,
+					  awlock:   fabric_default_lock,
+					  awcache:  fabric_default_awcache,
+					  awprot:   fabric_default_prot,
+					  awqos:    fabric_default_qos,
+					  awregion: fabric_default_region,
+					  awuser:   fabric_default_awuser};
+
+      let mem_req_wr_data = AXI4_WFlit {wdata:  fabric_data,
+					  wstrb:  fabric_strb,
+					  wlast:  True,
+					  wuser:  fabric_user};
+
+      master_xactor.slave.aw.put (mem_req_wr_addr);
+      master_xactor.slave.w.put (mem_req_wr_data);
+
+      // Expect a fabric response
+      ctr_wr_rsps_pending.incr;
+
+      // Debugging
+      if (cfg_verbosity > 1) begin
+	 $display ("            To fabric: ", fshow (mem_req_wr_addr));
+	 $display ("                       ", fshow (mem_req_wr_data));
+      end
+   endrule
 
    // ================================================================
    // When PTE.A or PTE.D is updated, this function records it in the TLB
@@ -1141,6 +1144,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 				  rg_lrsc_pa, vm_xlate_result.pa);
 		  end
 
+		  // SC result=0 on success, =1 on failure
 		  Bit #(1) lrsc_result = (do_write ? 1'b0 : 1'b1);
 
 		  rg_ld_val     <= tuple2(False, zeroExtend (lrsc_result));
@@ -1255,10 +1259,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // ****************************************************************
 
    // TODO: should this rule be merged into rl_probe_and_immed_rsp, to avoid losing a cycle?
+   //       or does that worsen critical path?
 
    rule rl_start_tlb_refill ((rg_state == PTW_START) && (ctr_wr_rsps_pending.value == 0));
 //TODO check if this needs to change for 128?
 `ifdef RV32
+
       // RV32.Sv32: Page Table top is at Level 1
 
       if (cfg_verbosity > 1)
@@ -1274,6 +1280,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_pte_pa <= lev_1_pte_pa;
       rg_state  <= PTW_LEVEL_1;
 `elsif SV39    // ifdef RV32
+
       // RV64.Sv39: Page Table top is at Level 2
 
       if (cfg_verbosity > 1)
@@ -1977,9 +1984,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		       WordXL     satp);    // { VM_Mode, ASID, PPN_for_page_table }
 
       if (cfg_verbosity > 1) begin
-	 $display ("%0d: %s.req: op:", cur_cycle, d_or_i, fshow (op),
-		   " width_code:%0d addr:0x%0h st_value:0x%0h priv:",
-		   width_code,    addr,      st_value,      fshow_Priv_Mode (priv),
+	 $display ("%0d: %m.req: op:", cur_cycle, fshow (op),
+		   " f3:%0d addr:0x%0h st_value:0x%0h", width_code, addr, st_value);
+	 $display ("    priv:", fshow_Priv_Mode (priv),
 		   " sstatus_SUM:%0d mstatus_MXR:%0d satp:0x%0h",
 		   sstatus_SUM,    mstatus_MXR,    satp);
 `ifdef ISA_A
