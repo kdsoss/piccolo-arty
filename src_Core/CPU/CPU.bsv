@@ -940,6 +940,7 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Simulation heuristic: finish if trap back to this instr
+`ifndef RVFI_DII
 `ifndef INCLUDE_GDB_CONTROL
       if (epc == next_pc) begin
 	 $display ("%0d: %m.rl_stage1_trap: Tight infinite trap loop: pc 0x%0x instr 0x%08x", mcycle,
@@ -947,6 +948,7 @@ module mkCPU (CPU_IFC);
 	 fa_report_CPI;
 	 $finish (0);
       end
+`endif
 `endif
 
       fa_emit_instr_trace (minstret, epc, instr, rg_cur_priv);
@@ -999,7 +1001,7 @@ module mkCPU (CPU_IFC);
       let rs1      = instr_rs1    (instr);
       let rd       = instr_rd     (instr);
 
-      let stage2_asr = getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs;
+      let stage2_asr = getHardPerms(rg_trap_info.epcc).accessSysRegs;
       let stage2_val1= stage1.out.data_to_stage2.val1;
 
       let rs1_val  = extract_cap(stage2_val1);
@@ -1132,7 +1134,7 @@ module mkCPU (CPU_IFC);
 		      : extend (rs1));                    // CSRRWI
 
       Bool read_not_write = False;    // CSRRW always writes the CSR
-      Bool permitted = csr_regfile.access_permitted_1 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs);
+      Bool permitted = csr_regfile.access_permitted_1 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(rg_trap_info.epcc).accessSysRegs);
 
       if (! permitted) begin
 	 rg_state <= CPU_TRAP;
@@ -1187,7 +1189,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,rd==0 ? Invalid : Valid(new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,rd==0 ? Invalid : Valid(new_rd_val),minstret,False,0,rg_handler,rg_donehalt); //TODO will need tinkering because data_to_stage2 no longer valid
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1257,7 +1259,7 @@ module mkCPU (CPU_IFC);
 		      : extend (rs1));                   // CSRRSI, CSRRCI
 
       Bool read_not_write = (rs1_val == 0);    // CSRR_S_or_C only reads, does not write CSR, if rs1_val == 0
-      Bool permitted = csr_regfile.access_permitted_2 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(stage1.out.data_to_stage2.pcc).accessSysRegs);
+      Bool permitted = csr_regfile.access_permitted_2 (rg_cur_priv, csr_addr, read_not_write, getHardPerms(rg_trap_info.epcc).accessSysRegs);
 
       if (! permitted) begin
 	 rg_state <= CPU_TRAP;
