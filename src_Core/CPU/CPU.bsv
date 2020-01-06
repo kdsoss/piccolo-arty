@@ -210,6 +210,8 @@ module mkCPU (CPU_IFC);
    Reg #(Instr)      rg_trap_instr      <- mkRegU;
 `ifdef INCLUDE_TANDEM_VERIF
    Reg #(Trace_Data) rg_trap_trace_data <- mkRegU;
+`elsif RVFI
+   Reg #(Either#(Data_Stage1_to_Stage2, Data_Stage2_to_Stage3)) rg_trap_trace_data <- mkRegU;
 `endif
 
    // Save next_pc across split-phase FENCE.I and other split-phase ops. This
@@ -801,8 +803,13 @@ module mkCPU (CPU_IFC);
       rg_trap_info       <= stage2.out.trap_info;
       rg_trap_interrupt  <= False;
       rg_trap_instr      <= stage2.out.data_to_stage3.instr;
+`ifdef RVFI_DII
+      rg_next_seq        <= stage2.out.data_to_stage3.instr_seq + 1;
+`endif
 `ifdef INCLUDE_TANDEM_VERIF
       rg_trap_trace_data <= stage2.out.trace_data;
+`elsif RVFI
+      rg_trap_trace_data <= Right(stage2.out.data_to_stage3);
 `endif
 
       rg_state           <= CPU_TRAP;
@@ -831,8 +838,13 @@ module mkCPU (CPU_IFC);
       rg_trap_info       <= stage1.out.trap_info;
       rg_trap_interrupt  <= False;
       rg_trap_instr      <= stage1.out.data_to_stage2.instr;
+`ifdef RVFI_DII
+      rg_next_seq        <= stage1.out.data_to_stage2.instr_seq + 1;
+`endif
 `ifdef INCLUDE_TANDEM_VERIF
       rg_trap_trace_data <= stage1.out.data_to_stage2.trace_data;
+`elsif RVFI
+      rg_trap_trace_data <= Left(stage1.out.data_to_stage2);
 `endif
 
       rg_state           <= CPU_TRAP;
@@ -901,9 +913,6 @@ module mkCPU (CPU_IFC);
       rg_sstatus_SUM <= 0;
 `endif
 
-`ifdef RVFI_DII
-      rg_next_seq <= stage1.out.data_to_stage2.instr_seq;
-`endif
       rg_state <= CPU_START_TRAP_HANDLER;
 
       stage1.set_full (False);    fa_step_check;
@@ -932,8 +941,7 @@ module mkCPU (CPU_IFC);
       end
       f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoCondensed(stage2.out.data_to_stage3, next_pc,
-                                minstret, True, exc_code, rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(rg_trap_trace_data.Left, Valid(next_pc), Invalid,minstret,True,exc_code,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= True;
@@ -988,6 +996,8 @@ module mkCPU (CPU_IFC);
       rg_trap_instr     <= stage1.out.data_to_stage2.instr;    // Also used in successful CSSRW
 `ifdef INCLUDE_TANDEM_VERIF
       rg_trap_trace_data <= stage1.out.data_to_stage2.trace_data;
+`elsif RVFI
+      rg_trap_trace_data <= Left(stage1.out.data_to_stage2);
 `endif
 
       rg_state <= CPU_SCR_W_2;
@@ -1048,7 +1058,7 @@ module mkCPU (CPU_IFC);
 
 `ifdef INCLUDE_TANDEM_VERIF
 	 // Trace data
-	 let trace_data = stage1.out.data_to_stage2.trace_data;
+	 let trace_data = rg_trap_trace_data;
 	 trace_data.op = TRACE_CSRRX;
 	 // trace_data.pc, instr_sz and instr    should already be set
 	 trace_data.rd = rd;
@@ -1058,7 +1068,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = getAddr(new_scr_val_unpacked);
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,rd == 0 ? Invalid : Valid(getAddr(new_rd_val)),minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(rg_trap_trace_data.Left,Invalid,rd == 0 ? Invalid : Valid(getAddr(new_rd_val)),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1113,6 +1123,8 @@ module mkCPU (CPU_IFC);
       rg_trap_instr     <= stage1.out.data_to_stage2.instr;    // Also used in successful CSSRW
 `ifdef INCLUDE_TANDEM_VERIF
       rg_trap_trace_data <= stage1.out.data_to_stage2.trace_data;
+`elsif RVFI
+      rg_trap_trace_data <= Left(stage1.out.data_to_stage2);
 `endif
 
       rg_state <= CPU_CSRRW_2;
@@ -1189,7 +1201,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,rd==0 ? Invalid : Valid(new_rd_val),minstret,False,0,rg_handler,rg_donehalt); //TODO will need tinkering because data_to_stage2 no longer valid
+      let outpacket = getRVFIInfoS1(rg_trap_trace_data.Left,Invalid,rd==0 ? Invalid : Valid(new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1238,6 +1250,8 @@ module mkCPU (CPU_IFC);
       rg_trap_instr     <= stage1.out.data_to_stage2.instr;    // TODO: this is also used for successful CSRRW
 `ifdef INCLUDE_TANDEM_VERIF
       rg_trap_trace_data <= stage1.out.data_to_stage2.trace_data;    // TODO: this is also used for successful CSRRW
+`elsif RVFI
+      rg_trap_trace_data <= Left(stage1.out.data_to_stage2);
 `endif
 
       rg_state <= CPU_CSRR_S_or_C_2;
@@ -1317,7 +1331,7 @@ module mkCPU (CPU_IFC);
 	 trace_data.word4 = new_csr_val;
 	 f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,rd==0 ? Invalid : Valid (new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
+      let outpacket = getRVFIInfoS1(rg_trap_trace_data.Left,Invalid,rd==0 ? Invalid : Valid (new_rd_val),minstret,False,0,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= False;
@@ -1477,6 +1491,11 @@ module mkCPU (CPU_IFC);
       // Trace data
       let trace_data = stage1.out.data_to_stage2.trace_data;
       f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
       // Debug
@@ -1510,12 +1529,6 @@ module mkCPU (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-`ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
-      rg_donehalt <= outpacket.rvfi_halt;
-      f_to_verifier.enq(outpacket);
-      rg_handler <= False;
-`endif
 
       fa_start_ifetch (
 `ifdef ISA_CHERI
@@ -1562,6 +1575,11 @@ module mkCPU (CPU_IFC);
       // Trace data
       let trace_data = stage1.out.data_to_stage2.trace_data;
       f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
       // Debug
@@ -1595,12 +1613,6 @@ module mkCPU (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-`ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
-      rg_donehalt <= outpacket.rvfi_halt;
-      f_to_verifier.enq(outpacket);
-      rg_handler <= False;
-`endif
 
       fa_start_ifetch (
 `ifdef ISA_CHERI
@@ -1656,6 +1668,11 @@ module mkCPU (CPU_IFC);
       // Trace data
       let trace_data = stage1.out.data_to_stage2.trace_data;
       f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
       // Debug
@@ -1687,12 +1704,6 @@ module mkCPU (CPU_IFC);
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
-`ifdef RVFI
-      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
-      rg_donehalt <= outpacket.rvfi_halt;
-      f_to_verifier.enq(outpacket);
-      rg_handler <= False;
-`endif
 
       fa_start_ifetch (
 `ifdef ISA_CHERI
@@ -1738,6 +1749,11 @@ module mkCPU (CPU_IFC);
       // Trace data
       let trace_data = stage1.out.data_to_stage2.trace_data;
       f_trace_data.enq (trace_data);
+`elsif RVFI
+      let outpacket = getRVFIInfoS1(stage1.out.data_to_stage2,Invalid,Invalid,minstret,False,0,rg_handler,rg_donehalt);
+      rg_donehalt <= outpacket.rvfi_halt;
+      f_to_verifier.enq(outpacket);
+      rg_handler <= False;
 `endif
 
       // Debug
@@ -1923,6 +1939,10 @@ module mkCPU (CPU_IFC);
 
 `ifdef INCLUDE_TANDEM_VERIF
       // rg_trap_trace_data <= ?;    // Will be filled in in rl_trap
+`endif
+
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq;
 `endif
 
       rg_state           <= CPU_TRAP;
