@@ -1718,7 +1718,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                         alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                     end
                 end
-                if (widthCode > w_SIZE_MAX) begin
+                if (widthCode > w_SIZE_MAX || (widthCode == w_SIZE_MAX - 1 && funct5rs2[2] == cap_mem_unsigned)) begin
                     alu_outputs.control = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
                 end
