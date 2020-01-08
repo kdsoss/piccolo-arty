@@ -349,22 +349,14 @@ module mkTop_HW_Side(Empty)
        rg_banner_printed <= True;
     endrule
 
-    function (Get#(Vector#(1,Maybe#(t)))) vectorify (Get#(t) in) =
-       interface Get
-         method ActionValue#(Vector#(1,Maybe#(t))) get;
-           let x <- in.get;
-           return replicate(Valid(x));
-         endmethod
-       endinterface;
-
-    RVFI_DII_Bridge #(XLEN, MEMWIDTH, 1) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
+    RVFI_DII_Bridge_Scalar #(XLEN, MEMWIDTH) bridge <- mkRVFI_DII_Bridge_Scalar("RVFI_DII", 5001);
     let    dut <- mkPre_Top_HW_Side(reset_by bridge.new_rst);
-    mkConnection(bridge.client.report, vectorify(dut.trace_report));
+    mkConnection(bridge.client.report, dut.trace_report);
 
     rule rl_provide_instr;
         Dii_Id req <- dut.seqReq.get;
-        Vector#(1,Maybe#(Dii_Inst)) inst <- bridge.client.getInst(replicate(Valid(req)));
-        dut.inst.put(tuple2(inst[0].Valid, req));
+        Maybe#(Dii_Inst) inst <- bridge.client.getInst(req);
+        dut.inst.put(tuple2(inst.Valid, req));
     endrule
 endmodule
 
