@@ -175,7 +175,7 @@ module mkCPU (CPU_IFC);
 `ifdef RVFI_DII
    Piccolo_RVFI_DII_Bridge_IFC rvfi_bridge <- mkPiccoloRVFIDIIBridge;
    IMem_IFC local_imem = rvfi_bridge.instr_CPU;
-   Reg#(UInt#(SEQ_LEN)) rg_next_seq <- mkRegU; // Next sequence number to request when trapping
+   Reg#(Dii_Id) rg_next_seq <- mkRegU; // Next sequence number to request when trapping
 `else
    IMem_IFC local_imem = near_mem.imem;
 `endif
@@ -386,7 +386,7 @@ module mkCPU (CPU_IFC);
 `endif
                   , Priv_Mode priv
 `ifdef RVFI_DII
-                  , UInt#(SEQ_LEN) next_seq
+                  , Dii_Id next_seq
 `endif
                   , Bit #(1) mstatus_MXR
                   , Bit #(1) sstatus_SUM);
@@ -2178,7 +2178,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef RVFI_DII
-   mkConnection(rvfi_bridge.trace_report, toGet(f_to_verifier));
+   mkConnection(rvfi_bridge.rvfi, toGet(f_to_verifier));
 `endif
 
    // ================================================================

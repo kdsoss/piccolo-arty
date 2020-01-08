@@ -1183,11 +1183,13 @@ typedef struct {
     typedef XLEN MEMWIDTH;
 `endif
 
-    typedef 3 SEQ_LEN; // Number of bits to identify an instruction, i.e. must be > log(stages)
+    typedef Bit#(32) Dii_Inst;
+    typedef RVFI_DII_Types::Dii_Id Dii_Id;
+    typedef RVFI_DII_Execution#(XLEN, MEMWIDTH) Rvfi_Trace;
     interface Piccolo_RVFI_DII_Server;
-        method Maybe#(UInt#(SEQ_LEN)) getSeqReq;
-        method Action putInst (Tuple2#(Bit#(32), UInt#(SEQ_LEN)) _inst);
-        interface Get #(RVFI_DII_Execution#(XLEN, MEMWIDTH)) trace_report;
+        interface Get#(Dii_Id) seqReq;
+        interface Put#(Tuple2#(Dii_Inst, Dii_Id)) inst;
+        interface Get #(Rvfi_Trace) trace_report;
     endinterface
 `endif
 

@@ -50,6 +50,7 @@ import SoC_Top        :: *;
 import Mem_Controller :: *;
 import Mem_Model      :: *;
 import Fabric_Defs    :: *;
+import Vector         :: *;
 
 import PLIC :: *;
 
@@ -70,15 +71,12 @@ import RVFI_DII     :: *;
 // Instantiates the SoC.
 // Instantiates a memory model.
 
+`ifndef RVFI_DII
 (* synthesize *)
-module mkTop_HW_Side (
-`ifdef RVFI_DII
-Piccolo_RVFI_DII_Server
+module mkTop_HW_Side (Empty);
 `else
-Empty
+module mkPre_Top_HW_Side (Piccolo_RVFI_DII_Server);
 `endif
-) ;
-
    SoC_Top_IFC    soc_top   <- mkSoC_Top;
    Mem_Model_IFC  mem_model <- mkMem_Model;
 
@@ -336,7 +334,7 @@ endmodule
 // ================================================================
 
 (* synthesize *)
-module mkPiccolo_RVFI_DII(Empty)
+module mkTop_HW_Side(Empty)
     provisos (Add#(a__, TDiv#(XLEN,8), 8), Add#(b__, XLEN, 64), Add#(c__, TDiv#(XLEN,8), 8), Add#(d__, XLEN, 64));
 
     Reg #(Bool) rg_banner_printed <- mkReg (False);
@@ -351,17 +349,22 @@ module mkPiccolo_RVFI_DII(Empty)
        rg_banner_printed <= True;
     endrule
 
-    RVFI_DII_Bridge #(XLEN, MEMWIDTH, SEQ_LEN) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
-    let    dut <- mkTop_HW_Side(reset_by bridge.new_rst);
-    mkConnection(bridge.client.report, dut.trace_report);
+    function (Get#(Vector#(1,Maybe#(t)))) vectorify (Get#(t) in) =
+       interface Get
+         method ActionValue#(Vector#(1,Maybe#(t))) get;
+           let x <- in.get;
+           return replicate(Valid(x));
+         endmethod
+       endinterface;
 
-    (* descending_urgency = "bridge.handleReset, rl_provide_instr" *)
+    RVFI_DII_Bridge #(XLEN, MEMWIDTH, 1) bridge <- mkRVFI_DII_Bridge("RVFI_DII", 5001);
+    let    dut <- mkPre_Top_HW_Side(reset_by bridge.new_rst);
+    mkConnection(bridge.client.report, vectorify(dut.trace_report));
+
     rule rl_provide_instr;
-        let req = dut.getSeqReq;
-        if (isValid(req)) begin
-            let inst <- bridge.client.getInst(dut.getSeqReq.Valid);
-            dut.putInst(tuple2(inst, req.Valid));
-        end
+        Dii_Id req <- dut.seqReq.get;
+        Vector#(1,Maybe#(Dii_Inst)) inst <- bridge.client.getInst(replicate(Valid(req)));
+        dut.inst.put(tuple2(inst[0].Valid, req));
     endrule
 endmodule
 

@@ -90,7 +90,7 @@ interface CPU_Stage1_IFC;
 `endif
                                                   , Priv_Mode priv
 `ifdef RVFI_DII
-                                                  , UInt#(SEQ_LEN) seq_req
+                                                  , Dii_Id seq_req
 `endif
                                                   , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
 
@@ -477,7 +477,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `endif
                                                   , Priv_Mode priv
 `ifdef RVFI_DII
-                                                  , UInt#(SEQ_LEN) seq_req
+                                                  , Dii_Id seq_req
 `endif
                                                   , Bit #(1) sstatus_SUM, Bit #(1) mstatus_MXR, WordXL satp);
       imem.req (f3_LW,

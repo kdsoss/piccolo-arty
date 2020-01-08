@@ -429,7 +429,7 @@ typedef struct {
    Instr      instr;    // For debugging. Just funct3, funct7 are enough for
                         // functionality.
 `ifdef RVFI_DII
-   UInt#(SEQ_LEN) instr_seq;
+   Dii_Id instr_seq;
 `endif
    Op_Stage2  op_stage2;
    RegName    rd;
@@ -581,7 +581,7 @@ typedef struct {
    Addr      pc;            // For debugging only
    Instr     instr;         // For debugging only
 `ifdef RVFI_DII
-   UInt#(SEQ_LEN) instr_seq;
+   Dii_Id instr_seq;
 `endif
    Priv_Mode priv;
 
