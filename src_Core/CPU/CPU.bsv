@@ -941,7 +941,12 @@ module mkCPU (CPU_IFC);
       end
       f_trace_data.enq (trace_data);
 `elsif RVFI
-      let outpacket = getRVFIInfoS1(rg_trap_trace_data.Left, Valid(next_pc), Invalid,minstret,True,exc_code,rg_handler,rg_donehalt);
+      let outpacketPart =
+      case (rg_trap_trace_data) matches
+        tagged Left  .l: getRVFIInfoS1(l, Valid(next_pc), Invalid);
+        tagged Right .r: getRVFIInfoCondensed(r, next_pc);
+      endcase;
+      let outpacket = outpacketPart(minstret,True,exc_code,rg_handler,rg_donehalt);
       rg_donehalt <= outpacket.rvfi_halt;
       f_to_verifier.enq(outpacket);
       rg_handler <= True;
