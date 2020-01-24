@@ -74,7 +74,11 @@ function RVFI_DII_Execution #(XLEN,MEMWIDTH) getRVFIInfoCondensed(
         rvfi_rs1_data:  s1.rs1_data,
         rvfi_rs2_data:  s1.rs2_data,
 `ifdef ISA_CHERI
+`ifdef ISA_F
+        rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : (data_s2_s3.rd_in_fpr ? 0 : extract_int(data_s2_s3.rd_val)),
+`else
         rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : extract_int(data_s2_s3.rd_val),
+`endif
 `else
         rvfi_rd_wdata:  data_s2_s3.rd == 0 ? 0 : data_s2_s3.rd_val,
 `endif
