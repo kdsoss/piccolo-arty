@@ -26,7 +26,7 @@ BSC_COMPILATION_FLAGS += \
 	-D ISA_PRIV_M  -D ISA_PRIV_U  \
         -D RISCV \
 	-D CAP64 \
-	-D MEM128 \
+	-D MEM64 \
 	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C -D ISA_CHERI \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
@@ -38,7 +38,7 @@ BSC_COMPILATION_FLAGS += \
 
 # CHERI parameters
 CAPSIZE = 64
-TAGS_STRUCT = 0 128
+TAGS_STRUCT = 0 64
 TAGS_ALIGN = 32
 
 # ================================================================
