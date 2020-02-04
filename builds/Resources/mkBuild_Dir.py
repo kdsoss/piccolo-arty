@@ -240,9 +240,9 @@ def make_build_dir (repo, repobase, arch, sim, debug, tv, rvfi_dii):
     fo.write ("\n")
 
     if (rvfi_dii != ""):
-        fo.write ("TOPMODULE ?= $(TOPMODULE_RVFI_DII)  \\\n")
+        fo.write ("TOPMODULE ?= $(TOPMODULE_RVFI_DII)\n")
     else:
-        fo.write ("TOPMODULE ?= $(TOPMODULE_NORMAL)  \\\n")
+        fo.write ("TOPMODULE ?= $(TOPMODULE_NORMAL)\n")
 
     arch_split = arch.split('x');
     arch_std = arch_split[0]
