@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2016-2020 Bluespec, Inc. All Rights Reserved
 
 //-
 // RVFI_DII + CHERI modifications:
@@ -160,11 +160,23 @@ module mkCPU (CPU_IFC);
 `endif
 
    CSR_RegFile_IFC  csr_regfile  <- mkCSR_RegFile;
+
+   // ----------------
+   // Some commonly used CSR values
    let mcycle   = csr_regfile.read_csr_mcycle;
    let mstatus  = csr_regfile.read_mstatus;
    let misa     = csr_regfile.read_misa;
    let minstret = csr_regfile.read_csr_minstret;
 
+   // MSTATUS.MXR and SSTATUS.SUM for Virtual Memory access control
+   Bit #(1) mstatus_MXR = mstatus [19];
+`ifdef ISA_PRIV_S
+   Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
+`else
+   Bit #(1) sstatus_SUM = 0;
+`endif
+
+   // ----------------
    // Near mem (caches or TCM, for example)
    Near_Mem_IFC  near_mem <- mkNear_Mem;
 
@@ -614,18 +626,20 @@ module mkCPU (CPU_IFC);
    Bool stage1_has_arch_instr = (   (stage1.out.ostatus == OSTATUS_PIPE)
 				 || (stage1.out.ostatus == OSTATUS_NONPIPE));
 
-   // Debugger stop and step should only happen on architectural instructions
 `ifdef INCLUDE_GDB_CONTROL
-   Bool stop_step_halt = (   stage1_has_arch_instr
-			  && (   rg_stop_req
-			      || rg_step_count == 1));
+   Bool stop_step_req = (   rg_stop_req
+			 || rg_step_count == 1);
 `else
-   Bool stop_step_halt = False;
+   Bool stop_step_req = False;
 `endif
+
+   // Debugger stop and step should only happen on architectural instructions
+   Bool stop_step_halt = stage1_has_arch_instr && stop_step_req;
 
    // Halting conditions
    Bool halting = (stop_step_halt || mip_cmd_needed || (interrupt_pending && stage1_has_arch_instr));
-   // Stage1 can halt only when actually contains an instruction and downstream is empty
+   // Stage1 can halt only when actually contains an instruction, downstream is
+   // empty.
    Bool stage1_halted = (   halting
 			 && (   (stage1.out.ostatus == OSTATUS_PIPE)
 			     || (stage1.out.ostatus == OSTATUS_NONPIPE))
@@ -767,13 +781,6 @@ module mkCPU (CPU_IFC);
       if (   (! halting)
 	  && (! stage1_full))
 	 begin
-	    // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-	    Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-	    Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-	    Bit #(1) sstatus_SUM = 0;
-`endif
 	    fa_start_ifetch (
 `ifdef ISA_CHERI
                            cast(stage1.out.next_pcc)
@@ -910,12 +917,8 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Note old MSTATUS.MXR and SSTATUS.SUM for initiating FETCH in next phase
-      rg_mstatus_MXR <= mstatus [19];
-`ifdef ISA_PRIV_S
-      rg_sstatus_SUM <= (csr_regfile.read_sstatus) [18];
-`else
-      rg_sstatus_SUM <= 0;
-`endif
+      rg_mstatus_MXR <= mstatus_MXR;
+      rg_sstatus_SUM <= sstatus_SUM;
 
       rg_state <= CPU_START_TRAP_HANDLER;
 
@@ -1366,14 +1369,6 @@ module mkCPU (CPU_IFC);
       let next_pc    = stage1.out.next_pc;
 `endif
 
-      // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-      Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-      Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-      Bit #(1) sstatus_SUM = 0;
-`endif
-
       fa_start_ifetch (
 `ifdef ISA_CHERI
                                              next_pcc
@@ -1386,6 +1381,7 @@ module mkCPU (CPU_IFC);
                                            , stage1.out.data_to_stage2.instr_seq + 1
 `endif
                                            , mstatus_MXR, sstatus_SUM);
+
       stage1.set_full (True);    fa_step_check;
 
       rg_state <= CPU_RUNNING;
@@ -1431,12 +1427,8 @@ module mkCPU (CPU_IFC);
 `endif
 
       // Note MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-      rg_mstatus_MXR <= mstatus [19];
-`ifdef ISA_PRIV_S
-      rg_sstatus_SUM <= (csr_regfile.read_sstatus) [18];
-`else
-      rg_sstatus_SUM <= 0;
-`endif
+      rg_mstatus_MXR <= mstatus_MXR;
+      rg_sstatus_SUM <= sstatus_SUM;
 
 `ifdef RVFI_DII
       rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
@@ -1528,14 +1520,6 @@ module mkCPU (CPU_IFC);
       // Await mem system FENCE.I completion
       let dummy <- near_mem.server_fence_i.response.get;
 
-      // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-      Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-      Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-      Bit #(1) sstatus_SUM = 0;
-`endif
-
       // Resume pipe
       rg_state <= CPU_RUNNING;
 
@@ -1611,14 +1595,6 @@ module mkCPU (CPU_IFC);
 
       // Await mem system FENCE completion
       let dummy <- near_mem.server_fence.response.get;
-
-      // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-      Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-      Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-      Bit #(1) sstatus_SUM = 0;
-`endif
 
       // Resume pipe
       rg_state <= CPU_RUNNING;
@@ -1704,13 +1680,6 @@ module mkCPU (CPU_IFC);
 
       // Note: Await mem system SFENCE.VMA completion, if SFENCE.VMA becomes split-phase
 
-      Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-      Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-      Bit #(1) sstatus_SUM = 0;
-`endif
-
       // Resume pipe
       rg_state <= CPU_RUNNING;
 
@@ -1751,6 +1720,8 @@ module mkCPU (CPU_IFC);
 `endif
       rg_state   <= CPU_WFI_PAUSED;
 
+      stage1.set_full (False);    fa_step_check;
+
       // Accounting
       csr_regfile.csr_minstret_incr;
 
@@ -1780,16 +1751,10 @@ module mkCPU (CPU_IFC);
    // ----------------
 
    rule rl_WFI_resume (   (rg_state == CPU_WFI_PAUSED)
-		       && csr_regfile.wfi_resume);
+		       && (   csr_regfile.wfi_resume
+			   || stop_step_req)
+		       && (stage1.out.ostatus != OSTATUS_BUSY));
       if (cur_verbosity > 1) $display ("%0d: %m.rl_WFI_resume", mcycle);
-
-      // MSTATUS.MXR and SSTATUS.SUM for initiating FETCH
-      Bit #(1) mstatus_MXR = mstatus [19];
-`ifdef ISA_PRIV_S
-      Bit #(1) sstatus_SUM = (csr_regfile.read_sstatus) [18];
-`else
-      Bit #(1) sstatus_SUM = 0;
-`endif
 
       // Debug
       if (cur_verbosity >= 1)
