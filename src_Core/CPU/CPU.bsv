@@ -1781,7 +1781,7 @@ module mkCPU (CPU_IFC);
                                               , stage1.out.data_to_stage2.instr_seq + 1
 `endif
                                               , mstatus_MXR, sstatus_SUM);
-      stage1.set_full (True);    fa_step_check;
+      stage1.set_full (True);
    endrule: rl_WFI_resume
 
    // ----------------
