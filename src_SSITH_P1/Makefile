@@ -26,7 +26,7 @@ BSC_COMPILATION_FLAGS += \
 	-D ISA_PRIV_M  -D ISA_PRIV_U  \
         -D RISCV \
 	-D CAP64 \
-	-D MEM128 \
+	-D MEM64 \
 	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C -D ISA_CHERI \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
@@ -34,12 +34,11 @@ BSC_COMPILATION_FLAGS += \
 	-D FABRIC64 \
 	-D INCLUDE_GDB_CONTROL \
 	-D BRVF_TRACE \
-	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP \
-	-D INCLUDE_TANDEM_VERIF
+	-D XILINX_BSCAN  -D XILINX_XCVU9P  -D JTAG_TAP
 
 # CHERI parameters
 CAPSIZE = 64
-TAGS_STRUCT = 0 128
+TAGS_STRUCT = 0 64
 TAGS_ALIGN = 32
 
 # ================================================================
@@ -93,7 +92,7 @@ BSC_COMPILATION_FLAGS += \
 tagsparams: $(REPO)/src_SSITH_P1/src_BSV/TagTableStructure.bsv
 $(REPO)/src_SSITH_P1/src_BSV/TagTableStructure.bsv: $(REPO)/libs/TagController/tagsparams.py
 	@echo "INFO: Re-generating CHERI tag controller parameters"
-	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0xc0000000 --covered-mem-size 0x3ffff000 --top-addr 0xfffff000 -b $@
+	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0xc0000000 --covered-mem-size 0x3fffc000 --top-addr 0xfffff000 -b $@
 	@echo "INFO: Re-generated CHERI tag controller parameters"
 
 # ================================================================

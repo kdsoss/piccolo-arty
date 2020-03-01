@@ -275,39 +275,41 @@ function
 
    match {.write_cap, .word128} = write;
 
+   Bit #(64) word64 = truncate(word128);
+
    // First compute addr, data and strobe for a 64b-wide fabric
-   Bit #(16)  strobe128    = 0;
-   Bit #(4)   shift_bytes = addr [3:0];
-   Bit #(7)   shift_bits  = { shift_bytes, 3'b0 };
+   Bit #(8)  strobe128    = 0;
+   Bit #(3)   shift_bytes = addr [2:0];
+   Bit #(6)   shift_bits  = { shift_bytes, 3'b0 };
    Bit #(64)  addr64     = zeroExtend (addr);
    AXI4_Size  axsize      = 128;    // Will be updated in 'case' below
 
    case (width_code)
       w_SIZE_B: begin
-		    word128   = (word128 << shift_bits);
+		    word64   = (word64 << shift_bits);
 		    strobe128 = ('b_1   << shift_bytes);
 		    axsize    = 1;
 		 end
       w_SIZE_H: begin
-		    word128   = (word128 << shift_bits);
+		    word64   = (word64 << shift_bits);
 		    strobe128 = ('b_11  << shift_bytes);
 		    axsize    = 2;
 		 end
       w_SIZE_W: begin
-		    word128   = (word128  << shift_bits);
+		    word64   = (word64  << shift_bits);
 		    strobe128 = ('b_1111 << shift_bytes);
 		    axsize    = 4;
 		 end
       w_SIZE_D: begin
-        word128   = (word128 << shift_bits);
+        word64   = (word64 << shift_bits);
 	      strobe128 = ('b_1111_1111 << shift_bytes);
 		    axsize    = 8;
 		 end
-      w_SIZE_Q: begin
+/*      w_SIZE_Q: begin
             word128   = word128;
             strobe128 = 'b_1111_1111_1111_1111;
             axsize    = 16;
-         end
+         end*/
    endcase
 
    let user = 0;
@@ -319,7 +321,7 @@ function
 
    // Finally, create fabric addr/data/strobe
    Fabric_Addr  fabric_addr   = truncate (addr64);
-   Fabric_Data  fabric_data   = truncate (word128);
+   Fabric_Data  fabric_data   = truncate (word64);
    Fabric_Strb  fabric_strobe = truncate (strobe128);
 
    return
@@ -656,6 +658,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // In 64b (or lower) fabrics, these hold the lower word64 while we're fetching the upper word64 of a word128
    Reg #(Bool)      rg_lower_word64_full <- mkReg (False);
    Reg #(Bit #(64)) rg_lower_word64      <- mkRegU;
+   Reg #(Bit #(1))      rg_lower_tag      <- mkRegU;
 
    // When a CSet is full and we need to replace a cache line due to a refill,
    // the victim is picked 'randomly' according to this register
@@ -1656,8 +1659,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       end
 
       // For 64b fabrics, if this is lower Word64, just register it to hold until upper Word64 arrives
-      if ((valueOf (Wd_Data) == 64) && (! rg_lower_word64_full)) begin
-	 rg_lower_word64      <= truncate (mem_rsp.rdata);
+      if (! rg_lower_word64_full) begin
+	 rg_lower_word64      <= mem_rsp.rdata;
+         rg_lower_tag         <= mem_rsp.ruser;
 	 rg_lower_word64_full <= True;
 	 if (cfg_verbosity > 2)
 	    $display ("        Recording rdata in rg_lower_word64");
@@ -1665,15 +1669,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
       // Refill 128b of cache line
       else begin
-      Cache_Entry new_word128 = tuple2(mem_rsp.ruser, mem_rsp.rdata);
-// TODO reinstate this
-//	 if (valueOf (Wd_Data) == 64) begin
-//	    // Assert: rg_lower_64_full == True
-//	    new_word128 = { truncate(new_word128) << 64, rg_lower_word64 };
-//	    rg_lower_word64_full <= False;
-//	    if (cfg_verbosity > 2)
-//	       $display ("        64b fabric: concat with rg_lower_word64: new_word128 0x%0x", new_word128);
-//	 end
+	 // Assert: rg_lower_64_full == True
+	 Cache_Entry new_word128 = tuple2({mem_rsp.ruser, rg_lower_tag}, { mem_rsp.rdata, rg_lower_word64 });
+	 rg_lower_word64_full <= False;
+	 if (cfg_verbosity > 2)
+	    $display ("        64b fabric: concat with rg_lower_word64: new_word128 0x%0x", new_word128);
 
 	 Word128_in_CLine word128_in_cline = truncate (rg_word128_set_in_cache);
 	 CSet_in_Cache cset_in_cache = truncateLSB (rg_word128_set_in_cache);
@@ -1781,7 +1781,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, tuple2(0, zeroExtend (rd_data.rdata))); //TODO safe to assume no tags from IO reads?
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, zeroExtend(rg_addr[2:0]), tuple2(0, zeroExtend (rd_data.rdata))); //TODO safe to assume no tags from IO reads?
       rg_ld_val <= ld_val;
 
       // Successful read
@@ -1883,7 +1883,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 $display ("    ", fshow (rd_data));
       end
 
-      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, rg_addr, tuple2(0, zeroExtend(rd_data.rdata)));
+      let ld_val = fn_extract_and_extend_bytes(rg_width_code, rg_is_unsigned, zeroExtend(rg_addr[2:0]), tuple2(0, zeroExtend(rd_data.rdata)));
 
       // Bus error for AMO read
       if (rd_data.rresp != OKAY) begin

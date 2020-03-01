@@ -64,7 +64,7 @@ TOPMODULE ?= mkTop_HW_Side
 #   Unrecognized flag: -no-show-timestamps
 # XXX
 BSC_COMPILATION_FLAGS += \
-	-D MEM128 -D RISCV -D BLUESIM \
+	-D MEM64 -D RISCV -D BLUESIM \
 	-keep-fires -aggressive-conditions -no-warn-action-shadowing -check-assert \
 	-suppress-warnings G0020    \
 	+RTS -K128M -RTS  -show-range-conflict
@@ -110,7 +110,7 @@ isa_tests:
 .PHONY: tagsparams
 tagsparams: $(REPO)/libs/TagController/tagsparams.py
 	@echo "INFO: Re-generating CHERI tag controller parameters"
-	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0x80000000 --covered-mem-size 0x3ffff000 --top-addr 0xbffff000 -b TagTableStructure.bsv
+	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0x80000000 --covered-mem-size 0x3fffc000 --top-addr 0xbffff000 -b TagTableStructure.bsv
 	@echo "INFO: Re-generated CHERI tag controller parameters"
 compile: tagsparams
 

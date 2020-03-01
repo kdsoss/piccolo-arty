@@ -67,7 +67,7 @@ Integer  bytes_per_fabric_addr = valueOf (Bytes_per_Fabric_Addr);
 //               |
 //             Periph
 
-typedef 128  Wd_Data;
+typedef 64  Wd_Data;
 
 // ----------------
 // Width of fabric 'user' datapaths. Carry capability tags on data lines.
