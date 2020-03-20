@@ -246,10 +246,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , rs2_val         : rs2_val_bypassed
 `endif
 `ifdef ISA_F
-      , frs1_val        : frs1_val_bypassed
-      , frs2_val        : frs2_val_bypassed
-      , frs3_val        : frs3_val_bypassed
-      , fcsr_frm        : csr_regfile.read_frm
+				frs1_val       : frs1_val_bypassed,
+				frs2_val       : frs2_val_bypassed,
+				frs3_val       : frs3_val_bypassed,
+				frm            : csr_regfile.read_frm,
+`ifdef INCLUDE_TANDEM_VERIF
+                                fflags         : csr_regfile.read_fflags,
+`endif
 `endif
       , mstatus         : csr_regfile.read_mstatus
       , misa            : csr_regfile.read_misa };
@@ -310,26 +313,9 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       , mem_allow_cap   : alu_outputs.mem_allow_cap
       , val1            : alu_outputs.val1_cap_not_int ? embed_cap(alu_outputs.cap_val1)
-`ifdef ISA_F
-                             : alu_outputs.val1_flt_not_int ? embed_flt(truncate(alu_outputs.val1))
-`endif
-                             : embed_int(truncate(alu_outputs.val1))
+                                                       : embed_int(truncate(alu_outputs.val1))
       , val2            : alu_outputs.val2_cap_not_int ? embed_cap(alu_outputs.cap_val2)
-`ifdef ISA_F
-                             : alu_outputs.val2_flt_not_int ? embed_flt(truncate(alu_outputs.val2))
-`endif
-                             : embed_int(truncate(alu_outputs.val2))
-`else
-      , val1            : alu_outputs.val1
-      , val2            : alu_outputs.val2
-`endif
-`ifdef ISA_F
-      , val1_flt_not_int: alu_outputs.val1_flt_not_int
-      , val2_flt_not_int: alu_outputs.val2_flt_not_int
-      , val3            : alu_outputs.val3
-      , rd_in_fpr       : alu_outputs.rd_in_fpr
-      , rounding_mode   : alu_outputs.rm
-`endif
+                                                       : embed_int(truncate(alu_outputs.val2))
 `ifdef ISA_CHERI
       , check_enable       : alu_outputs.check_enable
       , check_inclusive    : alu_outputs.check_inclusive
@@ -337,6 +323,15 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , check_authority_idx : alu_outputs.check_authority_idx
       , check_address_low  : alu_outputs.check_address_low
       , check_address_high : alu_outputs.check_address_high
+`endif
+`ifdef ISA_F
+					       fval1         : alu_outputs.fval1,
+					       fval2         : alu_outputs.fval2,
+					       fval3         : alu_outputs.fval3,
+					       rd_in_fpr     : alu_outputs.rd_in_fpr,
+					       rs_frm_fpr    : alu_outputs.rs_frm_fpr,
+					       val1_frm_gpr  : alu_outputs.val1_frm_gpr,
+					       rounding_mode : alu_outputs.rm,
 `endif
 `ifdef INCLUDE_TANDEM_VERIF
       , trace_data      : alu_outputs.trace_data
