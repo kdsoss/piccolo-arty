@@ -1482,6 +1482,9 @@ module mkCPU (CPU_IFC);
 `else
       rg_next_pc <= stage1.out.next_pc;
 `endif
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
+`endif
       near_mem.server_fence_i.request.put (?);
       rg_state <= CPU_FENCE_I;
 
@@ -1532,7 +1535,7 @@ module mkCPU (CPU_IFC);
 `endif
                                               , rg_cur_priv
 `ifdef RVFI_DII
-                                              , stage1.out.data_to_stage2.instr_seq + 1
+                                              , rg_next_seq
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1557,6 +1560,9 @@ module mkCPU (CPU_IFC);
       rg_next_ddc <= stage1.out.next_ddc;
 `else
       rg_next_pc <= stage1.out.next_pc;
+`endif
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
       near_mem.server_fence.request.put (?);
       rg_state <= CPU_FENCE;
@@ -1608,7 +1614,7 @@ module mkCPU (CPU_IFC);
 `endif
                                               , rg_cur_priv
 `ifdef RVFI_DII
-                                              , stage1.out.data_to_stage2.instr_seq + 1
+                                              , rg_next_seq
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1641,6 +1647,9 @@ module mkCPU (CPU_IFC);
       rg_next_ddc <= stage1.out.next_ddc;
 `else
       rg_next_pc <= stage1.out.next_pc;
+`endif
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
       // Tell Near_Mem to do its SFENCE_VMA
       near_mem.sfence_vma;
@@ -1692,7 +1701,7 @@ module mkCPU (CPU_IFC);
 `endif
                                               , rg_cur_priv
 `ifdef RVFI_DII
-                                              , stage1.out.data_to_stage2.instr_seq + 1
+                                              , rg_next_seq
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);    fa_step_check;
@@ -1717,6 +1726,9 @@ module mkCPU (CPU_IFC);
       rg_next_ddc <= stage1.out.next_ddc;
 `else
       rg_next_pc <= stage1.out.next_pc;
+`endif
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
       rg_state   <= CPU_WFI_PAUSED;
 
@@ -1778,7 +1790,7 @@ module mkCPU (CPU_IFC);
 `endif
                                               , rg_cur_priv
 `ifdef RVFI_DII
-                                              , stage1.out.data_to_stage2.instr_seq + 1
+                                              , rg_next_seq
 `endif
                                               , mstatus_MXR, sstatus_SUM);
       stage1.set_full (True);

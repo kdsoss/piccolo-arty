@@ -332,8 +332,11 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
           output_stage2 = Output_Stage2 {ostatus:         ostatus,
                  trap_info:       trap_info_dmem,
                  data_to_stage3:  data_to_stage3,
-                 bypass:          bypass,
-                 trace_data:      ?};
+                 bypass:          bypass
+`ifdef INCLUDE_TANDEM_VERIF
+                 , trace_data:      ?
+`endif
+                                        };
 `endif
       end
 `endif
@@ -647,7 +650,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             bypass.rd_val           = nullWithAddr(truncate(value));
             data_to_stage3.rd_val   = nullWithAddr(truncate(value));
          end
-`endif
 
          // -----
 `ifdef INCLUDE_TANDEM_VERIF
@@ -666,6 +668,20 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         // No memory op, so very simple.
         let info_RVFI_s2 = info_RVFI_s2_base;
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
+`endif
+	 output_stage2 = Output_Stage2 {
+              ostatus         : ostatus
+            , trap_info       : trap_info_fbox
+            , data_to_stage3  : data_to_stage3
+            , bypass          : bypass
+`ifdef ISA_F
+            , fbypass         : fbypass
+`endif
+`ifdef INCLUDE_TANDEM_VERIF
+            , trace_data      : trace_data
+`endif
+         };
+      end
 `endif
 
 `ifdef ISA_CHERI
