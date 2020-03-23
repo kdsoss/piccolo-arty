@@ -60,6 +60,8 @@ import RVFI_DII  :: *;
 
         Bit#(32) nop = 'h00000013;
 
+        Bit#(32) instrBits = tpl_1(fromMaybe(?,instr[1]));
+
         interface Piccolo_RVFI_DII_Server rvfi_dii_server;
             interface Get seqReq;
                 method ActionValue#(Dii_Id) get if (isValid(seq_req[0]));
@@ -97,7 +99,7 @@ import RVFI_DII  :: *;
 `endif
 
             method Bool valid = isValid (fake_addr) && isValid (instr[1]);
-            method Bool is_i32_not_i16 = True;
+            method Bool is_i32_not_i16 = (instrBits[1:0] == 2'b11);
             method WordXL pc = fake_addr.Valid;
             method Tuple2#(Instr, Dii_Id) instr = instr[1].Valid;
             method Bool exc = False;

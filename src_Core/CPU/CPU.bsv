@@ -63,6 +63,11 @@ import RVFI_DII  :: *;
 `endif
 `ifdef RVFI_DII
 import Piccolo_RVFI_DII_Bridge :: *;
+`else
+`ifdef ISA_C
+// 'C' extension (16b compressed instructions)
+import CPU_Fetch_C  :: *;
+`endif
 `endif
 
 import GPR_RegFile :: *;
@@ -72,11 +77,6 @@ import FPR_RegFile :: *;
 import CSR_RegFile :: *;
 import CPU_Globals :: *;
 import CPU_IFC     :: *;
-
-`ifdef ISA_C
-// 'C' extension (16b compressed instructions)
-import CPU_Fetch_C  :: *;
-`endif
 
 import CPU_Stage1 :: *;    // Fetch and Execute
 import CPU_Stage2 :: *;    // Memory and long-latency ops
@@ -186,17 +186,13 @@ module mkCPU (CPU_IFC);
    // an instruction cache.
 `ifdef RVFI_DII
    Piccolo_RVFI_DII_Bridge_IFC rvfi_bridge <- mkPiccoloRVFIDIIBridge;
-   IMem_IFC local_imem = rvfi_bridge.instr_CPU;
+   IMem_IFC imem = rvfi_bridge.instr_CPU;
    Reg#(Dii_Id) rg_next_seq <- mkRegU; // Next sequence number to request when trapping
+`elsif ISA_C
+   // Take imem as is for near_mem or RVFI_DII, or use wrapper for 'C' extension
+   IMem_IFC imem <- mkCPU_Fetch_C (near_mem.imem);
 `else
-   IMem_IFC local_imem = near_mem.imem;
-`endif
-
-   // Take imem as is from near_mem or RVFI_DII, or use wrapper for 'C' extension
-`ifdef ISA_C
-   IMem_IFC imem <- mkCPU_Fetch_C (local_imem);
-`else
-   IMem_IFC imem = local_imem;
+   IMem_IFC imem = near_mem.imem;
 `endif
 
    // ----------------
@@ -555,12 +551,14 @@ module mkCPU (CPU_IFC);
 
    // ----------------
 
+`ifndef RVFI_DII
 `ifdef ISA_C
    // TODO: analyze this carefully; added to resolve a blockage.
    // imem_rl_fetch_next_32b is in CPU_Fetch_C.bsv, and calls imem32.req (near_mem.imem_req).
    // fa_restart calls stageF.enq which also calls imem.req which calls imem32.req.
    // But cond_i32_odd_fetch_next should make these rules mutually exclusive; why doesn't bsc realize this?
    (* descending_urgency = "imem_rl_fetch_next_32b, rl_reset_complete" *)
+`endif
 `endif
 
    rule rl_reset_complete (rg_state == CPU_RESET2);
@@ -713,12 +711,14 @@ module mkCPU (CPU_IFC);
    endrule
 `endif
 
+`ifndef RVFI_DII
 `ifdef ISA_C
    // TODO: analyze this carefully; added to resolve a blockage
    // imem_rl_fetch_next_32b is in CPU_Fetch_C.bsv, and calls imem32.req (near_mem.imem_req).
    // fa_restart calls stageF.enq which also calls imem.req which calls imem32.req.
    // But cond_i32_odd_fetch_next should make these rules mutually exclusive; why doesn't bsc realize this?
    (* descending_urgency = "imem_rl_fetch_next_32b, rl_pipe" *)
+`endif
 `endif
 
    rule rl_pipe (   (rg_state == CPU_RUNNING)
@@ -1626,12 +1626,14 @@ module mkCPU (CPU_IFC);
    // ================================================================
    // Stage1: nonpipe special: SFENCE.VMA
 
+`ifndef RVFI_DII
 `ifdef ISA_C
    // TODO: analyze this carefully; added to resolve a blockage
    // imem_rl_fetch_next_32b is in CPU_Fetch_C.bsv, and calls imem32.req (near_mem.imem_req).
    // fa_restart calls stageF.enq which also calls imem.req which calls imem32.req.
    // But cond_i32_odd_fetch_next should make these rules mutually exclusive; why doesn't bsc realize this?
    (* descending_urgency = "imem_rl_fetch_next_32b, rl_stage1_SFENCE_VMA" *)
+`endif
 `endif
 
    rule rl_stage1_SFENCE_VMA (   (rg_state== CPU_RUNNING)
