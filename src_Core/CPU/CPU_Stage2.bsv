@@ -455,22 +455,32 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             info_RVFI_s2.mem_rmask = getMemMask({0,rg_stage2.mem_width_code},rg_stage2.addr);
         end
 `ifdef ISA_A
+`ifdef ISA_CHERI
+        WordXL int_ret_val = getAddr(result);
+`else
+        WordXL int_ret_val = result;
+`endif
         // If we're doing an AMO that's not an LR, we need to set the write mask as well.
         if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 != f5_AMO_LR) begin
             // For most AMOs we can just go ahead and do it
             if (rg_f5 != f5_AMO_SC) begin
                 info_RVFI_s2.mem_wmask = getMemMask(rg_stage2.mem_width_code,rg_stage2.addr);
+                match {.new_ld_val,
+                       .new_st_val} = fn_amo_op (rg_stage2.mem_width_code,
+                                                 rg_f5,
+                                                 rg_stage2.addr,
+                                                 unpack(pack(toMem(result))),
+                                                 tuple2(False, zeroExtend(rg_stage2.info_RVFI_s1.mem_wdata))
+                                                );
+                info_RVFI_s2.stage1.mem_wdata = truncate(pack(tpl_2(new_st_val)));
             // For SC however we do need to check that it was successful, otherwise we've not written.
             end else begin
-`ifdef ISA_CHERI
-                info_RVFI_s2.mem_wmask = ((getAddr(result) == 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
-`else
-                info_RVFI_s2.mem_wmask = ((result == 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
-`endif
+                info_RVFI_s2.mem_wmask = ((int_ret_val != 0) ? getMemMask(rg_stage2.mem_width_code,rg_stage2.addr) : 0);
             end
         end
 `endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
+        trace_data.word1 = int_ret_val;
 `endif
             output_stage2 = Output_Stage2 {
                  ostatus         : ostatus
@@ -703,14 +713,14 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_A
 	 Bool op_stage2_amo = (x.op_stage2 == OP_Stage2_AMO);
 `ifdef ISA_CHERI
-	 Bit #(7) amo_funct7 = getAddr(extract_cap(x.val1)) [6:0];
+	 Bit #(5) amo_funct5 = getAddr(extract_cap(x.val1)) [6:2];
 `else
-	 Bit #(7) amo_funct7 = pack(x.val1) [6:0];
+	 Bit #(5) amo_funct5 = pack(x.val1) [6:2];
 `endif
-     rg_f5 <= amo_funct7[6:2];
+     rg_f5 <= amo_funct5;
 `else
 	 Bool op_stage2_amo = False;
-	 Bit #(7) amo_funct7 = 0;
+	 Bit #(5) amo_funct5 = 0;
 `endif
 	 if ((x.op_stage2 == OP_Stage2_LD) || (x.op_stage2 == OP_Stage2_ST) || op_stage2_amo) begin
 	    WordXL   mstatus     = csr_regfile.read_mstatus;
@@ -757,7 +767,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			x.mem_width_code,
             x.mem_unsigned,
 `ifdef ISA_A
-			amo_funct7,
+			amo_funct5,
 `endif
 			x.addr,
 `ifdef ISA_F
