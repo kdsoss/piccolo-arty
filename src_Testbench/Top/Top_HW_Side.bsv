@@ -87,11 +87,11 @@ module mkPre_Top_HW_Side (Piccolo_RVFI_DII_Server);
    // BEHAVIOR
 
 
-`ifndef RVFI_DII
    Reg #(Bool) rg_banner_printed <- mkReg (False);
 
    // Display a banner
    rule rl_step0 (! rg_banner_printed);
+`ifndef RVFI_DII
       $display ("================================================================");
       $display ("Bluespec RISC-V standalone system simulation v1.2");
       $display ("Copyright (c) 2017-2019 Bluespec, Inc. All Rights Reserved.");
@@ -179,7 +179,6 @@ module mkPre_Top_HW_Side (Piccolo_RVFI_DII_Server);
 
       $finish (0);
    endrule
-`endif
 
    // ================================================================
    // Tandem verifier: drain and output vectors of bytes
