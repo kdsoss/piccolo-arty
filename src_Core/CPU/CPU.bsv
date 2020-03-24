@@ -238,7 +238,7 @@ module mkCPU (CPU_IFC);
 `else
    Reg #(WordXL) rg_csr_pc   <- mkRegU;
 `endif
-   Reg #(Pipeline_Val) rg_csr_val1 <- mkRegU;
+   Reg #(Pipeline_Val#(CapPipe)) rg_csr_val1 <- mkRegU;
 
    // Save sstatus_SUM and mstatus_MXR to initiate fetches on an external
    // interrupt
@@ -1057,10 +1057,7 @@ module mkCPU (CPU_IFC);
 	    scr_val   = fromMaybe (?, m_scr_val);
 	 end
 
-	 // Writeback to GPR file
-	 CapPipe new_rd_val = cast(scr_val);
-
-	 gpr_regfile.write_rd (rd, new_rd_val);
+	 gpr_regfile.write_rd (rd, scr_val);
 
    CapPipe new_scr_val_unpacked = cast(scr_val);
 
@@ -2090,8 +2087,8 @@ module mkCPU (CPU_IFC);
    rule rl_debug_write_gpr ((rg_state == CPU_DEBUG_MODE) && f_gpr_reqs.first.write);
       let req <- pop (f_gpr_reqs);
       Bit #(5) regname = req.address;
-      CapPipe data = setAddr(almightyCap, req.data).value; // XXX Debug bypasses cap safety
-      gpr_regfile.write_rd (regname, data);
+      CapPipe data = setAddrUnsafe(almightyCap, req.data); // XXX Debug bypasses cap safety
+      gpr_regfile.write_rd (regname, cast(data));
 
       let rsp = DM_CPU_Rsp {ok: True, data: ?};
       f_gpr_rsps.enq (rsp);

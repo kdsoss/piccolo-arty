@@ -191,7 +191,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `endif
 						    rd_valid:  False,
 						    rd:        rg_stage2.rd,
-						    rd_val:    rg_stage2.val1};
+						    rd_val:    cast(rg_stage2.val1)};
 
    let  trap_info_dmem = Trap_Info_Pipe {
 				    exc_code: dcache.exc_code,
@@ -319,13 +319,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       else if (   (rg_stage2.op_stage2 == OP_Stage2_TestSubset)) begin
           let ostatus = OSTATUS_PIPE;
-          CapPipe result = nullWithAddr(zeroExtend(pack(check_success)));
+          CapReg result = nullWithAddr(zeroExtend(pack(check_success)));
           let data_to_stage3 = data_to_stage3_base;
           data_to_stage3.rd_valid = True;
           data_to_stage3.rd_val = embed_cap(result);
           let bypass = bypass_base;
-          bypass.bypass_state = BYPASS_RD_RDVAL;
-          bypass.rd_val       = result;
+          bypass.bypass_state = BYPASS_RD;
 `ifdef RVFI
           let info_RVFI_s2 = info_RVFI_s2_base;
           data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
@@ -355,11 +354,10 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 			      : OSTATUS_PIPE));
         match {.mem_tag, .mem_val} = dcache.word128;
 `ifdef ISA_CHERI
-        CapPipe result = ?; //TODO any reason for this to be CapPipe not CapReg/CapMem?
+        CapReg result = ?;
         if (rg_stage2.mem_width_code == w_SIZE_CAP) begin
             CapMem capMem = {pack(rg_stage2.mem_allow_cap && mem_tag), truncate(mem_val)};
-            CapReg capReg = cast(capMem);
-            result = cast(capReg);
+            result = cast(capMem);
         end else begin
             result = nullWithAddr(truncate(mem_val));
         end
@@ -401,9 +399,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	    let fbypass = fbypass_base;
 `endif
 
-	    if (ostatus != OSTATUS_NONPIPE) begin
 `ifdef ISA_F
-               // Bypassing FPR value.
                if (rg_stage2.rd_in_fpr) begin
 		  // Choose one of the following two options
 
@@ -425,13 +421,12 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 		  // Option 1: longer critical path, since the data is bypassed back into previous stage.
 		  // We use data_to_stage3.rd_val since nanboxing has been done.
 		  bypass.bypass_state = ((ostatus == OSTATUS_PIPE) ? BYPASS_RD_RDVAL : BYPASS_RD);
-		  bypass.rd_val       = result;
+		  bypass.rd_val       = cast(result);
 
 		  // Option 2: shorter critical path, since the data is not bypassed into previous stage,
 		  // (the bypassing is effectively delayed until the next stage).
 		  // bypass.bypass_state = BYPASS_RD;
 	       end
-	    end
 
 `ifdef INCLUDE_TANDEM_VERIF
 	    let trace_data   = rg_stage2.trace_data;

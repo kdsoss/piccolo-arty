@@ -411,20 +411,30 @@ deriving (Eq, Bits, FShow);
 
 typedef struct {
 `ifdef ISA_CHERI
-    CapPipe val;
+    capType val;
 `else
     WordXL val;
 `endif
-   } Pipeline_Val deriving (Bits, FShow);
+   } Pipeline_Val#(type capType) deriving (Bits, FShow);
+
+instance Cast#(Pipeline_Val#(a), Pipeline_Val#(b)) provisos (Cast#(a,b));
+   function Pipeline_Val#(b) cast (Pipeline_Val#(a) src);
+`ifdef ISA_CHERI
+    return Pipeline_Val{val:cast(src.val)};
+`else
+    return Pipeline_Val{val:src.val};
+`endif
+   endfunction
+endinstance
 
 `ifdef ISA_CHERI
-    function Pipeline_Val embed_cap(CapPipe cap) = Pipeline_Val{val: cap};
-    function CapPipe extract_cap(Pipeline_Val val) = val.val;
-    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: nullWithAddr(num)};
-    function WordXL extract_int(Pipeline_Val val) = getAddr(val.val);
+    function Pipeline_Val#(t) embed_cap(t cap) = Pipeline_Val{val: cap};
+    function t extract_cap(Pipeline_Val#(t) val) = val.val;
+    function Pipeline_Val#(t) embed_int(WordXL num) provisos (CHERICap#(t,a,b,XLEN,d,e)) = Pipeline_Val{val: nullWithAddr(num)};
+    function WordXL extract_int(Pipeline_Val#(t) val) provisos (CHERICap#(t,a,b,XLEN,d,e)) = getAddr(val.val);
 `else
-    function Pipeline_Val embed_int(WordXL num) = Pipeline_Val{val: num};
-    function WordXL extract_int(Pipeline_Val val) = val.val;
+    function Pipeline_Val#(t) embed_int(WordXL num) = Pipeline_Val{val: num};
+    function WordXL extract_int(Pipeline_Val#(t) val) = val.val;
 `endif
 
 
@@ -446,10 +456,10 @@ typedef struct {
    Addr       addr;     // Branch, jump: newPC
                         // Mem ops and AMOs: mem addr
 
-   Pipeline_Val val1;   // OP_Stage2_ALU: rd_val
+   Pipeline_Val#(CapPipe) val1;   // OP_Stage2_ALU: rd_val
                         // OP_Stage2_M
 
-   Pipeline_Val val2;   // OP_Stage2_ST: store-val;
+   Pipeline_Val#(CapPipe) val2;   // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
 
 `ifdef ISA_F
@@ -603,7 +613,7 @@ typedef struct {
 
    Bool      rd_valid;
    RegName   rd;
-   Pipeline_Val rd_val;
+   Pipeline_Val#(CapReg) rd_val;
 
 `ifdef RVFI
    Data_RVFI_Stage2 info_RVFI_s2;
