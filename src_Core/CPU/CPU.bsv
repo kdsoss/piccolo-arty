@@ -1024,9 +1024,7 @@ module mkCPU (CPU_IFC);
       let rd       = instr_rd     (instr);
 
       let stage2_asr = getHardPerms(rg_trap_info.epcc).accessSysRegs;
-      let stage2_val1= stage1.out.data_to_stage2.val1;
-
-      let rs1_val  = extract_cap(stage2_val1);
+      let stage2_val1= extract_cap(rg_csr_val1);
 
       Bool read_not_write = rs1 == 0;
       AccessPerms permitted = csr_regfile.access_permitted_scr (rg_cur_priv, scr_addr, read_not_write);
@@ -1046,7 +1044,7 @@ module mkCPU (CPU_IFC);
 	 fa_emit_instr_trace (minstret, getPC(stage1.out.data_to_stage2.pcc), instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    rl_stage1_SCR_W: Trap on SCR permissions: Rs1 %0d Rs1_val 0x%0h csr 0x%0h Rd %0d",
-		      rs1, rs1_val, scr_addr, rd);
+		      rs1, stage2_val1, scr_addr, rd);
 	 end
       end
       else begin
@@ -1063,7 +1061,7 @@ module mkCPU (CPU_IFC);
 
 	 // Writeback to SCR file
    if (rs1 != 0) begin
-	    let new_scr_val <- csr_regfile.mav_scr_write (scr_addr, cast(rs1_val));
+	    let new_scr_val <- csr_regfile.mav_scr_write (scr_addr, cast(stage2_val1));
       new_scr_val_unpacked = cast(new_scr_val);
    end
 
@@ -1095,7 +1093,7 @@ module mkCPU (CPU_IFC);
 	 fa_emit_instr_trace (minstret, getPC(stage1.out.data_to_stage2.pcc), instr, rg_cur_priv);
 	 if (cur_verbosity > 1) begin
 	    $display ("    S1: write SRC_W Rs1 %0d Rs1_val 0x%0h scr 0x%0h scr_val 0x%0h Rd %0d",
-		      rs1, rs1_val, scr_addr, scr_val, rd);
+		      rs1, stage2_val1, scr_addr, scr_val, rd);
 	 end
       end
    endrule: rl_stage1_SCR_W_2
