@@ -1288,6 +1288,7 @@ function ALU_Outputs fv_AMO (ALU_Inputs inputs);
 `ifdef ISA_CHERI
    alu_outputs.cap_val2  = inputs.cap_rs2_val;
    alu_outputs.val2_cap_not_int = width_code == w_SIZE_CAP;
+`endif
 
 `ifdef INCLUDE_TANDEM_VERIF
    // Normal trace output (if no trap)
