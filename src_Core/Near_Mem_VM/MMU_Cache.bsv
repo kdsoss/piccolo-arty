@@ -673,9 +673,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
    // Abbreviations testing for LR and SC (avoids ifdef clutter later)
 `ifdef ISA_A
-   Bool is_AMO    = (rg_op == CACHE_AMO);
-   Bool is_AMO_LR = ((rg_op == CACHE_AMO) && (rg_amo_funct5 == f5_AMO_LR));
-   Bool is_AMO_SC = ((rg_op == CACHE_AMO) && (rg_amo_funct5 == f5_AMO_SC));
+   Bool is_AMO    = (rg_op == CACHE_AMO) && dmem_not_imem;
+   Bool is_AMO_LR = ((rg_op == CACHE_AMO) && (rg_amo_funct5 == f5_AMO_LR)) && dmem_not_imem;
+   Bool is_AMO_SC = ((rg_op == CACHE_AMO) && (rg_amo_funct5 == f5_AMO_SC)) && dmem_not_imem;
 `else
    Bool is_AMO    = False;
    Bool is_AMO_LR = False;
@@ -750,7 +750,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       endaction
    endfunction
 
-   rule rl_fabric_send_write_req;
+   rule rl_fabric_send_write_req (dmem_not_imem);
       match { .f3, .pa, .st_val } <- pop (f_fabric_write_reqs);
 
       match {.fabric_addr,
@@ -978,7 +978,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	    // ----------------
 	    // Memory LD and AMO_LR
-	    if ((rg_op == CACHE_LD) || is_AMO_LR) begin
+	    if ((rg_op == CACHE_LD) || is_AMO_LR || (! dmem_not_imem)) begin
 	       if (hit) begin
 		  // Cache hit; drive response
 		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, word128, unpack(0), dw_commit);
@@ -1630,7 +1630,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Provide write-response (ST op)
    // Stays in this state until CPU's next request puts it back into RUNNING state
 
-   rule rl_ST_AMO_response (rg_state == CACHE_ST_AMO_RSP);
+   rule rl_ST_AMO_response (rg_state == CACHE_ST_AMO_RSP && dmem_not_imem);
       dw_valid             <= True;
       dw_output_ld_val     <= rg_ld_val;        // Irrelevant for ST; relevant for SC, AMO
       dw_output_st_amo_val <= rg_st_amo_val;
@@ -1646,7 +1646,8 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    rule rl_io_read_req (   !resetting
                         && (rg_state == IO_REQ)
 			&& ((rg_op == CACHE_LD) || is_AMO_LR)
-			&& (ctr_wr_rsps_pending.value == 0));
+			&& (ctr_wr_rsps_pending.value == 0)
+            && dmem_not_imem);
 
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_io_read_req; width_code 0x%0h vaddr %0h  paddr %0h",
@@ -1719,7 +1720,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Maintain I/O-read response
    // Stays in this state until CPU's next request puts it back into RUNNING state
 
-   rule rl_maintain_io_read_rsp (!resetting && rg_state == IO_READ_RSP);
+   rule rl_maintain_io_read_rsp (!resetting && rg_state == IO_READ_RSP && dmem_not_imem);
       fa_drive_IO_read_rsp (rg_width_code, rg_is_unsigned, rg_addr, rg_ld_val);
    endrule
 
@@ -1732,7 +1733,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    (* descending_urgency = "rl_io_write_req, rl_writeback_updated_PTE" *)
 `endif
 
-   rule rl_io_write_req (!resetting && (rg_state == IO_REQ) && (rg_op == CACHE_ST));
+   rule rl_io_write_req (!resetting && (rg_state == IO_REQ) && (rg_op == CACHE_ST) && dmem_not_imem);
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s: rl_io_write_req; width_code 0x%0h  vaddr %0h  paddr %0h  word64 0x%0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa, rg_st_amo_val);
@@ -1749,7 +1750,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Memory-mapped I/O AMO_SC requests. Always fail.
 
 `ifdef ISA_A
-   rule rl_io_AMO_SC_req (!resetting && (rg_state == IO_REQ) && is_AMO_SC);
+   rule rl_io_AMO_SC_req (!resetting && (rg_state == IO_REQ) && is_AMO_SC && dmem_not_imem);
 
       rg_ld_val <= tuple2(False, 1);    // 1 is LR/SC failure value
       rg_state  <= CACHE_ST_AMO_RSP;
@@ -1769,7 +1770,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // TODO: Extend fabric to do these ops at the I/O device?
 
 `ifdef ISA_A
-   rule rl_io_AMO_op_req (!resetting && (rg_state == IO_REQ) && is_AMO && (! is_AMO_LR) && (! is_AMO_SC));
+   rule rl_io_AMO_op_req (!resetting && (rg_state == IO_REQ) && is_AMO && (! is_AMO_LR) && (! is_AMO_SC) && dmem_not_imem);
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_io_AMO_op_req; width_code 0x%0h vaddr %0h  paddr %0h",
 		   cur_cycle, d_or_i, rg_width_code, rg_addr, rg_pa);
@@ -1794,7 +1795,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    (* descending_urgency = "rl_io_AMO_read_rsp, rl_writeback_updated_PTE" *)
 `endif
 
-   rule rl_io_AMO_read_rsp (!resetting && rg_state == IO_AWAITING_AMO_READ_RSP);
+   rule rl_io_AMO_read_rsp (!resetting && rg_state == IO_AWAITING_AMO_READ_RSP && dmem_not_imem);
       let rd_data <- get(master_xactor.slave.r);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: %s.rl_io_AMO_read_rsp: vaddr 0x%0h  paddr 0x%0h", cur_cycle, d_or_i, rg_addr, rg_pa);
@@ -1848,7 +1849,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Discard write-responses from the fabric
    // NOTE: assuming in-order responses from fabric
 
-   rule rl_discard_write_rsp;
+   rule rl_discard_write_rsp (dmem_not_imem);
       let wr_resp <- get(master_xactor.slave.b);
 
       if (ctr_wr_rsps_pending.value == 0) begin
