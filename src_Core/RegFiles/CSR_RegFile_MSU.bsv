@@ -1197,8 +1197,10 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
          scr_addr_MTCC: begin
              capUnpacked = update_scr_via_csr(capUnpacked, mtvec_to_word(word_to_mtvec(getOffset(capUnpacked))));
              // This can be done much more efficiently by breaking into the compressed cap format
-             rg_mtcc <= cast(capUnpacked);
-             result = cast(capUnpacked);
+             if (getBaseAlignment(capUnpacked) == 0) begin
+                rg_mtcc <= cast(capUnpacked);
+                result = cast(capUnpacked);
+             end
          end
          scr_addr_MTDC: begin
              rg_mtdc <= cap;
