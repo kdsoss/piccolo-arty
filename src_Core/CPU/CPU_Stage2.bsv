@@ -456,7 +456,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         end
 `endif
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
-        trace_data.word1 = int_ret_val;
 `endif
             output_stage2 = Output_Stage2 {
                  ostatus         : ostatus

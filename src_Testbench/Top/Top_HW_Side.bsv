@@ -96,6 +96,7 @@ module mkPre_Top_HW_Side (Piccolo_RVFI_DII_Server);
       $display ("Bluespec RISC-V standalone system simulation v1.2");
       $display ("Copyright (c) 2017-2019 Bluespec, Inc. All Rights Reserved.");
       $display ("================================================================");
+`endif
 
       rg_banner_printed <= True;
 
