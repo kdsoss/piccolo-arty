@@ -364,7 +364,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
                // A FLD result
                else
-                  data_to_stage3.frd_val = truncate(tpl_2(dcache.word64));
+                  data_to_stage3.frd_val = truncate(tpl_2(dcache.word128));
 `else
                // Only FLW is a legal instruction
                data_to_stage3.frd_val = truncate (tpl_2(dcache.word128));

@@ -141,10 +141,6 @@ typedef struct {
    Bool ddc_written;
 `endif
 
-`ifdef ISA_D
-   WordFL     val1;     // OP_Stage2_FD: arg1
-   WordFL     val2;     // OP_Stage2_FD: arg2
-`else
    WordXL     val1;     // OP_Stage2_ALU: result for Rd (ALU ops: result, JAL/JALR: return PC)
                         // CSRRx: rs1_val
                         // OP_Stage2_M, OP_Stage2_FD: arg1
@@ -153,7 +149,6 @@ typedef struct {
    WordXL     val2;     // Branch: branch target (for Tandem Verification)
 		        // OP_Stage2_ST: store-val
                         // OP_Stage2_M, OP_Stage2_FD: arg2
-`endif
 `ifdef ISA_D
    WordFL     val1_fast;
    WordFL     val2_fast;
@@ -1199,7 +1194,7 @@ function ALU_Outputs fv_FP (ALU_Inputs inputs);
    // whenever val1 is from GPR
    alu_outputs.val1     = inputs.rs1_val;
 
-   alu_outputs.val1_fast = inputs.rs1_val;
+   alu_outputs.val1_fast = extend(inputs.rs1_val);
 
    // Just copy the frs*_val values from inputs to outputs
    alu_outputs.fval1     = inputs.frs1_val;
