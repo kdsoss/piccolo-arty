@@ -771,7 +771,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef SHIFT_SERIAL
 	 // If Shifter box op, initiate it
 	 else if (x.op_stage2 == OP_Stage2_SH)
-	    shifter_box.req (unpack (funct3 [2]), x.val1, x.val2);
+	    shifter_box.req (unpack (funct3 [2]), x.val1_fast, x.val2_fast);
 `endif
 
 `ifdef ISA_M
@@ -779,7 +779,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 else if (x.op_stage2 == OP_Stage2_M) begin
             // Instr fields required for decode for F/D opcodes
 	    Bool is_OP_not_OP_32 = (x.instr [3] == 1'b0);
-            mbox.req (is_OP_not_OP_32, funct3, extract_int(x.val1), extract_int(x.val2));
+            mbox.req (is_OP_not_OP_32, funct3, x.val1_fast, x.val2_fast);
 	 end
 `endif
 
@@ -790,7 +790,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             let opcode = instr_opcode (x.instr);
 	    let funct7 = instr_funct7 (x.instr);
             let rs2    = instr_rs2    (x.instr);
-            Bit #(64) val1 = x.val1_frm_gpr ? extend (x.val1)
+            Bit #(64) val1 = x.val1_frm_gpr ? x.val1_fast
                                             : extend (x.fval1);
 
 	    fbox.req (  opcode

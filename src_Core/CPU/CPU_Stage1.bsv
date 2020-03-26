@@ -320,6 +320,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
                                                        : embed_int(truncate(alu_outputs.val1))
       , val2            : alu_outputs.val2_cap_not_int ? embed_cap(alu_outputs.cap_val2)
                                                        : embed_int(truncate(alu_outputs.val2))
+      , val1_fast       : alu_outputs.val1_fast
+      , val2_fast       : alu_outputs.val2_fast
 `ifdef ISA_CHERI
       , check_enable       : alu_outputs.check_enable
       , check_inclusive    : alu_outputs.check_inclusive

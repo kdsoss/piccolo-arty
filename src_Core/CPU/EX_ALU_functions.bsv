@@ -154,6 +154,13 @@ typedef struct {
 		        // OP_Stage2_ST: store-val
                         // OP_Stage2_M, OP_Stage2_FD: arg2
 `endif
+`ifdef ISA_D
+   WordFL     val1_fast;
+   WordFL     val2_fast;
+`else
+   WordXL     val1_fast;
+   WordXL     val2_fast;
+`endif
 `ifdef ISA_F
    WordFL     fval1;          // OP_Stage2_FD: arg1
    WordFL     fval2;          // OP_Stage2_FD: arg2
@@ -209,6 +216,8 @@ ALU_Outputs alu_outputs_base
 	       addr      : ?,
 	       val1      : ?,
 	       val2      : ?,
+           val1_fast : ?,
+           val2_fast : ?,
 `ifdef ISA_F
 	       fval1       : ?,
 	       fval2       : ?,
@@ -570,6 +579,8 @@ function ALU_Outputs fv_OP_and_OP_IMM_shifts (ALU_Inputs inputs);
    WordXL val2 = extend (shamt);
    val2 = (val2 | { 0, instr_b30, 7'b0});
    alu_outputs.val2 = val2;
+   alu_outputs.val1_fast = alu_outputs.val1;
+   alu_outputs.val2_fast = alu_outputs.val2;
 `endif
 
 `ifdef INCLUDE_TANDEM_VERIF
@@ -1183,6 +1194,8 @@ function ALU_Outputs fv_FP (ALU_Inputs inputs);
    // Just copy the rs1_val values from inputs to outputs this covers cases
    // whenever val1 is from GPR
    alu_outputs.val1     = inputs.rs1_val;
+
+   alu_outputs.val1_fast = inputs.rs1_val;
 
    // Just copy the frs*_val values from inputs to outputs
    alu_outputs.fval1     = inputs.frs1_val;
@@ -1925,6 +1938,9 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 	 alu_outputs.rd        = inputs.decoded_instr.rd;
 	 alu_outputs.val1      = inputs.rs1_val;
 	 alu_outputs.val2      = inputs.rs2_val;
+
+     alu_outputs.val1_fast = alu_outputs.val1;
+     alu_outputs.val2_fast = alu_outputs.val2;
 
 `ifdef INCLUDE_TANDEM_VERIF
 	 // Normal trace output (if no trap)

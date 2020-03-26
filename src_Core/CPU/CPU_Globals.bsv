@@ -462,6 +462,14 @@ typedef struct {
    Pipeline_Val#(CapPipe) val2;   // OP_Stage2_ST: store-val;
                         // OP_Stage2_M and OP_Stage2_FD: arg2
 
+`ifdef ISA_D
+   WordFL val1_fast;  // Timing optimisation: vals for putting into the fbox/mbox where it is known the result doesn't depend on cap arithmetic
+   WordFL val2_fast;
+`else
+   WordXL val1_fast;
+   WordXL val2_fast;
+`endif
+
 `ifdef ISA_F
    Bool val1_flt_not_int;
    Bool val2_flt_not_int;
