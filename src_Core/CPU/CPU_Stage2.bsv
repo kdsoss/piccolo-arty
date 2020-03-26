@@ -633,7 +633,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             bypass.bypass_state     = ((ostatus==OSTATUS_PIPE) ? BYPASS_RD_RDVAL
                                                                : BYPASS_RD);
             bypass.rd_val           = nullWithAddr(truncate(value));
-            data_to_stage3.rd_val   = nullWithAddr(truncate(value));
+            data_to_stage3.rd_val   = embed_int(truncate(value));
          end
 
          // -----
@@ -788,14 +788,14 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
             let opcode = instr_opcode (x.instr);
 	    let funct7 = instr_funct7 (x.instr);
             let rs2    = instr_rs2    (x.instr);
-            Bit #(64) val1 = x.val1_frm_gpr ? x.val1_fast
+            Bit #(64) val1 = x.val1_frm_gpr ? extend (x.val1_fast)
                                             : extend (x.fval1);
 
 	    fbox.req (  opcode
 		      , funct7
 		      , x.rounding_mode   // rm
 		      , rs2
-		      , extract_int(val1)
+		      , zeroExtend(x.val1_fast)
 		      , extend (x.fval2)
 		      , extend (x.fval3)
 		     );
