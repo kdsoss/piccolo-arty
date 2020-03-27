@@ -485,7 +485,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    SoC_Map_IFC soc_map <- mkSoC_Map;
 
 `ifdef ISA_CHERI
-   Wire#(Bool) dw_commit <- mkDWire(False);
+   Wire#(Bool) dw_commit <- mkDWire(!dmem_not_imem); // Icache always commits, since no writes. Instruction must be canceled in pipe
 `endif
 
    // Reset request/response: REQUESTOR_RESET_IFC, REQUESTOR_FLUSH_IFC

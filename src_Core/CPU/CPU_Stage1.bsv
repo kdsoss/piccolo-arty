@@ -124,7 +124,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
    Reg #(PCC_T) rg_pcc <- mkRegU;
    Reg #(Bit#(TAdd#(XLEN,1))) rg_pcc_top <- mkRegU;
    Reg #(CapPipe) rg_ddc <- mkRegU;
-   let f_commit <- mkPipelineFIFO;
 `endif
 
 
@@ -138,15 +137,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       f_reset_reqs.deq;
       rg_full <= False;
       f_reset_rsps.enq (?);
-   endrule
-
-   rule rl_commit(f_commit.first);
-      imem.commit;
-      f_commit.deq;
-   endrule
-
-   rule rl_nocommit(!f_commit.first);
-      f_commit.deq;
    endrule
 
    // ----------------
@@ -502,7 +492,6 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef ISA_CHERI
       rg_pcc <= next_pcc;
       rg_pcc_top <= getTop(next_pcc);
-      f_commit.enq(checkPreValid(next_pcc));
       rg_ddc <= next_ddc;
 `endif
 
