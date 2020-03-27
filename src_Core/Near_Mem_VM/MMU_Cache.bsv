@@ -1047,44 +1047,47 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 		     $display ("        AMO SC result = %0d", lrsc_result);
 	       end
 `endif
-           if (dw_commit) begin
-              if (hit) begin
-                 // Update cache line in cache
-                let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, rg_st_amo_val);
-                 ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
+           if (do_write) begin
+            //ST or succesfull SC
+               if (dw_commit) begin
+                  if (hit) begin
+                     // Update cache line in cache
+                    let new_word128_set = fn_update_word128_set (word128_set, way_hit, vm_xlate_result.pa, rg_width_code, rg_st_amo_val);
+                     ram_word128_set.a.put (bram_cmd_write, word128_set_in_cache, new_word128_set);
 
-                if (cfg_verbosity > 1) begin
-                   $display ("        Write-Cache-Hit: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
-                   $write   ("        New Word128_Set:");
-                   fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
-                end
-              end
-              else begin
-                 if (cfg_verbosity > 1)
-                    $display ("        Write-Cache-Miss: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
-              end
+                    if (cfg_verbosity > 1) begin
+                       $display ("        Write-Cache-Hit: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+                       $write   ("        New Word128_Set:");
+                       fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
+                    end
+                  end
+                  else begin
+                     if (cfg_verbosity > 1)
+                        $display ("        Write-Cache-Miss: pa 0x%0h word128 0x%0h", vm_xlate_result.pa, rg_st_amo_val);
+                  end
 
-              if (cfg_verbosity > 1)
-                 $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word128 0x%0h", rg_addr, rg_st_amo_val);
+                  if (cfg_verbosity > 1)
+                     $display ("        Write-Cache-Hit/Miss: eaddr 0x%0h word128 0x%0h", rg_addr, rg_st_amo_val);
 
-              // For write-hits and write-misses, writeback data to memory (so cache remains clean)
-              fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, rg_st_amo_val);
+                  // For write-hits and write-misses, writeback data to memory (so cache remains clean)
+                  fa_fabric_send_write_req (rg_width_code, vm_xlate_result.pa, rg_st_amo_val);
 
-              // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
-              // in case the next incoming request tries to read from the same SRAM address.
-              new_state = CACHE_ST_AMO_RSP;
+                  // Provide write-response after 1-cycle delay (thus locking the cset for 1 cycle),
+                  // in case the next incoming request tries to read from the same SRAM address.
+                  new_state = CACHE_ST_AMO_RSP;
 
-              if (cfg_verbosity > 1)
-                 $display ("        => rl_write_response");
+                  if (cfg_verbosity > 1)
+                     $display ("        => rl_write_response");
+               end
            end
-	       else begin // do_write == False
-		  // SC fail
-		     // Hard-code address to 0 to ensure fn_extract_and_extend_bytes takes the LSBs of our 1 value.
-		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, 0, tuple2(0,1), unpack(0), dw_commit);
-		  if (cfg_verbosity > 1)
-		     $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
-	       end
-	    end
+           else begin // do_write == False
+           // SC fail
+              // Hard-code address to 0 to ensure fn_extract_and_extend_bytes takes the LSBs of our 1 value.
+              fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, 0, tuple2(0,1), unpack(0), dw_commit);
+           if (cfg_verbosity > 1)
+              $display ("        AMO SC: Fail response for addr 0x%0h", rg_addr);
+           end
+       end
 
 `ifdef ISA_A
 	    // ----------------
