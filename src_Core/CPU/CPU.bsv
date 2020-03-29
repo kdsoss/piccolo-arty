@@ -874,7 +874,7 @@ module mkCPU (CPU_IFC);
    // Traps
 
    rule rl_trap ((rg_state == CPU_TRAP)
-		 && (stage1.out.ostatus != OSTATUS_BUSY)
+		 && (stage1.out.ostatus != OSTATUS_BUSY_MEM)
          && f_run_halt_reqs_empty);
 `ifdef ISA_CHERI
       let epcc     = rg_trap_info.epcc;
@@ -1807,7 +1807,7 @@ module mkCPU (CPU_IFC);
    rule rl_WFI_resume (   (rg_state == CPU_WFI_PAUSED)
 		       && (   csr_regfile.wfi_resume
 			   || stop_step_req)
-		       && (stage1.out.ostatus != OSTATUS_BUSY)
+		       && (stage1.out.ostatus != OSTATUS_BUSY_MEM)
                && f_run_halt_reqs_empty);
       if (cur_verbosity > 1) $display ("%0d: %m.rl_WFI_resume", mcycle);
 

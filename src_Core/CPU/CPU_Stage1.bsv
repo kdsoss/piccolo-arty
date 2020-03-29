@@ -361,7 +361,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Stall if IMem not ready
       else if (! imem.valid) begin
-	 output_stage1.ostatus = OSTATUS_BUSY;
+	 output_stage1.ostatus = OSTATUS_BUSY_MEM;
       end
 
 `ifdef ISA_CHERI
@@ -381,7 +381,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Stall if bypass pending for rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
-	 output_stage1.ostatus = OSTATUS_BUSY;
+	 output_stage1.ostatus = OSTATUS_BUSY_REG;
       end
 
       // Trap on fetch-exception

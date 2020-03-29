@@ -329,7 +329,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	       )
 	 begin
 	    let ostatus = (  (! dcache.valid)
-			   ? OSTATUS_BUSY
+			   ? OSTATUS_BUSY_MEM
 			   : (  dcache.exc
 			      ? OSTATUS_NONPIPE
 			      : OSTATUS_PIPE));
@@ -474,7 +474,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       // This stage is doing a STORE
       else if (rg_stage2.op_stage2 == OP_Stage2_ST) begin
 	 let ostatus = (  (! dcache.valid)
-			     ? OSTATUS_BUSY
+			     ? OSTATUS_BUSY_MEM
 			     : (  dcache.exc
 				? OSTATUS_NONPIPE
 				: OSTATUS_PIPE));
@@ -516,7 +516,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef SHIFT_SERIAL
       // This stage is doing a serial shift
       else if (rg_stage2.op_stage2 == OP_Stage2_SH) begin
-	 let ostatus = ((! shifter_box.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
+	 let ostatus = ((! shifter_box.valid) ? OSTATUS_BUSY_MEM : OSTATUS_PIPE);
 
 	 let result = shifter_box.word;
 
@@ -556,7 +556,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_M
       // This stage is doing an integer multiply/divide
       else if (rg_stage2.op_stage2 == OP_Stage2_M) begin
-	 let ostatus = ((! mbox.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
+	 let ostatus = ((! mbox.valid) ? OSTATUS_BUSY_MEM : OSTATUS_PIPE);
 
 	 let result = mbox.word;
 
@@ -599,7 +599,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 `ifdef ISA_F
       // This stage is doing a floating point op
       else if (rg_stage2.op_stage2 == OP_Stage2_FD) begin
-	 let ostatus = ((! fbox.valid) ? OSTATUS_BUSY : OSTATUS_PIPE);
+	 let ostatus = ((! fbox.valid) ? OSTATUS_BUSY_MEM : OSTATUS_PIPE);
 
          // Extract fields from FBOX result
 	 match {.value, .fflags} = fbox.word;
