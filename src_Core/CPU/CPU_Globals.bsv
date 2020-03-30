@@ -471,11 +471,6 @@ typedef struct {
    WordXL val2_fast;
 `endif
 
-`ifdef ISA_F
-   Bool val1_flt_not_int;
-   Bool val2_flt_not_int;
-`endif
-
 `ifdef ISA_CHERI
    // Bounds check: if check_enable, will test
    // address_low >= authority.base && address_high <? authority.top (?: strictness determined by check_inclusive value TODO)
