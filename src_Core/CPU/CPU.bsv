@@ -1005,6 +1005,10 @@ module mkCPU (CPU_IFC);
 
       rg_csr_pcc <= stage1.out.data_to_stage2.pcc;
       rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
+`endif
       rg_csr_val1 <= stage1.out.data_to_stage2.val1;
 
       // In case of trap (illegal CSpecialRW)
@@ -1132,9 +1136,13 @@ module mkCPU (CPU_IFC);
       // Register required info and handle in next clock
       rg_csr_pcc  <= stage1.out.data_to_stage2.pcc;
       rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
 `else
       rg_csr_pc  <= stage1.out.data_to_stage2.pc;
       rg_next_pc <= stage1.out.next_pc;
+`endif
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
 `endif
 
       rg_csr_val1 <= stage1.out.data_to_stage2.val1;
@@ -1274,6 +1282,10 @@ module mkCPU (CPU_IFC);
       // Register required info and handle in next clock
       rg_csr_pcc  <= stage1.out.data_to_stage2.pcc;
       rg_next_pcc <= stage1.out.next_pcc;
+      rg_next_ddc <= stage1.out.next_ddc;
+`ifdef RVFI_DII
+      rg_next_seq <= stage1.out.data_to_stage2.instr_seq + 1;
+`endif
 
       rg_csr_val1 <= stage1.out.data_to_stage2.val1;
 
@@ -1404,23 +1416,16 @@ module mkCPU (CPU_IFC);
 
    rule rl_stage1_restart_after_csrrx (rg_state == CPU_CSRRX_RESTART
                                        && f_run_halt_reqs_empty);
-`ifdef ISA_CHERI
-      let next_pcc   = stage1.out.next_pcc;
-      let next_ddc   = stage1.out.next_ddc;
-`else
-      let next_pc    = stage1.out.next_pc;
-`endif
-
       fa_start_ifetch (
 `ifdef ISA_CHERI
-                                             next_pcc
-                                           , next_ddc
+                                             rg_next_pcc
+                                           , rg_next_ddc
 `else
-                                             next_pc
+                                             rg_next_pc
 `endif
                                            , rg_cur_priv
 `ifdef RVFI_DII
-                                           , stage1.out.data_to_stage2.instr_seq + 1
+                                           , rg_next_seq
 `endif
                                            , mstatus_MXR, sstatus_SUM);
 
@@ -1429,7 +1434,7 @@ module mkCPU (CPU_IFC);
       rg_state <= CPU_RUNNING;
       if (cur_verbosity > 1)
 	 $display ("%0d: rl_stage1_restart_after_csrrx: minstret:%0d  pc:%0x  cur_priv:%0d",
-		   mcycle, minstret, getPC(next_pcc), rg_cur_priv);
+		   mcycle, minstret, getPC(rg_next_pcc), rg_cur_priv);
    endrule
 
    // ================================================================
