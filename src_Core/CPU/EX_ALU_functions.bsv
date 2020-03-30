@@ -1080,6 +1080,7 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
                end
 	       end
 
+`ifdef ISA_PRIV_S
 	    // SRET instruction
 	    else if (   (   (inputs.cur_priv == m_Priv_Mode)
 			 || (   (inputs.cur_priv == s_Priv_Mode)
@@ -1095,7 +1096,7 @@ function ALU_Outputs fv_SYSTEM (ALU_Inputs inputs);
                   alu_outputs.cheri_exc_reg = {1'b1, scr_addr_PCC};
                end
 	       end
-
+`endif
 
 	    /*
 	    // URET instruction (future: Piccolo does not support 'N' extension)
