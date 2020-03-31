@@ -796,7 +796,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 		      , funct7
 		      , x.rounding_mode   // rm
 		      , rs2
-		      , zeroExtend(x.val1_fast)
+		      , val1
 		      , extend (x.fval2)
 		      , extend (x.fval3)
 		     );
