@@ -353,6 +353,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
    function Output_Stage1 fv_out;
       Output_Stage1 output_stage1 = ?;
+      output_stage1.ostatus_fetch = OSTATUS_EMPTY;
 
       // This stage is empty
       if (! rg_full) begin
@@ -361,7 +362,8 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Stall if IMem not ready
       else if (! imem.valid) begin
-	 output_stage1.ostatus = OSTATUS_BUSY_MEM;
+	 output_stage1.ostatus = OSTATUS_BUSY;
+	 output_stage1.ostatus_fetch = OSTATUS_BUSY;
       end
 
 `ifdef ISA_CHERI
@@ -381,13 +383,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 
       // Stall if bypass pending for GPR rs1 or rs2
       else if (rs1_busy || rs2_busy) begin
-	 output_stage1.ostatus = OSTATUS_BUSY_REG;
+	 output_stage1.ostatus = OSTATUS_BUSY;
       end
 
 `ifdef ISA_F
       // Stall if bypass pending for FPR rs1, rs2 or rs3
       else if (frs1_busy || frs2_busy || frs3_busy) begin
-	 output_stage1.ostatus = OSTATUS_BUSY_REG;
+	 output_stage1.ostatus = OSTATUS_BUSY;
       end
 `endif
 
