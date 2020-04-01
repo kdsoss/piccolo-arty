@@ -50,8 +50,7 @@ import TV_Info   :: *;
 //                (such as traps, CSR access, ...)
 
 typedef enum {OSTATUS_EMPTY,
-	      OSTATUS_BUSY_MEM,
-          OSTATUS_BUSY_REG,
+	      OSTATUS_BUSY,
 	      OSTATUS_PIPE,
 	      OSTATUS_NONPIPE
    } Stage_OStatus
@@ -317,6 +316,7 @@ deriving (Eq, Bits, FShow);
 
 typedef struct {
    Stage_OStatus          ostatus;
+   Stage_OStatus          ostatus_fetch;
 
    Control                control;
 
@@ -343,15 +343,20 @@ instance FShow #(Output_Stage1);
       Fmt fmt = $format ("Output_Stage1");
       if (x.ostatus == OSTATUS_EMPTY)
 	 fmt = fmt + $format (" EMPTY");
-      else if (x.ostatus == OSTATUS_BUSY_MEM || x.ostatus == OSTATUS_BUSY_REG)
-	 fmt = fmt + $format (" BUSY pc:%h",
+      else if (x.ostatus == OSTATUS_BUSY) begin
+	 fmt = fmt + $format (" BUSY (fetch");
+	 if (x.ostatus_fetch == OSTATUS_BUSY)
+	    fmt = fmt + $format (" BUSY");
+	 else
+	    fmt = fmt + $format (" EMPTY");
+	 fmt = fmt + $format (") pc:%h",
 `ifdef ISA_CHERI
                                       getPC(x.data_to_stage2.pcc)
 `else
                                       x.data_to_stage2.pc
 `endif
                        );
-      else begin
+      end else begin
 	 if (x.ostatus == OSTATUS_NONPIPE) begin
 	    fmt = fmt + $format (" NONPIPE: pc:%h",
 `ifdef ISA_CHERI
@@ -594,7 +599,7 @@ instance FShow #(Output_Stage2);
       Fmt fmt = $format ("Output_Stage2");
       if (x.ostatus == OSTATUS_EMPTY)
 	 fmt = fmt + $format (" EMPTY");
-      else if (x.ostatus == OSTATUS_BUSY_MEM || x.ostatus == OSTATUS_BUSY_REG)
+      else if (x.ostatus == OSTATUS_BUSY)
 	 fmt = fmt + $format (" BUSY: pc:%0h", x.data_to_stage3.pc);
       else if (x.ostatus == OSTATUS_NONPIPE) begin
 	 fmt = fmt + $format (" NONPIPE: ") + fshow (x.trap_info);
@@ -683,7 +688,7 @@ instance FShow #(Output_Stage3);
       Fmt fmt = $format ("Output_Stage3");
       if (x.ostatus == OSTATUS_EMPTY)
 	 fmt = fmt + $format (" EMPTY");
-      else if (x.ostatus == OSTATUS_BUSY_MEM || x.ostatus == OSTATUS_BUSY_REG)
+      else if (x.ostatus == OSTATUS_BUSY)
 	 fmt = fmt + $format (" BUSY");
       else if (x.ostatus == OSTATUS_PIPE)
 	 fmt = fmt + $format (" PIPE");
