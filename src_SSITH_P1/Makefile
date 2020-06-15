@@ -24,10 +24,12 @@ ARCH ?= RV32ACIMUxCHERI
 BSC_COMPILATION_FLAGS += \
 	-D RV32 \
 	-D ISA_PRIV_M  -D ISA_PRIV_U  \
-        -D RISCV \
+	-D RISCV \
 	-D CAP64 \
-	-D MEM64 \
+	-D CapWidth=64 -D CheriBusBytes=64 \
+	-D CheriMasterIDWidth=1 -D CheriTransactionIDWidth=5 \
 	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C -D ISA_CHERI \
+	-D CapWidth=128 -D CheriBusBytes=64 \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
 	-D Near_Mem_Caches    \
