@@ -1817,7 +1817,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     alu_outputs.control   = CONTROL_CAPBRANCH;
 
                     alu_outputs.addr      = next_pc;
-                    alu_outputs.pcc       = maskAddr(cs1_val, signExtend(2'b10));
+                    alu_outputs.pcc       = setKind(maskAddr(cs1_val, signExtend(2'b10)), UNSEALED);
                     alu_outputs.val1_source = SET_OFFSET;
                     alu_outputs.internal_op1 = inputs.pcc;
                     alu_outputs.internal_op2 = fall_through_pc_inc(inputs);
