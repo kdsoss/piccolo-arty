@@ -64,7 +64,7 @@ interface Boot_ROM_IFC;
    method Action set_addr_map (Fabric_Addr addr_base, Fabric_Addr addr_lim);
 
    // Main Fabric Reqs/Rsps
-   interface AXI4_Slave_Synth #(Wd_SId, Wd_Addr, Wd_Data_Periph, 0, 0, 0, 0, 0)
+   interface AXI4_Slave #(Wd_SId, Wd_Addr, Wd_Data_Periph, 0, 0, 0, 0, 0)
       slave;
 endinterface
 
@@ -84,8 +84,7 @@ module mkBoot_ROM (Boot_ROM_IFC);
    // ----------------
    // Connector to fabric
 
-   AXI4_Slave_Xactor#(Wd_SId, Wd_Addr, Wd_Data_Periph, 0, 0, 0, 0, 0)
-      slave_xactor <- mkAXI4_Slave_Xactor;
+   let slavePortShim <- mkAXI4ShimFF;
 
    // ----------------
 
@@ -114,7 +113,7 @@ module mkBoot_ROM (Boot_ROM_IFC);
    // Handle fabric read requests
 
    rule rl_process_rd_req (rg_module_ready);
-      let rda <- get(slave_xactor.master.ar);
+      let rda <- get(slavePortShim.master.ar);
 
       let byte_addr = rda.araddr - rg_addr_base;
 
@@ -137,12 +136,11 @@ module mkBoot_ROM (Boot_ROM_IFC);
 
       Bit #(Wd_Data_Periph) rdata  = truncate (data64);
       AXI4_RFlit#(Wd_SId, Wd_Data_Periph, 0) rdr = AXI4_RFlit {rid:   rda.arid,
-                                                              rdata: rdata,
-                                                              rresp: rresp,
-                                                              rlast: True,
-                                                              ruser: 0};
-
-      slave_xactor.master.r.put(rdr);
+			                                       rdata: rdata,
+			                                       rresp: rresp,
+			                                       rlast: True,
+			                                       ruser: 0};
+      slavePortShim.master.r.put(rdr);
 
       if (verbosity > 0) begin
 	 $display ("%0d: Boot_ROM.rl_process_rd_req: ", cur_cycle);
@@ -155,8 +153,8 @@ module mkBoot_ROM (Boot_ROM_IFC);
    // Handle fabric write requests: ignore all of them (this is a ROM)
 
    rule rl_process_wr_req (rg_module_ready);
-      let wra <- get(slave_xactor.master.aw);
-      let wrd <- get(slave_xactor.master.w);
+      let wra <- get(slavePortShim.master.aw);
+      let wrd <- get(slavePortShim.master.w);
 
       AXI4_Resp  bresp = OKAY;
       if (! fn_addr_is_ok (rg_addr_base, wra.awaddr, rg_addr_lim)) begin
@@ -166,9 +164,9 @@ module mkBoot_ROM (Boot_ROM_IFC);
       end
 
       AXI4_BFlit#(Wd_SId, 0) wrr = AXI4_BFlit {bid:   wra.awid,
-                                              bresp: bresp,
-                                              buser: 0};
-      slave_xactor.master.b.put(wrr);
+                                               bresp: bresp,
+                                               buser: 0};
+      slavePortShim.master.b.put(wrr);
 
       if (verbosity > 0) begin
 	 $display ("%0d: Boot_ROM.rl_process_wr_req; ignoring all writes", cur_cycle);
@@ -205,14 +203,14 @@ module mkBoot_ROM (Boot_ROM_IFC);
       rg_addr_base    <= addr_base;
       rg_addr_lim     <= addr_lim;
       rg_module_ready <= True;
-      slave_xactor.clear;
+      slavePortShim.clear;
       if (verbosity > 0) begin
 	 $display ("%0d: Boot_ROM.set_addr_map: base 0x%0h lim 0x%0h", cur_cycle, addr_base, addr_lim);
       end
    endmethod
 
    // Main Fabric Reqs/Rsps
-   interface  slave = slave_xactor.slaveSynth;
+   interface  slave = slavePortShim.slave;
 endmodule
 
 // ================================================================
