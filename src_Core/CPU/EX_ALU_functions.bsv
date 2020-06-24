@@ -1724,7 +1724,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             f7_cap_Loads: begin
                 Bit#(3) widthCode = zeroExtend(funct5rs2[1:0]);
                 Bool is_lr = False;
-                if (funct5rs2[4] == 1) begin
+                Bool is_unsigned = funct5rs2[2] == cap_mem_unsigned && funct5rs2[4] == 1'b0;
+                if (funct5rs2[4] == 1'b1) begin
                     if (funct5rs2[2:0] == 3'b111) begin
                         widthCode = w_SIZE_Q;
                     end else begin
@@ -1737,7 +1738,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
 `endif
                     end
                 end
-                Bool is_unsigned = (! is_lr) && funct5rs2[2] == cap_mem_unsigned;
                 if ((widthCode > w_SIZE_MAX) || (is_unsigned && widthCode == w_SIZE_MAX)) begin
                     alu_outputs.control = CONTROL_TRAP;
                     alu_outputs.exc_code = exc_code_ILLEGAL_INSTRUCTION;
