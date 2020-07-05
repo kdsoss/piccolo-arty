@@ -16,7 +16,7 @@ all: compile
 # ================================================================
 
 REPO ?= ..
-ARCH ?= RV32ACIMU
+ARCH ?= RV32ACIMUxCHERI
 
 # ================================================================
 # RISC-V config macros passed into Bluespec 'bsc' compiler
