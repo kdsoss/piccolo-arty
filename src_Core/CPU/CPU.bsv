@@ -178,33 +178,33 @@ typedef struct {
 } EventsCore deriving (Bits, FShow);
 
 instance BitVectorable #(EventsCore, n, 30) provisos (Add #(a__, 1, n));
-  function Vector #(30, Bit #(n)) toVector (EventsCore e);
+   function Vector #(30, Bit #(n)) toVector (EventsCore e);
       Vector #(30, Bit #(n)) list = replicate (0);
-      list[0] = zeroExtend(pack(e.evt_REDIRECT));
-      list[1] = zeroExtend(pack(e.evt_TLB_EXC));
-      list[2] = zeroExtend(pack(e.evt_BR));
-      list[3] = zeroExtend(pack(e.evt_JAL));
-      list[4] = zeroExtend(pack(e.evt_JALR));
-      list[5] = zeroExtend(pack(e.evt_AUIPC));
-      list[6] = zeroExtend(pack(e.evt_LD));
-      list[7] = zeroExtend(pack(e.evt_ST));
-      list[8] = zeroExtend(pack(e.evt_LR));
-      list[9] = zeroExtend(pack(e.evt_SC));
-      list[10] = zeroExtend(pack(e.evt_AMO));
-      list[11] = zeroExtend(pack(e.evt_SERIAL_SHIFT));
-      list[12] = zeroExtend(pack(e.evt_INT_MUL_DIV_REM));
-      list[13] = zeroExtend(pack(e.evt_FP));
-      list[14] = zeroExtend(pack(e.evt_SC_SUCCESS));
-      list[15] = zeroExtend(pack(e.evt_LD_WAIT));
-      list[16] = zeroExtend(pack(e.evt_ST_WAIT));
-      list[17] = zeroExtend(pack(e.evt_FENCE));
-      list[18] = zeroExtend(pack(e.evt_WAIT_F));
-      list[19] = zeroExtend(pack(e.evt_WAIT_D));
-      list[20] = zeroExtend(pack(e.evt_WAIT_1));
-      list[21] = zeroExtend(pack(e.evt_WAIT_2));
-      list[22] = zeroExtend(pack(e.evt_WAIT_3));
+      list [0] = zeroExtend (pack (e.evt_REDIRECT));
+      list [1] = zeroExtend (pack (e.evt_TLB_EXC));
+      list [2] = zeroExtend (pack (e.evt_BR));
+      list [3] = zeroExtend (pack (e.evt_JAL));
+      list [4] = zeroExtend (pack (e.evt_JALR));
+      list [5] = zeroExtend (pack (e.evt_AUIPC));
+      list [6] = zeroExtend (pack (e.evt_LD));
+      list [7] = zeroExtend (pack (e.evt_ST));
+      list [8] = zeroExtend (pack (e.evt_LR));
+      list [9] = zeroExtend (pack (e.evt_SC));
+      list [10] = zeroExtend (pack (e.evt_AMO));
+      list [11] = zeroExtend (pack (e.evt_SERIAL_SHIFT));
+      list [12] = zeroExtend (pack (e.evt_INT_MUL_DIV_REM));
+      list [13] = zeroExtend (pack (e.evt_FP));
+      list [14] = zeroExtend (pack (e.evt_SC_SUCCESS));
+      list [15] = zeroExtend (pack (e.evt_LD_WAIT));
+      list [16] = zeroExtend (pack (e.evt_ST_WAIT));
+      list [17] = zeroExtend (pack (e.evt_FENCE));
+      list [18] = zeroExtend (pack (e.evt_WAIT_F));
+      list [19] = zeroExtend (pack (e.evt_WAIT_D));
+      list [20] = zeroExtend (pack (e.evt_WAIT_1));
+      list [21] = zeroExtend (pack (e.evt_WAIT_2));
+      list [22] = zeroExtend (pack (e.evt_WAIT_3));
       return list;
-  endfunction
+   endfunction
 endinstance
 
 function CoreEvents instrCoreEvents(CoreEvents coreEvents, Instr instr);
@@ -836,7 +836,7 @@ module mkCPU (CPU_IFC);
       if (cur_verbosity > 1) $display ("%0d: %m.rl_pipe", mcycle);
 
 `ifdef PERFORMANCE_MONITORING
-      let coreEvents = unpack(0);
+      let coreEvents = unpack (0);
 `endif
 
       Bool stage3_full = (stage3.out.ostatus != OSTATUS_EMPTY);
@@ -900,7 +900,7 @@ module mkCPU (CPU_IFC);
 	    stage2.enq (stage1.out.data_to_stage2);  stage2_full = True;
 	    stage1.deq;                              stage1_full = False;
 `ifdef PERFORMANCE_MONITORING
-            coreEvents = coreEventsInstr(coreEvents, stage1.out.data_to_stage2.instr);
+            coreEvents = instrCoreEvents(coreEvents, stage1.out.data_to_stage2.instr);
 `endif
 	 end
 
@@ -930,7 +930,7 @@ module mkCPU (CPU_IFC);
       stage1.set_full (stage1_full);    fa_step_check;
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEvents;
+      w_coreEvents [0] <= coreEvents;
 `endif
    endrule: rl_pipe
 
@@ -945,9 +945,9 @@ module mkCPU (CPU_IFC);
 	 $display ("%0d: %m.rl_stage2_nonpipe", mcycle);
 
 `ifdef PERFORMANCE_MONITORING
-      let coreEvents = unpack(0);
+      let coreEvents = unpack (0);
       coreEvents.evt_TLB_EXC = True;
-      w_coreEvents[1] <= coreEvents;
+      w_coreEvents [1] <= coreEvents;
 `endif
 
       // Just save relevant info and handle in next clock
@@ -1000,7 +1000,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
 
       rg_state           <= CPU_TRAP;
@@ -1130,19 +1130,19 @@ module mkCPU (CPU_IFC);
    // Performance counters
    Vector #(16, Bit #(64)) imem_evts = toVector (near_mem.imem.cacheEvents);
    Vector #(16, Bit #(64)) dmem_evts = toVector (near_mem.dmem.cacheEvents);
-   Vector #(30, Bit #(64)) core_evts = toVector (w_coreEvents[0]);
+   Vector #(30, Bit #(64)) core_evts = toVector (w_coreEvents [0]);
 
    let events = cons (
-        0
+	  0
     , append (append (
-         dmem_evts
-      ,  imem_evts
-      ), core_evts
+	   dmem_evts
+	,  imem_evts
+	), core_evts
    ));
 
-  (* fire_when_enabled, no_implicit_conditions *)
+   (* fire_when_enabled, no_implicit_conditions *)
    rule rl_send_perf_evts;
-      csr_regfile.send_performance_events(events);
+      csr_regfile.send_performance_events (events);
    endrule
 
    // Example usage:
@@ -1201,7 +1201,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
 
       rg_state <= CPU_SCR_W_2;
@@ -1345,7 +1345,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
 
       rg_state <= CPU_CSRRW_2;
@@ -1492,7 +1492,7 @@ module mkCPU (CPU_IFC);
 `endif
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
 
       rg_state <= CPU_CSRR_S_or_C_2;
@@ -1701,7 +1701,7 @@ module mkCPU (CPU_IFC);
 	 $display ("    xRET: next_pc:0x%0h  new mstatus:0x%0h  new priv:%0d", next_pc, new_mstatus, new_priv);
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
    endrule: rl_stage1_xRET
 
@@ -1756,7 +1756,7 @@ module mkCPU (CPU_IFC);
 	 $display ("%0d: %m.rl_stage1_FENCE_I", mcycle);
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
    endrule
 
@@ -1841,9 +1841,9 @@ module mkCPU (CPU_IFC);
 	 $display ("%0d: %m.rl_stage1_FENCE", mcycle);
 
 `ifdef PERFORMANCE_MONITORING
-      let coreEvents = unpack(0);
+      let coreEvents = unpack (0);
       coreEvents.evt_FENCE = True;
-      w_coreEvents[2] <= coreEventsInstr(coreEvents, stage1.out.data_to_stage2.instr);
+      w_coreEvents [2] <= instrCoreEvents(coreEvents, stage1.out.data_to_stage2.instr);
 `endif
    endrule
 
@@ -1929,7 +1929,7 @@ module mkCPU (CPU_IFC);
 	 $display ("%0d: %m.rl_stage1_SFENCE_VMA", mcycle);
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
    endrule: rl_stage1_SFENCE_VMA
 
@@ -2014,7 +2014,7 @@ module mkCPU (CPU_IFC);
 	 $display ("    CPU.rl_stage1_WFI");
 
 `ifdef PERFORMANCE_MONITORING
-      w_coreEvents[0] <= coreEventsInstr(unpack(0), stage1.out.data_to_stage2.instr);
+      w_coreEvents [0] <= instrCoreEvents(unpack(0), stage1.out.data_to_stage2.instr);
 `endif
    endrule: rl_stage1_WFI
 
