@@ -59,6 +59,7 @@ import ConfigReg    :: *;
 import FIFOF        :: *;
 import GetPut       :: *;
 import ClientServer :: *;
+import SpecialWires  :: *;
 
 // ----------------
 // BSV additional libs
@@ -69,7 +70,6 @@ import Semi_FIFOF    :: *;
 import CreditCounter :: *;
 import AXI4          :: *;
 import SourceSink    :: *;
-import SpecialWires  :: *;
 
 // ================================================================
 // Project imports
@@ -154,7 +154,9 @@ interface MMU_Cache_IFC#(numeric type mID);
                           , Wd_AW_User, Wd_W_User, Wd_B_User
                           , Wd_AR_User, Wd_R_User) mem_master;
    
-   interface EventsCache cacheEvents;
+`ifdef PERFORMANCE_MONITORING
+   method EventsCache cacheEvents;
+`endif
 endinterface
 
 typedef MMU_Cache_IFC#(Wd_MId_2x3) MMU_DCache_IFC;
@@ -620,8 +622,13 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // the victim is picked 'randomly' according to this register
    Reg #(Way_in_CSet)  rg_victim_way <- mkRegU;
 
-   Array #(Wire #(EventsCache)) w_cacheEvents <- mkDWireOR (3, unpack (0));
+`ifdef PERFORMANCE_MONITORING
+   Array #(Wire #(EventsCache)) w_cacheEvents <- mkDWireOR (7, unpack (0));
+   Wire #(Bool) wr_mem_req_sent <- mkDWire (False);
+   Reg #(Bool)  rg_mem_req_sent <- mkReg (False);
    Reg #(Bool)  rg_cache_rereq_data <- mkReg (False);
+   Reg #(Bool)  rg_tlb_walk <- mkReg (False);
+`endif
 
    // ----------------------------------------------------------------
    // This function initiates a read request on the 'B' ports of the rams
@@ -843,6 +850,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       // Flush the TLB
 `ifdef ISA_PRIV_S
       tlb.flush;
+`ifdef PERFORMANCE_MONITORING
+      let cacheEvents = unpack(0);
+      cacheEvents.evt_TLB_FLUSH = True;
+      w_cacheEvents[0] <= cacheEvents;
+`endif
 `endif
 
 `ifdef ISA_A
@@ -899,7 +911,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 `endif
 
    rule rl_probe_and_immed_rsp (!resetting && (rg_state == MODULE_RUNNING));
+`ifdef PERFORMANCE_MONITORING
       let cacheEvents = unpack(0);
+`endif
 
       let new_state = rg_state;
       let new_exc_code = rg_exc_code;
@@ -941,6 +955,15 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 						       rg_priv,
 						       rg_sstatus_SUM,
 						       rg_mstatus_MXR);
+
+`ifdef PERFORMANCE_MONITORING
+      cacheEvents.evt_TLB = rg_mem_req_sent;
+      let tlb_miss = rg_mem_req_sent && vm_xlate_result.outcome == VM_XLATE_TLB_MISS;
+      cacheEvents.evt_TLB_MISS = tlb_miss;
+      cacheEvents.evt_TLB_MISS_LAT = tlb_miss;
+      //if (rg_mem_req_sent)
+        //$display ("DMEM: %0d, TLB_MISS: %0d", dmem_not_imem, tlb_miss);
+`endif
 `else
       // In non-VM, PA is always WordXL
       VM_Xlate_Result vm_xlate_result = VM_Xlate_Result {outcome:      VM_XLATE_OK,
@@ -995,16 +1018,16 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 
 	 // Memory requests. Note: it's ok that this can go to non-memory space.
 	 else begin
+`ifdef PERFORMANCE_MONITORING
+      //$display ("DMEM: %0d, LD_MISS: %0d, AMO_MISS: %0d", dmem_not_imem, (rg_op == CACHE_LD && !hit), (rg_op == CACHE_AMO && !hit));
+      cacheEvents.evt_LD_MISS = rg_op == CACHE_LD && !hit;
+`ifdef ISA_A
+      cacheEvents.evt_AMO_MISS = rg_op == CACHE_AMO && !hit;
+`endif
+`endif
 	    // ----------------
 	    // Memory LD and AMO_LR
 	    if ((rg_op == CACHE_LD) || is_AMO_LR || (! dmem_not_imem)) begin
-`ifdef PERFORMANCE_MONITORING
-         // Cache miss will lead to refill and then another request
-         // Would double count if counted miss as access
-         cacheEvents.evt_LD = hit && dw_commit;
-         cacheEvents.evt_LD_MISS = !hit;
-         cacheEvents.evt_LD_MISS_LAT = !hit;
-`endif
 	       if (hit) begin
 		  // Cache hit; drive response
 		     fa_drive_mem_rsp (rg_width_code, rg_is_unsigned, rg_addr, word128, unpack(0), vm_xlate_result.allow_cap, dw_commit);
@@ -1182,7 +1205,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    `endif
          rg_state <= new_state;
          rg_exc_code <= new_exc_code;
-         w_cacheEvents[0] <= cacheEvents;
+`ifdef PERFORMANCE_MONITORING
+         w_cacheEvents[1] <= cacheEvents;
+`endif
    endrule: rl_probe_and_immed_rsp
 
 
@@ -1190,6 +1215,17 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // ****************************************************************
    // TLB REFILLS (Page Table Walks)
    // ****************************************************************
+
+`ifdef PERFORMANCE_MONITORING
+   rule rl_count_tlb_latency (rg_state == PTW_START || rg_tlb_walk);
+      //$display ("DMEM: %0d, TLB_LAT", dmem_not_imem);
+      let cacheEvents = unpack(0);
+      cacheEvents.evt_TLB_MISS_LAT = True;
+      w_cacheEvents[2] <= cacheEvents;
+
+      rg_tlb_walk <= rg_state != MODULE_RUNNING;
+   endrule
+`endif
 
    // TODO: should this rule be merged into rl_probe_and_immed_rsp, to avoid losing a cycle?
    //       or does that worsen critical path?
@@ -1476,18 +1512,24 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // CACHE REFILLS
    // ****************************************************************
 
+`ifdef PERFORMANCE_MONITORING
+   rule rl_count_miss_lat (!resetting && (rg_state == CACHE_START_REFILL || rg_cache_rereq_data));
+      let cacheEvents = unpack(0);
+      //$display ("DMEM: %0d, LD_LAT: %0d, AMO_LAT: %0d", dmem_not_imem, rg_op == CACHE_LD, rg_op == CACHE_AMO);
+      cacheEvents.evt_LD_MISS_LAT = rg_op == CACHE_LD;
+`ifdef ISA_A
+      cacheEvents.evt_AMO_MISS_LAT = rg_op == CACHE_AMO;
+`endif
+      w_cacheEvents[3] <= cacheEvents;
+
+      rg_cache_rereq_data <= rg_state != MODULE_RUNNING;
+   endrule
+`endif
+
    // Start cache-line refill loop when no more write-responses are outstanding
    // Send request into fabric for first fabric-word of cache line.
    // Pick victim way, update ctag.
    // Initiate read of word64_set in cache for read-modify-write of word64
-   rule rl_count_miss_lat (!resetting && (rg_state == CACHE_START_REFILL || rg_cache_rereq_data));
-      let cacheEvents = unpack(0);
-      cacheEvents.evt_LD_MISS_LAT = True;
-      w_cacheEvents[1] <= cacheEvents;
-
-      rg_cache_rereq_data <= rg_state != CACHE_REREQ;
-   endrule
-
    rule rl_start_cache_refill (!resetting && (rg_state == CACHE_START_REFILL) && (ctr_wr_rsps_pending.value == 0));
       if (cfg_verbosity > 1)
 	 $display ("%0d: %s.rl_start_cache_refill: ", cur_cycle, d_or_i);
@@ -1574,7 +1616,6 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    //         (for set read-modify-write; not relevant for direct-mapped)
 
    rule rl_cache_refill_rsps_loop (!resetting && rg_state == CACHE_REFILL);
-      EventsCache cacheEvents = unpack(0);
 
       let mem_rsp <- get(masterPortShim.slave.r);
       if (cfg_verbosity > 2) begin
@@ -1614,7 +1655,12 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 // Update the State_and_CTag_CSet (BRAM port A) (if this is the first
 	 // response and not an error)
 	 if ((word128_in_cline == 0) && (! err_rsp)) begin
+`ifdef PERFORMANCE_MONITORING
+	    //if (state_and_ctag_cset[rg_victim_way].state == CTAG_CLEAN) $display ("EVT_EVICT, DMEM: %0d", dmem_not_imem);
+	    let cacheEvents = unpack(0);
 	    cacheEvents.evt_EVICT = (state_and_ctag_cset[rg_victim_way].state == CTAG_CLEAN);
+	    w_cacheEvents[4] <= cacheEvents;
+`endif
 
 	    let new_state_and_ctag_cset = state_and_ctag_cset;
 	    new_state_and_ctag_cset [rg_victim_way] = State_and_CTag {state: CTAG_CLEAN,
@@ -1659,7 +1705,6 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	    fa_display_word128_set (cset_in_cache, word128_in_cline, new_word128_set);
 	 end
       end
-      w_cacheEvents[2] <= cacheEvents;
    endrule: rl_cache_refill_rsps_loop
 
    // ----------------------------------------------------------------
@@ -1999,6 +2044,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
 	 fa_req_ram_B (addr);
       end
 
+`ifdef PERFORMANCE_MONITORING
+      rg_mem_req_sent <= wr_mem_req_sent;
+`endif
    endrule
 
    (* fire_when_enabled *)
@@ -2013,6 +2061,11 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       rg_state <= MODULE_READY;
       if (cfg_verbosity > 1)
         $display ("%0d: %s.tlb_flush", cur_cycle, d_or_i);
+`ifdef PERFORMANCE_MONITORING
+        let cacheEvents = unpack(0);
+        cacheEvents.evt_TLB_FLUSH = True;
+        w_cacheEvents[5] <= cacheEvents;
+`endif
 `else
       noAction;
 `endif
@@ -2068,6 +2121,17 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
       w_req_sstatus_SUM <= sstatus_SUM;
       w_req_mstatus_MXR <= mstatus_MXR;
       w_req_satp <= satp;
+`ifdef PERFORMANCE_MONITORING
+      let cacheEvents = unpack(0);
+      wr_mem_req_sent <= True;
+      //$display ("DMEM: %0d, MEM_OP: %0d", dmem_not_imem, op);
+      cacheEvents.evt_LD = op == CACHE_LD;
+      cacheEvents.evt_ST = op == CACHE_ST;
+`ifdef ISA_A
+      cacheEvents.evt_AMO = op == CACHE_AMO;
+`endif
+      w_cacheEvents[6] <= cacheEvents;
+`endif
    endmethod
 
 `ifdef ISA_CHERI
@@ -2123,7 +2187,9 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    // Fabric interface
    interface mem_master = masterPortShim.master;
 
+`ifdef PERFORMANCE_MONITORING
    interface EventsCache cacheEvents = w_cacheEvents[0];
+`endif
 
 endmodule: mkMMU_Cache
 
