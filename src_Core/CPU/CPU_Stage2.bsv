@@ -37,9 +37,6 @@ package CPU_Stage2;
 
 export
 CPU_Stage2_IFC (..),
-`ifdef PERFORMANCE_MONITORING
-Output_Stage2_Perf (..),
-`endif
 mkCPU_Stage2;
 
 // ================================================================
@@ -108,19 +105,7 @@ interface CPU_Stage2_IFC;
 
    (* always_ready *)
    method Action set_full (Bool full);
-
-`ifdef PERFORMANCE_MONITORING
-   method Output_Stage2_Perf perf;
-`endif
 endinterface
-
-`ifdef PERFORMANCE_MONITORING
-typedef struct {
-   Bool sc_success;
-   Bool ld_wait;
-   Bool st_wait;
-} Output_Stage2_Perf deriving (Bits);
-`endif
 
 // ================================================================
 // Implementation module
@@ -280,6 +265,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
       if (! rg_full) begin
 	 output_stage2 = Output_Stage2 {ostatus         : OSTATUS_EMPTY,
 					trap_info       : ?,
+`ifdef PERFORMANCE_MONITORING
+					perf            : unpack (0),
+`endif
 					data_to_stage3  : ?,
 					bypass          : no_bypass
 `ifdef ISA_F
@@ -298,6 +286,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 output_stage2 = Output_Stage2 {ostatus         : OSTATUS_PIPE,
 					trap_info       : ?,
+`ifdef PERFORMANCE_MONITORING
+					perf            : unpack (0),
+`endif
 					data_to_stage3  : data_to_stage3,
 					bypass          : bypass
 `ifdef ISA_F
@@ -320,6 +311,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
           data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
           output_stage2 = Output_Stage2 {ostatus:         ostatus,
                  trap_info:       trap_info_dmem,
+`ifdef PERFORMANCE_MONITORING
+                 perf            : unpack (0),
+`endif
                  data_to_stage3:  data_to_stage3,
                  bypass:          bypass
 `ifdef INCLUDE_TANDEM_VERIF
@@ -483,8 +477,29 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
         data_to_stage3.info_RVFI_s2 = info_RVFI_s2;
 `endif
 
+`ifdef PERFORMANCE_MONITORING
+	 Output_Stage2_Perf perf = unpack (0);
+`ifdef ISA_A
+	 if (   (rg_stage2.op_stage2 == OP_Stage2_AMO) && (rg_f5 == f5_AMO_SC)   )
+`ifdef ISA_CHERI
+	    perf.sc_success = (getAddr (result) == 0);
+`else
+	    perf.sc_success = (result == 0);
+`endif
+`endif // ISA_A
+`ifdef ISA_CHERI
+	 perf.ld_cap = (rg_stage2.mem_width_code == w_SIZE_CAP);
+	 // TODO_P: Should 'rg_stage2.mem_allow_cap' also be set?
+	 perf.ld_cap_tag_set = (rg_stage2.mem_width_code == w_SIZE_CAP) && mem_tag;
+`endif
+	 perf.ld_wait = (! dcache.valid);
+`endif
+
             output_stage2 = Output_Stage2 {ostatus         : ostatus,
 					   trap_info       : trap_info_dmem,
+`ifdef PERFORMANCE_MONITORING
+					   perf            : perf,
+`endif
 					   data_to_stage3  : data_to_stage3,
 					   bypass          : bypass
 `ifdef ISA_F
@@ -517,8 +532,16 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 	 data_to_stage3.rd_val   = ?;
 `endif
 
+`ifdef PERFORMANCE_MONITORING
+	 Output_Stage2_Perf perf = unpack (0);
+	 perf.st_wait = (! dcache.valid);
+`endif
+
 	 output_stage2 = Output_Stage2 {ostatus         : ostatus,
 					trap_info       : trap_info_dmem,
+`ifdef PERFORMANCE_MONITORING
+					perf            : perf,
+`endif
 					data_to_stage3  : data_to_stage3,
 					bypass          : no_bypass
 `ifdef ISA_F
@@ -554,6 +577,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 output_stage2 = Output_Stage2 {ostatus         : ostatus,
 					trap_info       : ?,
+`ifdef PERFORMANCE_MONITORING
+					perf            : unpack (0),
+`endif
 					data_to_stage3  : data_to_stage3,
 					bypass          : bypass
 `ifdef ISA_F
@@ -594,6 +620,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 output_stage2 = Output_Stage2 {ostatus         : ostatus,
 					trap_info       : ?,
+`ifdef PERFORMANCE_MONITORING
+					perf            : unpack (0),
+`endif
 					data_to_stage3  : data_to_stage3,
 					bypass          : bypass
 `ifdef ISA_F
@@ -662,6 +691,9 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
 
 	 output_stage2 = Output_Stage2 {ostatus         : ostatus,
 					trap_info       : trap_info_fbox,
+`ifdef PERFORMANCE_MONITORING
+					perf            : unpack (0),
+`endif
 					data_to_stage3  : data_to_stage3,
 					bypass          : bypass
 `ifdef ISA_F
@@ -831,38 +863,6 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
    method Action set_full (Bool full);
       rg_full <= full;
    endmethod
-
-`ifdef PERFORMANCE_MONITORING
-   method Output_Stage2_Perf perf;
-      let sc_success = False;
-`ifdef ISA_A
-      // TODO: this is duplicate of part of fv_out (maybe move there)
-      if (rg_stage2.op_stage2 == OP_Stage2_AMO && rg_f5 == f5_AMO_SC) begin
-	 match {.mem_tag, .mem_val} = dcache.word128;
-`ifdef ISA_CHERI
-	 CapReg result = ?;
-	 if (rg_stage2.mem_width_code == w_SIZE_CAP) begin
-	    CapMem capMem = {pack(rg_stage2.mem_allow_cap && mem_tag), mem_val};
-	    result = cast(capMem);
-	 end else begin
-	    result = nullWithAddr(truncate(mem_val));
-	 end
-	 sc_success = getAddr(result) == 0;
-`else
-	 WordXL result = truncate(mem_val);
-	 sc_success = result == 0;
-`endif
-      end
-`endif
-      let ld_wait = (rg_stage2.op_stage2 == OP_Stage2_LD) && (! dcache.valid);
-      let st_wait = (rg_stage2.op_stage2 == OP_Stage2_ST) && (! dcache.valid);
-      return Output_Stage2_Perf {
-	 sc_success: sc_success,
-	 ld_wait: ld_wait,
-	 st_wait: st_wait
-      };
-  endmethod
-`endif
 endmodule
 
 // ================================================================
