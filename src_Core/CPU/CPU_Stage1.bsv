@@ -326,7 +326,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , check_exact_enable : alu_outputs.check_exact_enable
       , check_exact_success: alu_outputs.check_exact_success
 `ifdef PERFORMANCE_MONITORING
-      , set_offset_in_bounds : alu_outputs.set_offset_in_bounds,
+      , set_offset_in_bounds : alu_outputs.set_offset_in_bounds
 `endif
 `endif
 `ifdef ISA_F
