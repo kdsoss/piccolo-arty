@@ -130,7 +130,7 @@ module mkTV_Encode (TV_Encode_IFC);
    rule rl_log_trace_MEM_WRITE (rg_reset_done && (f_trace_data.first.op == TRACE_MEM_WRITE));
       let td <- pop (f_trace_data);
 
-      MemReqSize mem_req_size        = zeroExtend(td.word1 [1:0]);
+      Bit#(3)   mem_req_size        = td.word1 [2:0];
       Byte      size_and_mem_req_op = { 1'b0, mem_req_size, te_mem_req_op_Store };
       Byte      result_and_size     = { te_mem_result_success, 1'b0, mem_req_size };
 
@@ -303,7 +303,7 @@ module mkTV_Encode (TV_Encode_IFC);
    rule rl_log_trace_I_STORE (rg_reset_done && (f_trace_data.first.op == TRACE_I_STORE));
       let td <- pop (f_trace_data);
 
-      let mem_req_size = td.word1 [1:0];    // funct3
+      let mem_req_size = td.word1 [2:0];    // funct3
 
       // Encode components of td into byte vecs
       match { .n0, .vb0 } = encode_byte (te_op_begin_group);
@@ -328,7 +328,7 @@ module mkTV_Encode (TV_Encode_IFC);
    rule rl_log_trace_F_STORE (rg_reset_done && (f_trace_data.first.op == TRACE_F_STORE));
       let td <- pop (f_trace_data);
 
-      let mem_req_size = td.word1 [1:0];    // funct3
+      let mem_req_size = td.word1 [2:0];    // funct3
 
       // Encode components of td into byte vecs
       match { .n0, .vb0 } = encode_byte (te_op_begin_group);
@@ -353,7 +353,7 @@ module mkTV_Encode (TV_Encode_IFC);
    rule rl_log_trace_AMO (rg_reset_done && (f_trace_data.first.op == TRACE_AMO));
       let td <- pop (f_trace_data);
 
-      let mem_req_size = td.word4 [1:0];    // funct3
+      let mem_req_size = td.word4 [2:0];    // funct3
 
       // Encode components of td into byte vecs
       match { .n0, .vb0 } = encode_byte (te_op_begin_group);

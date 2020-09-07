@@ -420,7 +420,7 @@ module mkCPU_Stage2 #(Bit #(4)         verbosity,
                trace_data = fv_trace_update_mstatus_fs (trace_data, fs_xs_dirty);
             end else
 `endif
-               trace_data.word1 = data_to_stage3.rd_val;
+               trace_data.word1 = extract_int(data_to_stage3.rd_val);
 `elsif RVFI
 	    let info_RVFI_s2 = info_RVFI_s2_base;
         // If we're doing a load or AMO other than SC, we need to set the read mask.
