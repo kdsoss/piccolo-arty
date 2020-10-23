@@ -48,10 +48,10 @@ module mkCreditCounter (CreditCounter_IFC #(w));
    endmethod
 
    method Action decr ();// if (crg [1] != 0);
-      /*if (crg [1] == 0) begin
+      if (|(inrg - outrg) == 1'b0) begin
 	 $display ("%0d: ERROR: CreditCounter: underflow", cur_cycle);
 	 $finish (1);    // Assertion failure
-      end*/
+      end
       outrg <= outrg + 1;
    endmethod
 

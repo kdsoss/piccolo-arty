@@ -60,6 +60,10 @@ import PLIC :: *;    // for PLIC_Source_IFC type which is exposed at P2_Core int
 import AXI4         :: *;
 import Fabric_Defs  :: *;
 
+`ifdef INCLUDE_DMEM_SLAVE
+import AXI4_Lite_Types :: *;
+`endif
+
 `ifdef INCLUDE_TANDEM_VERIF
 import TV_Info :: *;
 import AXI4_Stream ::*;
@@ -90,6 +94,13 @@ interface P1_Core_IFC;
    // External interrupt sources
    (* always_ready, always_enabled, prefix="" *)
    method  Action interrupt_reqs ((* port="cpu_external_interrupt_req" *) Bit #(N_External_Interrupt_Sources)  reqs);
+
+`ifdef INCLUDE_DMEM_SLAVE
+   // ----------------------------------------------------------------
+   // Optional AXI4-Lite D-cache slave interface
+
+   interface AXI4_Lite_Slave_IFC #(Wd_Addr, Wd_Data, Wd_User) slave0;
+`endif
 
 `ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------
@@ -254,6 +265,13 @@ module mkP1_Core (P1_Core_IFC);
 	 core.core_external_interrupt_sources [j].m_interrupt_req (req_j);
       end
    endmethod
+
+`ifdef INCLUDE_DMEM_SLAVE
+   // ----------------------------------------------------------------
+   // Optional AXI4-Lite D-cache slave interface
+
+   interface AXI4_Lite_Slave_IFC slave0 = core.cpu_dmem_slave;
+`endif
 
 `ifdef INCLUDE_TANDEM_VERIF
    // ----------------------------------------------------------------

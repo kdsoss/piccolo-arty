@@ -49,6 +49,7 @@ import AXI4        :: *;
 // ================================================================
 // Project imports
 
+// Main fabric
 import Fabric_Defs :: *;
 import SoC_Map     :: *;
 
@@ -219,6 +220,19 @@ module mkSoC_Top (SoC_Top_IFC);
    // SoC Fabric
    let bus <- mkAXI4Bus_Synth (routeFromMappingTable(route_vector),
                                master_vector, slave_vector);
+
+   // ----------------------------------------------------------------
+   // Optional AXI4-Lite D-cache slave interface tie-off (not used)
+
+`ifdef INCLUDE_DMEM_SLAVE
+   rule rl_always_dmem_slave (True);
+      core.cpu_dmem_slave.m_arvalid (False, ?, ?, ?);
+      core.cpu_dmem_slave.m_rready (False);
+      core.cpu_dmem_slave.m_awvalid (False, ?, ?, ?);
+      core.cpu_dmem_slave.m_wvalid (False, ?, ?);
+      core.cpu_dmem_slave.m_bready (False);
+   endrule
+`endif
 
    // ----------------
    // Connect interrupt sources for CPU external interrupt request inputs.

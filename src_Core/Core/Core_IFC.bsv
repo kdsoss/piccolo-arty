@@ -44,6 +44,10 @@ import AXI4 :: *;
 // Main fabric
 import Fabric_Defs  :: *;
 
+`ifdef INCLUDE_DMEM_SLAVE
+import AXI4_Lite_Types :: *;
+`endif
+
 // External interrupt request interface
 import PLIC  :: *;
 
@@ -86,6 +90,13 @@ interface Core_IFC #(numeric type t_n_interrupt_sources);
    // CPU DMem to Fabric master interface
    interface AXI4_Master_Synth #(TAdd#(Wd_MId,1), Wd_Addr, Wd_Data,
                                  0, 0, 0, 0, 0) cpu_dmem_master;
+
+   // ----------------------------------------------------------------
+   // Optional AXI4-Lite D-cache slave interface
+
+`ifdef INCLUDE_DMEM_SLAVE
+   interface AXI4_Lite_Slave_IFC #(Wd_Addr, Wd_Data, Wd_User) cpu_dmem_slave;
+`endif
 
    // ----------------------------------------------------------------
    // External interrupt sources

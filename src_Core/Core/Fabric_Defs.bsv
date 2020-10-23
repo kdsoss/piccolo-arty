@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Bluespec, Inc. All Rights Reserved
+// Copyright (c) 2018-2020 Bluespec, Inc. All Rights Reserved
 
 //-
 // AXI (user fields) + CHERI modifications:
@@ -51,7 +51,9 @@ typedef Wd_SId_2x3 Wd_MId;
 // Width of fabric 'addr' buses
 `ifdef FABRIC64
 typedef 64   Wd_Addr;
-`else
+`endif
+
+`ifdef FABRIC32
 typedef 32   Wd_Addr;
 `endif
 
