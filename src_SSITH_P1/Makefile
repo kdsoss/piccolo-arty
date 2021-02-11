@@ -44,25 +44,16 @@ TAGS_ALIGN = 32
 # ================================================================
 # Search path for bsc for .bsv files
 
-BSV_LIBS = $(REPO)/libs
-BLUESTUFF = $(BSV_LIBS)/BlueStuff
+SRC_CORE ?= $(REPO)/src_Core/Core
 
-CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs:$(BLUESTUFF)/BlueUtils:$(REPO)/src_Verifier:
+CONTRIB_DIRS = %/Libraries/Bus
+CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(SRC_CORE):$(REPO)/src_Core/Cache_Config:$(REPO)/src_Core/$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs
 
-# Paths for Tag Controller
-TAG_CONTROLLER_DIRS = $(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagController/TagController/CacheCore:
+CHERI_DIRS = $(REPO)/libs/cheri-cap-lib:$(REPO)/libs/TagController/TagController:$(REPO)/libs/TagController/TagController/CacheCore:$(REPO)/libs/BlueStuff/BlueUtils
 
-# Path for CHERI
-CHERI_DIR = $(BSV_LIBS)/cheri-cap-lib:
+AXI_DIRS = $(REPO)/libs/BlueStuff/AXI:$(REPO)/libs/BlueStuff/BlueBasics:$(REPO)/libs/BlueStuff
 
-# XXX
-# Specify the path to the BlueStuff library (https://github.com/CTSRD-CHERI/BlueStuff)
-# What is the best way to distribute this code?
-# XXX
-
-AXI_DIRS = $(BLUESTUFF)/AXI:$(BLUESTUFF)/BlueBasics:$(BLUESTUFF):
-
-BSC_PATH = -p $(CORE_DIRS)src_BSV:$(AXI_DIRS)$(CHERI_DIR)$(TAG_CONTROLLER_DIRS)+
+BSC_PATH = $(CONTRIB_DIRS):src_BSV:$(CORE_DIRS):$(TESTBENCH_DIRS):$(AXI_DIRS):$(RVFI_DII_DIRS):$(CHERI_DIRS):+
 
 # ----------------
 # Top-level file and module
@@ -110,7 +101,7 @@ Verilog_RTL:
 .PHONY: compile
 compile:  build_dir  Verilog_RTL tagsparams
 	@echo  "INFO: Generating RTL into Verilog_RTL ..."
-	bsc -u -elab -verilog  $(RTL_GEN_DIRS)  $(BSC_COMPILATION_FLAGS)  $(BSC_PATH)  $(TOPFILE)
+	bsc -u -elab -verilog  $(RTL_GEN_DIRS)  $(BSC_COMPILATION_FLAGS) -p $(BSC_PATH)  $(TOPFILE)
 	@echo  "INFO: Generated RTL into Verilog_RTL"
 	cp  Verilog_RTL/*  xilinx_ip/hdl/
 	@echo  "INFO: Copied RTL from  Verilog_RTL/  to  xilinx_ip/hdl/"
