@@ -79,8 +79,12 @@ typedef struct {
   } XCCSR
 deriving(Bits);
 
-function WordXL xccsr_to_word(XCCSR xccsr);
+function WordXL capexc_to_xccsr(XCCSR xccsr);
   return zeroExtend({xccsr.cheri_exc_reg, xccsr.cheri_exc_code, 3'b0, 1'b1, 1'b1});
+endfunction
+
+function WordXL capexc_to_xtval(XCCSR xccsr);
+  return zeroExtend({xccsr.cheri_exc_reg, xccsr.cheri_exc_code});
 endfunction
 
 // SCR map
@@ -97,7 +101,7 @@ SCR_Addr scr_addr_UEPCC = 7;
 
 SCR_Addr scr_addr_STCC = 12;
 SCR_Addr scr_addr_STDC = 13;
-SCR_Addr scr_addr_SScatchC = 14;
+SCR_Addr scr_addr_SScratchC = 14;
 SCR_Addr scr_addr_SEPCC = 15;
 
 SCR_Addr scr_addr_MTCC = 28;
@@ -105,10 +109,10 @@ SCR_Addr scr_addr_MTDC = 29;
 SCR_Addr scr_addr_MScratchC = 30;
 SCR_Addr scr_addr_MEPCC = 31;
 
-function CapPipe update_scr_via_csr (CapPipe old_scr, WordXL new_csr);
+function CapPipe update_scr_via_csr (CapPipe old_scr, WordXL new_csr, Bool allow_sealed);
     let new_scr = setOffset(old_scr, new_csr);
     let ret = new_scr.value;
-    if (!new_scr.exact || isSealed(old_scr)) begin
+    if (!new_scr.exact || (getKind(old_scr) != UNSEALED && !allow_sealed)) begin
         ret = setValidCap(ret, False);
     end
     return ret;
@@ -195,7 +199,8 @@ Bit #(5) f5rs2_cap_CClearReg   = 5'h0d;
 // 5'h0e unused
 Bit #(5) f5rs2_cap_CGetAddr    = 5'h0f;
 Bit #(5) f5rs2_cap_CClearFPReg = 5'h10;
-// 5'h11-5'h1f unused (5'h1f reserved for 1-reg instructions
+Bit #(5) f5rs2_cap_CSealEntry  = 5'h11;
+// 5'h12-5'h1f unused (5'h1f reserved for 1-reg instructions)
 
 // ================================================================
 // f7_cap_{Load, Store} opcode subdivision
@@ -228,5 +233,11 @@ Bit #(3) w_SIZE_MAX = w_SIZE_D;
 `endif
 
 Bit #(3) f3_AMO_CAP = w_SIZE_CAP;
+
+// Special cases of Otypes that are extended to XLEN
+Bit #(XLEN) otype_unsealed_ext = -1;
+Bit #(XLEN) otype_sentry_ext = -2;
+Bit #(XLEN) otype_res0_ext = -3;
+Bit #(XLEN) otype_res1_ext = -4;
 
 `endif

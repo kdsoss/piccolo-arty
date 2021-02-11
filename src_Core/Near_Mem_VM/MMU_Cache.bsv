@@ -149,9 +149,9 @@ interface MMU_Cache_IFC#(numeric type mID);
    method Action tlb_flush;
 
    // Fabric master interface
-   interface AXI4_Master_Synth #(mID, Wd_Addr, Wd_Data,
-                                 Wd_AW_User, Wd_W_User, Wd_B_User,
-                                 Wd_AR_User, Wd_R_User) mem_master;
+   interface AXI4_Master #(mID, Wd_Addr, Wd_Data,
+                           Wd_AW_User, Wd_W_User, Wd_B_User,
+                           Wd_AR_User, Wd_R_User) mem_master;
 endinterface
 
 typedef MMU_Cache_IFC#(Wd_MId_2x3) MMU_DCache_IFC;
@@ -497,10 +497,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    PulseWire pw_tlb_flush_req <- mkPulseWire;
 
    // Fabric request/response
-   AXI4_Master_Xactor#(mID, Wd_Addr, Wd_Data,
-                       Wd_AW_User, Wd_W_User, Wd_B_User,
-                       Wd_AR_User, Wd_R_User)
-                       master_xactor <- mkAXI4_Master_Xactor;
+   let master_xactor <- mkAXI4ShimFF;
 
 `ifdef ISA_PRIV_S
    // The TLB
@@ -2084,7 +2081,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    endmethod
 
    // Fabric interface
-   interface mem_master = master_xactor.masterSynth;
+   interface mem_master = master_xactor.master;
 endmodule: mkMMU_Cache
 
 // ================================================================

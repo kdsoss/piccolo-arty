@@ -95,7 +95,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // The CPU
    CPU_IFC  cpu <- mkCPU;
-   let cpu_imem <- fromAXI4_Master_Synth(cpu.imem_master);
+   let cpu_imem = cpu.imem_master;
    AXI4_Shim#(5,64,64,0,1,0,0,1) delay_shim <- mkAXI4ShimSizedFIFOF4; // Prevent a combinatorial path after the icache
    mkConnection(delay_shim.slave, cpu_imem);
    let cpu_imem_ug <- toUnguarded_AXI4_Master(delay_shim.master);
@@ -344,27 +344,27 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // Masters on the local 2x3 fabric
    Vector#(Num_Masters_2x3,
-           AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
-                               Wd_AW_User, Wd_W_User, Wd_B_User,
-                               Wd_AR_User, Wd_R_User))
-                               master_vector = newVector;
+           AXI4_Master #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                         Wd_AW_User, Wd_W_User, Wd_B_User,
+                         Wd_AR_User, Wd_R_User))
+                         master_vector = newVector;
    master_vector[cpu_dmem_master_num]         = cpu.dmem_master;
    master_vector[debug_module_sba_master_num] = dm_master_local;
 
    // Slaves on the local 2x3 fabric
    // default slave is forwarded out directly to the Core interface
    Vector#(Num_Slaves_2x3,
-           AXI4_Slave_Synth #(Wd_SId_2x3, Wd_Addr, Wd_Data,
-                              Wd_AW_User, Wd_W_User, Wd_B_User,
-                              Wd_AR_User, Wd_R_User))
-                              slave_vector = newVector;
+           AXI4_Slave #(Wd_SId_2x3, Wd_Addr, Wd_Data,
+                        Wd_AW_User, Wd_W_User, Wd_B_User,
+                        Wd_AR_User, Wd_R_User))
+                        slave_vector = newVector;
 `ifdef ISA_CHERI
-   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(tagController.slave);
+   slave_vector[default_slave_num]     = tagController.slave;
 `else
-   slave_vector[default_slave_num]     = toAXI4_Slave_Synth(shim.slave);
+   slave_vector[default_slave_num]     = shim.slave;
 `endif
-   slave_vector[near_mem_io_slave_num] = near_mem_io.axi4_slave;
-   slave_vector[plic_slave_num]        = plic.axi4_slave;
+   slave_vector[near_mem_io_slave_num] = zeroSlaveUserFields (near_mem_io.axi4_slave);
+   slave_vector[plic_slave_num]        = zeroSlaveUserFields (plic.axi4_slave);
 
    function Vector#(Num_Slaves_2x3, Bool) route_2x3 (Bit#(Wd_Addr) addr);
       Vector#(Num_Slaves_2x3, Bool) res = replicate(False);
@@ -379,7 +379,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
       return res;
    endfunction
 
-   mkAXI4Bus_Synth (route_2x3, master_vector, slave_vector);
+   mkAXI4Bus (route_2x3, master_vector, slave_vector);
 
    // ================================================================
    // Connect interrupt lines from near_mem_io and PLIC to CPU
@@ -409,6 +409,12 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
    // ================================================================
    // INTERFACE
+   let cpu_imem_master_synth <- toAXI4_Master_Synth (extendIDFields(zeroMasterUserFields(cpu_imem_ug), 0));
+`ifdef ISA_CHERI
+   let cpu_dmem_master_synth <- toAXI4_Master_Synth (tagController.master);
+`else
+   let cpu_dmem_master_synth <- toAXI4_Master_Synth (ug_shim);
+`endif
 
    // ----------------------------------------------------------------
    // Debugging: set core's verbosity
@@ -426,14 +432,10 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    // AXI4 Fabric interfaces
 
    // IMem to Fabric master interface
-   interface cpu_imem_master = toAXI4_Master_Synth(extendIDFields(zeroMasterUserFields(cpu_imem_ug), 0));
+   interface cpu_imem_master = cpu_imem_master_synth;
 
    // DMem to Fabric master interface
-`ifdef ISA_CHERI
-   interface cpu_dmem_master = toAXI4_Master_Synth(tagController.master);
-`else
-   interface cpu_dmem_master = toAXI4_Master_Synth(ug_shim);
-`endif
+   interface cpu_dmem_master = cpu_dmem_master_synth;
 
    // ----------------------------------------------------------------
    // Optional AXI4-Lite D-cache slave interface
