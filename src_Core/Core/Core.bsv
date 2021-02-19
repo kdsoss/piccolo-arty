@@ -85,7 +85,8 @@ import TV_Taps :: *;
 
 `ifdef PERFORMANCE_MONITORING
 import PerformanceMonitor :: *;
-import MonitorWrapper :: *;
+import Monitored :: *;
+import AXI4_Events_BitVectorable_Instance :: *; // the lesser evil
 `endif
 
 // ================================================================
@@ -109,7 +110,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
 
 `ifdef PERFORMANCE_MONITORING
    Vector #(7, Bit #(1)) tag_cache_evts = replicate (0);
-   Vector #(6, Bit #(1)) tag_cache_master_evts = replicate (0);
+   Vector #(7, Bit #(1)) tag_cache_master_evts = replicate (0);
 `endif
    // set the appropriate axi4_dmem_shim_{master, slave} ifc
 `ifdef ISA_CHERI
@@ -118,7 +119,7 @@ module mkCore (Core_IFC #(N_External_Interrupt_Sources));
    let axi4_dmem_shim <- mkAXI4Shim;
 `ifdef PERFORMANCE_MONITORING
 `define TAG_CACHE_EVENTS_EXTERNAL
-   Wire #(Vector #(6, Bit #(1))) w_tag_cache_master_evts <- mkBypassWire ();
+   Wire #(Vector #(7, Bit #(1))) w_tag_cache_master_evts <- mkBypassWire ();
    tag_cache_master_evts = w_tag_cache_master_evts;
 `endif
 `else
