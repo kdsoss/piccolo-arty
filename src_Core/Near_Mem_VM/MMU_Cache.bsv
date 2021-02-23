@@ -59,7 +59,6 @@ import ConfigReg    :: *;
 import FIFOF        :: *;
 import GetPut       :: *;
 import ClientServer :: *;
-import SpecialWires  :: *;
 
 // ----------------
 // BSV additional libs
@@ -70,6 +69,10 @@ import Semi_FIFOF    :: *;
 import CreditCounter :: *;
 import AXI4          :: *;
 import SourceSink    :: *;
+
+`ifdef PERFORMANCE_MONITORING
+import SpecialRegs :: *;
+`endif
 
 // ================================================================
 // Project imports
@@ -623,7 +626,7 @@ module mkMMU_Cache  #(parameter Bool dmem_not_imem,
    Reg #(Way_in_CSet)  rg_victim_way <- mkRegU;
 
 `ifdef PERFORMANCE_MONITORING
-   Array #(Wire #(EventsCache)) aw_events <- mkDWireOR (7, unpack (0));
+   Array #(Reg #(EventsCache)) aw_events <- mkDRegOR (7, unpack (0));
    Wire #(Bool) wr_mem_req_sent <- mkDWire (False);
    Reg #(Bool)  rg_mem_req_sent <- mkReg (False);
    Reg #(Bool)  rg_cache_rereq_data <- mkReg (False);
