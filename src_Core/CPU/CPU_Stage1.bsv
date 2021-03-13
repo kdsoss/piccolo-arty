@@ -153,10 +153,13 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `else
    Instr instr          = imem.instr;
 `endif
+   Instr instr_or_instr_C = instr;
 `ifdef ISA_C
    Instr_C instr_C = instr [15:0];
-   if (! is_i32_not_i16)
+   if (! is_i32_not_i16) begin
       instr = fv_decode_C (misa, xl, instr_C);
+      instr_or_instr_C = zeroExtend(instr_C);
+   end
 `endif
    let decoded_instr  = fv_decode (instr);
    let funct3         = decoded_instr.funct3;
@@ -221,7 +224,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
       , is_i32_not_i16  : imem.is_i32_not_i16
       , instr           : instr
 `ifdef ISA_C
-      , instr_C         : instr_C
+      , instr_or_instr_C : instr_or_instr_C
 `endif
       , decoded_instr   : decoded_instr
 `ifdef ISA_CHERI
@@ -423,11 +426,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 	 let tval = 0;
 	 if (alu_outputs.exc_code == exc_code_ILLEGAL_INSTRUCTION) begin
 	    // The instruction
-`ifdef ISA_C
-	    tval = (is_i32_not_i16 ? zeroExtend (instr) : zeroExtend (instr_C));
-`else
-	    tval = zeroExtend (instr);
-`endif
+	    tval = zeroExtend(instr_or_instr_C);
 	 end
 	 else if (alu_outputs.exc_code == exc_code_INSTR_ADDR_MISALIGNED)
 	    tval = alu_outputs.addr;                           // The branch target pc
