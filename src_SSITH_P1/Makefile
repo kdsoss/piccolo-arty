@@ -6,6 +6,7 @@
 help:
 	@echo '    make  compile      Recompile Core (CPU, caches) into Verilog_RTL'
 	@echo '                           NOTE: needs Bluespec bsc compiler'
+	@echo '    make  tagsparams   Generates the CHERI tag controller parameters source file'
 	@echo ''
 	@echo '    make  clean        Remove intermediate build-files'
 	@echo '    make  full_clean   Restore this directory to pristine state'
@@ -122,7 +123,7 @@ compile:  build_dir  Verilog_RTL tagsparams
 .PHONY: clean
 clean:
 	rm -r -f  *~  Makefile_*  build_dir
-	rm -f $(REPO)/src_SSITH_P1/src_BSV/TagTableStructure.bsv
+	rm -f src_BSV/TagTableStructure.bsv
 
 .PHONY: full_clean
 full_clean: clean
