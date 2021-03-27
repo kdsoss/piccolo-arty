@@ -355,6 +355,13 @@ module mkMMU_Cache_Arbiter #(MMU_Cache_IFC cache)
 	 //       unfortunately part of the interface we need to
 	 //       provide. Consumers should only connect the first!
 	 interface mem_master = cache.mem_master;
+
+	 // NOTE: No arbitration on any of these; status signals don't
+	 //       make sense to arbitrate, and config/initialisation
+	 //       methods should only be driven by the primary master.
+`ifdef PERFORMANCE_MONITORING
+	 method events           = cache.events;
+`endif
       endinterface;
    endfunction
 
