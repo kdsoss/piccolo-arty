@@ -63,14 +63,14 @@ interface CPU_IFC;
    // SoC fabric connections
 
    // IMem to Fabric master interface
-   interface AXI4_Master #(Wd_MId, Wd_Addr, Wd_Data,
-                           Wd_AW_User, Wd_W_User, Wd_B_User,
-                           Wd_AR_User, Wd_R_User)  imem_master;
+   interface AXI4_Master_Synth #(Wd_MId, Wd_Addr, Wd_Data,
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User)  imem_master;
 
    // DMem to Fabric master interface
-   interface AXI4_Master #(Wd_MId_2x3, Wd_Addr, Wd_Data,
-                           Wd_AW_User, Wd_W_User, Wd_B_User,
-                           Wd_AR_User, Wd_R_User)  dmem_master;
+   interface AXI4_Master_Synth #(Wd_MId_2x3, Wd_Addr, Wd_Data,
+                                 Wd_AW_User, Wd_W_User, Wd_B_User,
+                                 Wd_AR_User, Wd_R_User)  dmem_master;
 
    // ----------------------------------------------------------------
    // Optional AXI4-Lite D-cache slave interface

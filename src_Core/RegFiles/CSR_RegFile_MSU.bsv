@@ -857,7 +857,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 	    csr_addr_mip:        m_csr_value = tagged Valid (csr_mip.mv_read);
 
 `ifdef ISA_CHERI
-      csr_addr_mccsr:      m_csr_value = tagged Valid (capexc_to_xccsr(rg_mccsr));
+      csr_addr_mccsr:      m_csr_value = tagged Valid (xccsr_to_word(rg_mccsr));
 `endif
 
 	    // TODO: Phys Mem Protection regs
@@ -1071,7 +1071,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 				       let mtvec     = word_to_mtvec (wordxl);
 				       new_csr_value = mtvec_to_word (mtvec);
 `ifdef ISA_CHERI
-				       rg_mtcc      <= cast(update_scr_via_csr(rg_mtcc_unpacked, new_csr_value, False));
+				       rg_mtcc      <= cast(update_scr_via_csr(rg_mtcc_unpacked, new_csr_value));
 `else
 				       rg_mtvec     <= mtvec;
 `endif
@@ -1092,7 +1092,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 				       new_csr_value = (wordxl & (~ 3));    // mepc [1:0] always zero
 `endif
 `ifdef ISA_CHERI
-				       rg_mepcc     <= cast(update_scr_via_csr(rg_mepcc_unpacked, new_csr_value, False));
+				       rg_mepcc     <= cast(update_scr_via_csr(rg_mepcc_unpacked, new_csr_value));
 `else
 				       rg_mepc      <= result;
 `endif
@@ -1236,7 +1236,7 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
 
 	    case (scr_addr)
          scr_addr_MTCC: begin
-             capUnpacked = update_scr_via_csr(capUnpacked, mtvec_to_word(word_to_mtvec(getOffset(capUnpacked))), False);
+             capUnpacked = update_scr_via_csr(capUnpacked, mtvec_to_word(word_to_mtvec(getOffset(capUnpacked))));
              // This can be done much more efficiently by breaking into the compressed cap format
              if (getBaseAlignment(capUnpacked) == 0) begin
                 rg_mtcc <= cast(capUnpacked);
@@ -1250,13 +1250,11 @@ module mkCSR_RegFile (CSR_RegFile_IFC);
          scr_addr_MEPCC: begin
              let newOffset = getOffset(capUnpacked);
 `ifdef ISA_C
-             Bool changeMade = newOffset[0] != 1'b0;
              newOffset[0] = 1'b0;
 `else
-             Bool changeMade = newOffset[1:0] != 2'b0;
              newOffset[1:0] = 2'b0;
 `endif
-             capUnpacked = update_scr_via_csr(capUnpacked, newOffset, !changeMade);
+             capUnpacked = update_scr_via_csr(capUnpacked, newOffset);
              rg_mepcc <= cast(capUnpacked);
              result = cast(capUnpacked);
          end

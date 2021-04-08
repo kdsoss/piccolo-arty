@@ -96,8 +96,9 @@ interface Near_Mem_IO_AXI4_IFC;
    method Action set_addr_map (Bit #(64) addr_base, Bit #(64) addr_lim);
 
    // Memory-mapped access
-   interface AXI4_Slave #( Wd_SId_2x3, Wd_Addr, Wd_Data, 0, 0, 0, 0, 0)
-      axi4_slave;
+   interface AXI4_Slave_Synth #(Wd_SId_2x3, Wd_Addr, Wd_Data,
+                                Wd_AW_User, Wd_W_User, Wd_B_User,
+                                Wd_AR_User, Wd_R_User) axi4_slave;
 
    // Timer interrupt
    // True/False = set/clear interrupt-pending in CPU's MTIP
@@ -136,7 +137,9 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    Reg #(Bit #(64)) rg_addr_lim  <- mkRegU;
 
    // Connector to AXI4 fabric
-   let slavePortShim <- mkAXI4ShimFF;
+   AXI4_Slave_Width_Xactor#(Wd_SId_2x3, Wd_Addr, Wd_Data_Periph, Wd_Data,
+                              Wd_AW_User_Periph, Wd_W_User_Periph, Wd_B_User_Periph, Wd_AR_User_Periph, Wd_R_User_Periph,
+                              Wd_AW_User, Wd_W_User, Wd_B_User, Wd_AR_User, Wd_R_User) slave_xactor <- mkAXI4_Slave_Zeroing_Xactor;
 
    // ----------------
    // Timer registers
@@ -172,7 +175,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    rule rl_reset (rg_state == MODULE_STATE_START);
       f_reset_reqs.deq;
 
-      slavePortShim.clear;
+      slave_xactor.clear;
       f_timer_interrupt_req.clear;
       f_sw_interrupt_req.clear;
 
@@ -240,7 +243,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    rule rl_process_rd_req (   (rg_state == MODULE_STATE_READY)
 			   && (! f_reset_reqs.notEmpty));
 
-      let rda <- get(slavePortShim.master.ar);
+      let rda <- get(slave_xactor.master.ar);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: Near_Mem_IO_AXI4.rl_process_rd_req: rg_mtip = %0d", cur_cycle, rg_mtip);
 	 $display ("    ", fshow (rda));
@@ -312,7 +315,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
 			    rresp: rresp,
 			    rlast: True,
 			    ruser: rda.aruser}; // XXX This requires that Wd_AR_User == Wd_R_User
-      slavePortShim.master.r.put(rdr);
+      slave_xactor.master.r.put(rdr);
 
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: Near_Mem_IO_AXI4.rl_process_rd_req", cur_cycle);
@@ -327,8 +330,8 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    rule rl_process_wr_req (   (rg_state == MODULE_STATE_READY)
 			   && (! f_reset_reqs.notEmpty));
 
-      let wra <- get(slavePortShim.master.aw);
-      let wrd <- get(slavePortShim.master.w);
+      let wra <- get(slave_xactor.master.aw);
+      let wrd <- get(slave_xactor.master.w);
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: Near_Mem_IO_AXI4.rl_process_wr_req: rg_mtip = %0d", cur_cycle, rg_mtip);
 	 $display ("    ", fshow (wra));
@@ -477,7 +480,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
       let wrr = AXI4_BFlit {bid:   wra.awid,
 			    bresp: bresp,
 			    buser: wra.awuser}; // XXX This requires that Wd_AW_User == Wd_B_User
-      slavePortShim.master.b.put(wrr);
+      slave_xactor.master.b.put(wrr);
 
       if (cfg_verbosity > 1) begin
 	 $display ("%0d: Near_Mem_IO.AXI4.rl_process_wr_req", cur_cycle);
@@ -510,7 +513,7 @@ module mkNear_Mem_IO_AXI4 (Near_Mem_IO_AXI4_IFC);
    endmethod
 
    // Memory-mapped access
-   interface  axi4_slave = slavePortShim.slave;
+   interface  axi4_slave = slave_xactor.slaveSynth;
 
    // Timer interrupt
    interface Get get_timer_interrupt_req;

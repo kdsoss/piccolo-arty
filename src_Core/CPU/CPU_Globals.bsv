@@ -244,7 +244,7 @@ instance PCC#(CapPipe);
     function Bool checkPreValid (CapPipe pcc);
         //TODO alignment checks?
         return  isValidCap(pcc)
-             && (getKind(pcc) == UNSEALED)
+             && !isSealed(pcc)
              && getHardPerms(pcc).permitExecute
              && isInBounds(pcc, False);
     endfunction
@@ -254,7 +254,7 @@ instance PCC#(CapPipe);
         CapPipe ac = almightyCap;
         if (!isValidCap(pcc))
             toRet = Valid(exc_code_CHERI_Tag);
-        else if (getKind(pcc) != UNSEALED)
+        else if (isSealed(pcc))
             toRet = Valid(exc_code_CHERI_Seal);
         else if (!getHardPerms(pcc).permitExecute)
             toRet = Valid(exc_code_CHERI_XPerm);
