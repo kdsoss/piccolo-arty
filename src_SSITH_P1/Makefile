@@ -43,6 +43,7 @@ TAGS_ALIGN = 32
 
 # ================================================================
 # Search path for bsc for .bsv files
+CONTRIB_DIRS ?= %/Libraries/Bus
 
 BSV_LIBS = $(REPO)/libs
 BLUESTUFF = $(BSV_LIBS)/BlueStuff
@@ -50,7 +51,7 @@ BLUESTUFF = $(BSV_LIBS)/BlueStuff
 CORE_DIRS = $(REPO)/src_Core/CPU:$(REPO)/src_Core/ISA:$(REPO)/src_Core/RegFiles:$(REPO)/src_Core/Core:$(REPO)/src_Core/Near_Mem_VM:$(REPO)/src_Core/PLIC:$(REPO)/src_Core/Near_Mem_IO:$(REPO)/src_Core/Debug_Module:$(REPO)/src_Core/BSV_Additional_Libs:$(BLUESTUFF)/BlueUtils:$(REPO)/src_Verifier:
 
 # Paths for Tag Controller
-TAG_CONTROLLER_DIRS = $(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagController/TagController/CacheCore:
+TAG_CONTROLLER_DIRS = $(CONTRIB_DIRS):$(BSV_LIBS)/TagController/TagController:$(BSV_LIBS)/TagController/TagController/CacheCore:
 
 # Path for CHERI
 CHERI_DIR = $(BSV_LIBS)/cheri-cap-lib:
