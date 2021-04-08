@@ -1442,13 +1442,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             check_cs1_tagged = True;
             check_cs1_not_sealed = True;
 
-            alu_outputs.check_enable = True;
-            alu_outputs.check_authority = cs1_val;
-            alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-            alu_outputs.check_address_low = getAddr(cs1_val);
-            alu_outputs.check_address_high = zeroExtend(getAddr(cs1_val));
-            alu_outputs.check_inclusive = False;
-
             alu_outputs.val1_source = SET_BOUNDS;
             alu_outputs.internal_op2 = zeroExtend(inputs.decoded_instr.imm12_I);
             alu_outputs.internal_op_flag = False;
@@ -1478,13 +1471,6 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             f7_cap_CSetBounds: begin
                 check_cs1_tagged = True;
                 check_cs1_not_sealed = True;
-
-                alu_outputs.check_enable = True;
-                alu_outputs.check_authority = cs1_val;
-                alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-                alu_outputs.check_address_low = getAddr(cs1_val);
-                alu_outputs.check_address_high = zeroExtend(getAddr(cs1_val));
-                alu_outputs.check_inclusive = False;
 
                 alu_outputs.val1_source = SET_BOUNDS;
                 alu_outputs.internal_op2 = rs2_val;
