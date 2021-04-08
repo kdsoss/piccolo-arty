@@ -1317,7 +1317,7 @@ endfunction
 function ALU_Outputs checkValidDereference(ALU_Outputs alu_outputs, CapPipe authority, Bit#(6) authIdx, WordXL base, Bit#(3) widthCode, Bool isStore, Bool isLoad, CapPipe data);
    if (!isValidCap(authority)) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, exc_code_CHERI_Tag);
-   end else if (isSealed(authority)) begin
+   end else if (getKind(authority) != UNSEALED) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, exc_code_CHERI_Seal);
    end else if (isLoad && !getHardPerms(authority).permitLoad) begin
        alu_outputs = fv_CHERI_exc(alu_outputs, authIdx, exc_code_CHERI_RPerm);
@@ -1409,11 +1409,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     let check_cs2_tagged              = False;
     let check_ddc_tagged              = False;
     let check_cs1_sealed_with_type    = False;
-    let check_cs1_not_sealed          = False;
-    let check_cs2_not_sealed          = False;
-    let check_ddc_not_sealed          = False;
-    let check_cs1_sealed              = False;
-    let check_cs2_sealed              = False;
+    let check_cs2_sealed_with_type    = False;
+    let check_cs1_unsealed            = False;
+    let check_cs1_unsealed_or_sentry  = False;
+    let check_cs2_unsealed            = False;
+    let check_ddc_unsealed            = False;
     let check_cs1_cs2_types_match     = False;
     let check_cs1_permit_ccall        = False;
     let check_cs2_permit_ccall        = False;
@@ -1431,7 +1431,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     end else begin
         case (funct3)
         f3_cap_CIncOffsetImmediate: begin
-             check_cs1_not_sealed = True;
+             check_cs1_unsealed = True;
 
              alu_outputs.val1_source = SET_OFFSET;
              alu_outputs.internal_op1 = cs1_val;
@@ -1440,7 +1440,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
         end
         f3_cap_CSetBoundsImmediate: begin
             check_cs1_tagged = True;
-            check_cs1_not_sealed = True;
+            check_cs1_unsealed = True;
 
             alu_outputs.val1_source = SET_BOUNDS;
             alu_outputs.internal_op2 = zeroExtend(inputs.decoded_instr.imm12_I);
@@ -1470,7 +1470,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             end
             f7_cap_CSetBounds: begin
                 check_cs1_tagged = True;
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.val1_source = SET_BOUNDS;
                 alu_outputs.internal_op2 = rs2_val;
@@ -1479,7 +1479,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             end
             f7_cap_CSetBoundsExact: begin
                 check_cs1_tagged = True;
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.check_enable = True;
                 alu_outputs.check_authority = cs1_val;
@@ -1494,7 +1494,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 alu_outputs.check_authority_idx  = zeroExtend(inputs.rs1_idx);
             end
             f7_cap_CSetOffset: begin
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.val1_source = SET_OFFSET;
                 alu_outputs.internal_op1 = cs1_val;
@@ -1502,13 +1502,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 alu_outputs.internal_op_flag = False;
             end
             f7_cap_CSetAddr: begin
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.val1_source = SET_ADDR;
                 alu_outputs.internal_op2 = rs2_val;
             end
             f7_cap_CIncOffset: begin
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.val1_source = SET_OFFSET;
                 alu_outputs.internal_op1 = cs1_val;
@@ -1518,8 +1518,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             f7_cap_CSeal: begin
                 check_cs1_tagged = True;
                 check_cs2_tagged = True;
-                check_cs1_not_sealed = True;
-                check_cs2_not_sealed = True;
+                check_cs1_unsealed = True;
+                check_cs2_unsealed = True;
                 check_cs2_permit_seal = True;
                 check_cs2_addr_valid_type = True;
 
@@ -1530,7 +1530,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 alu_outputs.check_address_high = zeroExtend(getAddr(cs2_val));
                 alu_outputs.check_inclusive = False;
 
-                alu_outputs.cap_val1 = setType(cs1_val, truncate(getAddr(cs2_val)));
+                alu_outputs.cap_val1 = setKind(cs1_val, SEALED_WITH_TYPE(truncate(getAddr(cs2_val))));
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CCSeal: begin
@@ -1542,16 +1542,19 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 alu_outputs.check_address_high = zeroExtend(getAddr(cs2_val));
                 alu_outputs.check_inclusive = False;
 
-                if (!isValidCap(cs2_val) || getAddr(cs2_val) == -1) begin
+                if (!isValidCap(cs2_val) || getAddr(cs2_val) == otype_unsealed_ext
+                                         || getAddr(cs2_val) == otype_sentry_ext
+                                         || getAddr(cs2_val) == otype_res0_ext
+                                         || getAddr(cs2_val) == otype_res1_ext) begin
                     alu_outputs.cap_val1 = cs1_val;
                     alu_outputs.val1_cap_not_int = True;
                 end else begin
                     alu_outputs.check_enable = True;
-                    check_cs1_not_sealed = True;
-                    check_cs2_not_sealed = True;
+                    check_cs1_unsealed = True;
+                    check_cs2_unsealed = True;
                     check_cs2_addr_valid_type = True;
                     check_cs2_permit_seal = True;
-                    alu_outputs.cap_val1 = setType(cs1_val, truncate(getAddr(cs2_val)));
+                    alu_outputs.cap_val1 = setKind(cs1_val, SEALED_WITH_TYPE(truncate(getAddr(cs2_val))));
                     alu_outputs.val1_cap_not_int = True;
                 end
             end
@@ -1560,17 +1563,17 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     rd_cap_CCall: begin
                         check_cs1_tagged = True;
                         check_cs2_tagged = True;
-                        check_cs1_sealed = True;
-                        check_cs2_sealed = True;
+                        check_cs1_sealed_with_type = True;
+                        check_cs2_sealed_with_type = True;
                         check_cs1_cs2_types_match = True;
                         check_cs1_permit_x = True;
                         check_cs2_no_permit_x = True;
                         check_cs1_permit_ccall = True;
                         check_cs2_permit_ccall = True;
                         alu_outputs.val1_cap_not_int = True;
-                        alu_outputs.cap_val1 = setType(cs2_val, -1);
+                        alu_outputs.cap_val1 = setKind(cs2_val, UNSEALED);
                         alu_outputs.rd = cCallRD;
-                        alu_outputs.pcc = maskAddr(setType(cs1_val, -1), signExtend(2'b10));
+                        alu_outputs.pcc = maskAddr(setKind(cs1_val, UNSEALED), signExtend(2'b10));
                         alu_outputs.control = CONTROL_CAPBRANCH;
                         let target = {truncateLSB(getAddr(cs1_val)), 1'b0};
                         alu_outputs = checkValidJump(alu_outputs, True, cs1_val, cs1_base, zeroExtend(inputs.rs1_idx), target);
@@ -1582,7 +1585,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 check_cs1_tagged = True;
                 check_cs2_tagged = True;
                 check_cs1_sealed_with_type = True;
-                check_cs2_not_sealed = True;
+                check_cs2_unsealed = True;
                 check_cs2_points_to_cs1_type = True;
                 check_cs2_permit_unseal = True;
 
@@ -1593,7 +1596,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 alu_outputs.check_address_high = zeroExtend(getAddr(cs2_val));
                 alu_outputs.check_inclusive = False;
 
-                alu_outputs.cap_val1 = setType(cs1_val, -1); // Always representable now type bit is orthogonal
+                alu_outputs.cap_val1 = setKind(cs1_val, UNSEALED);
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CTestSubset: begin
@@ -1613,30 +1616,42 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             end
             f7_cap_CCopyType: begin
                 check_cs1_tagged = True;
-                check_cs1_not_sealed = True;
-                if (isSealed(cs2_val)) begin
-                    alu_outputs.val1_source = SET_ADDR;
-                    alu_outputs.internal_op2 = zeroExtend(getType(cs2_val));
+                check_cs1_unsealed = True;
+                case (getKind(cs2_val)) matches
+                    tagged UNSEALED: begin
+                        alu_outputs.val1 = otype_unsealed_ext;
+                    end
+                    tagged SENTRY: begin
+                        alu_outputs.val1 = otype_sentry_ext;
+                    end
+                    tagged RES0: begin
+                        alu_outputs.val1 = otype_res0_ext;
+                    end
+                    tagged RES1: begin
+                        alu_outputs.val1 = otype_res1_ext;
+                    end
+                    tagged SEALED_WITH_TYPE .otype: begin
+                        alu_outputs.val1_source = SET_ADDR;
+                        alu_outputs.internal_op2 = zeroExtend(otype);
 
-                    alu_outputs.check_enable = True;
-                    alu_outputs.check_authority = cs1_val;
-                    alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
-                    alu_outputs.check_address_low = zeroExtend(getType(cs2_val));
-                    alu_outputs.check_address_high = zeroExtend(getType(cs2_val));
-                    alu_outputs.check_inclusive = False;
-                end else begin
-                    alu_outputs.val1 = -1;
-                end
+                        alu_outputs.check_enable = True;
+                        alu_outputs.check_authority = cs1_val;
+                        alu_outputs.check_authority_idx = {0,inputs.rs1_idx};
+                        alu_outputs.check_address_low = zeroExtend(otype);
+                        alu_outputs.check_address_high = zeroExtend(otype);
+                        alu_outputs.check_inclusive = False;
+                    end
+                endcase
             end
             f7_cap_CAndPerm: begin
                 check_cs1_tagged = True;
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.cap_val1 = setPerms(cs1_val, pack(getPerms(cs1_val)) & truncate(rs2_val));
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_CSetFlags: begin
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 alu_outputs.cap_val1 = setFlags(cs1_val, truncate(rs2_val));
                 alu_outputs.val1_cap_not_int = True;
@@ -1647,7 +1662,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end else begin
                     check_cs2_tagged = True;
                 end
-                check_cs1_not_sealed = True;
+                check_cs1_unsealed = True;
 
                 if (isValidCap(cs1_val)) begin
                     alu_outputs.val1 = zeroExtend(getAddr(cs1_val) - (inputs.rs2_idx == 0 ? ddc_base : cs2_base));
@@ -1661,10 +1676,10 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end else begin
                     if (inputs.rs1_idx == 0) begin
                         check_ddc_tagged = True;
-                        check_ddc_not_sealed = True;
+                        check_ddc_unsealed = True;
                     end else begin
                         check_cs1_tagged = True;
-                        check_cs1_not_sealed = True;
+                        check_cs1_unsealed = True;
                     end
 
                     alu_outputs.val1_source = SET_OFFSET;
@@ -1679,11 +1694,11 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
             f7_cap_CBuildCap: begin
                 if (inputs.rs1_idx == 0) begin
                     check_ddc_tagged = True;
-                    check_ddc_not_sealed = True;
+                    check_ddc_unsealed = True;
                     check_cs2_perm_subset_ddc = True;
                 end else begin
                     check_cs1_tagged = True;
-                    check_cs1_not_sealed = True;
+                    check_cs1_unsealed = True;
                     check_cs2_perm_subset_cs1 = True;
                 end
 
@@ -1699,7 +1714,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end
 
                 let result = setValidCap(cs2_val, True);
-                alu_outputs.cap_val1 = setType(result, -1);
+                alu_outputs.cap_val1 = setKind(result, getKind(cs2_val) == SENTRY ? SENTRY : UNSEALED); // Preserve sentries
                 alu_outputs.val1_cap_not_int = True;
             end
             f7_cap_Loads: begin
@@ -1746,7 +1761,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     alu_outputs.val1 = zeroExtend(pack(isValidCap(cs1_val)));
                 end
                 f5rs2_cap_CGetSealed: begin
-                    alu_outputs.val1 = zeroExtend(pack(isSealed(cs1_val)));
+                    alu_outputs.val1 = zeroExtend(pack(getKind(cs1_val) != UNSEALED));
                 end
                 f5rs2_cap_CRRL: begin
                     alu_outputs.val1_source = GET_PRECISION;
@@ -1767,6 +1782,13 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 f5rs2_cap_CGetAddr: begin
                     alu_outputs.val1 = zeroExtend(getAddr(cs1_val));
                 end
+                f5rs2_cap_CSealEntry: begin
+                    check_cs1_tagged = True;
+                    check_cs1_unsealed = True;
+                    check_cs1_permit_x = True;
+                    alu_outputs.cap_val1 = setKind(cs1_val, SENTRY);
+                    alu_outputs.val1_cap_not_int = True;
+                end
                 f5rs2_cap_CGetOffset: begin
                     alu_outputs.val1 = zeroExtend(cs1_offset);
                 end
@@ -1778,7 +1800,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end
                 f5rs2_cap_CJALR: begin
                     check_cs1_tagged = True;
-                    check_cs1_not_sealed = True;
+                    check_cs1_unsealed = True;
                     check_cs1_permit_x = True;
 
                     Addr  next_pc   = cs1_offset;
@@ -1797,7 +1819,23 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                     alu_outputs = checkValidJump(alu_outputs, True, cs1_val, cs1_base, {0,inputs.rs1_idx}, cs1_base + next_pc);
                 end
                 f5rs2_cap_CGetType: begin
-                    alu_outputs.val1 = isSealed(cs1_val) ? zeroExtend(getType(cs1_val)) : -1;
+                    case (getKind(cs1_val)) matches
+                        tagged UNSEALED: begin
+                            alu_outputs.val1 = otype_unsealed_ext;
+                        end
+                        tagged SENTRY: begin
+                            alu_outputs.val1 = otype_sentry_ext;
+                        end
+                        tagged RES0: begin
+                            alu_outputs.val1 = otype_res0_ext;
+                        end
+                        tagged RES1: begin
+                            alu_outputs.val1 = otype_res1_ext;
+                        end
+                        tagged SEALED_WITH_TYPE .otype: begin
+                            alu_outputs.val1 = zeroExtend(otype);
+                        end
+                    endcase
                 end
                 default: alu_outputs.control = CONTROL_TRAP;
                 endcase
@@ -1849,19 +1887,19 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Tag);
     else if (check_ddc_tagged             && !isValidCap(inputs.ddc))
         alu_outputs = fv_CHERI_exc(alu_outputs, {1'b1, scr_addr_DDC}      , exc_code_CHERI_Tag);
-    else if (check_cs1_sealed_with_type   && getKind(cs1_val) != SEALED_WITH_TYPE)
+    else if (check_cs1_sealed_with_type   && (getKind(cs1_val) matches tagged SEALED_WITH_TYPE ._ ? False : True))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
-    else if (check_cs1_not_sealed         && isValidCap(cs1_val) && isSealed(cs1_val))
-        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
-    else if (check_cs2_not_sealed         && isValidCap(cs2_val) && isSealed(cs2_val))
+    else if (check_cs2_sealed_with_type   && (getKind(cs2_val) matches tagged SEALED_WITH_TYPE ._ ? False : True))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
-    else if (check_ddc_not_sealed         && isValidCap(inputs.ddc) && isSealed(inputs.ddc))
+    else if (check_cs1_unsealed           && isValidCap(cs1_val) && getKind(cs1_val) != UNSEALED)
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+    else if (check_cs1_unsealed_or_sentry && isValidCap(cs1_val) && getKind(cs1_val) != UNSEALED && getKind(cs1_val) != SENTRY)
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
+    else if (check_cs2_unsealed           && isValidCap(cs2_val) && getKind(cs2_val) != UNSEALED)
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
+    else if (check_ddc_unsealed           && isValidCap(inputs.ddc) && getKind(inputs.ddc) != UNSEALED)
         alu_outputs = fv_CHERI_exc(alu_outputs, {1'b1, scr_addr_DDC}      , exc_code_CHERI_Seal);
-    else if (check_cs1_sealed             && isValidCap(cs1_val) && !isSealed(cs1_val))
-        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
-    else if (check_cs2_sealed             && isValidCap(cs2_val) && !isSealed(cs2_val))
-        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Seal);
-    else if (check_cs1_cs2_types_match    && getType(cs1_val) != getType(cs2_val))
+    else if (check_cs1_cs2_types_match    && getKind(cs1_val).SEALED_WITH_TYPE != getKind(cs2_val).SEALED_WITH_TYPE) // Already checked SEALED_WITH_TYPE
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Type);
     else if (check_cs1_permit_ccall       && !getHardPerms(cs1_val).permitCCall)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_CCallPerm);
@@ -1875,7 +1913,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_UnsealPerm);
     else if (check_cs2_permit_seal        && !getHardPerms(cs2_val).permitSeal)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_SealPerm);
-    else if (check_cs2_points_to_cs1_type && getAddr(cs2_val) != zeroExtend(getType(cs1_val)))
+    else if (check_cs2_points_to_cs1_type && getAddr(cs2_val) != zeroExtend(getKind(cs1_val).SEALED_WITH_TYPE)) // Already checked SEALED_WITH_TYPE
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Type);
     else if (check_cs2_addr_valid_type    && !validAsType(cs2_val, truncate(getAddr(cs2_val))))
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_Length);
