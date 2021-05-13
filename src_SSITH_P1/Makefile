@@ -29,6 +29,7 @@ BSC_COMPILATION_FLAGS += \
 	-D CapWidth=64 -D CheriBusBytes=8 \
 	-D CheriMasterIDWidth=1 -D CheriTransactionIDWidth=5 \
 	-D ISA_I  -D ISA_M  -D ISA_A  -D ISA_C -D ISA_CHERI \
+	-D PERFORMANCE_MONITORING \
 	-D CapWidth=128 -D CheriBusBytes=64 \
 	-D SHIFT_BARREL    \
 	-D MULT_SYNTH    \
