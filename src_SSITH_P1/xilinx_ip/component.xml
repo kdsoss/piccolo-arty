@@ -2100,6 +2100,10 @@
         <spirit:fileType>verilogSource</spirit:fileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>../Verilog_RTL/mkCore_Synth.v</spirit:name>
+        <spirit:fileType>verilogSource</spirit:fileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>../Verilog_RTL/mkCore.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
       </spirit:file>
