@@ -119,16 +119,6 @@ TagTableStructure.bsv: $(REPO)/libs/TagController/tagsparams.py
 compile: tagsparams
 
 # ================================================================
-# Generate Bluespec CHERI tag controller source file
-
-.PHONY: tagsparams
-tagsparams: $(REPO)/libs/TagController/tagsparams.py
-	@echo "INFO: Re-generating CHERI tag controller parameters"
-	$^ -v -c $(CAPSIZE) -s $(TAGS_STRUCT:"%"=%) -a $(TAGS_ALIGN) --covered-start-addr 0x80000000 --covered-mem-size 0x3fffc000 --top-addr 0xbffff000 -b TagTableStructure.bsv
-	@echo "INFO: Re-generated CHERI tag controller parameters"
-compile: tagsparams
-
-# ================================================================
 
 .PHONY: clean
 clean:
