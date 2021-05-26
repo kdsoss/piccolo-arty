@@ -1828,7 +1828,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
                 end
                 f5rs2_cap_CJALR: begin
                     check_cs1_tagged = True;
-                    check_cs1_unsealed = True;
+                    check_cs1_unsealed_or_sentry = True;
                     check_cs1_permit_x = True;
 
                     Addr  next_pc   = cs1_offset;
