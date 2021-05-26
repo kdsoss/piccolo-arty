@@ -180,7 +180,7 @@ interface Core_IFC_Synth #(numeric type t_n_interrupt_sources);
 `ifdef INCLUDE_TANDEM_VERIF
    interface Get #(Info_CPU_to_Verifier)  tv_verifier_info_get;
 `elsif RVFI_DII
-   interface Flute_RVFI_DII_Server rvfi_dii_server;
+   interface Piccolo_RVFI_DII_Server rvfi_dii_server;
 `endif
 `ifdef INCLUDE_GDB_CONTROL
    interface DMI dm_dmi;
