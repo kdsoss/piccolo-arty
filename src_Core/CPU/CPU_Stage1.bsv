@@ -157,7 +157,7 @@ module mkCPU_Stage1 #(Bit #(4)         verbosity,
 `ifdef ISA_C
    Instr_C instr_C = instr [15:0];
    if (! is_i32_not_i16) begin
-      instr = fv_decode_C (misa, xl, instr_C);
+      instr = fv_decode_C (misa, xl, getFlags(rg_pcc) == 1, instr_C);
       instr_or_instr_C = zeroExtend(instr_C);
    end
 `endif
