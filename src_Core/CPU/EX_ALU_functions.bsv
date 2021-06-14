@@ -1436,6 +1436,7 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
     let check_cs1_permit_ccall        = False;
     let check_cs2_permit_ccall        = False;
     let check_cs1_permit_x            = False;
+    let check_cs1_unsealed_or_imm_0   = False;
     let check_cs2_no_permit_x         = False;
     let check_cs2_permit_unseal       = False;
     let check_cs2_permit_seal         = False;
@@ -1454,6 +1455,79 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
         end else begin
             alu_outputs = fv_AUIPC (inputs);
         end
+    end else if (inputs.decoded_instr.opcode == op_JAL) begin
+        IntXL offset  = extend (unpack (inputs.decoded_instr.imm21_UJ));
+        Addr  next_pc = pack (unpack (inputs.pc) + offset);
+        Addr  ret_pc  = fall_through_pc (inputs);
+
+        alu_outputs.control   = CONTROL_BRANCH;
+
+        let cf_info   = CF_Info {cf_op       : CF_JAL,
+                                 from_PC     : inputs.pc,
+                                 taken       : True,
+                                 fallthru_PC : ret_pc,
+                                 taken_PC    : next_pc };
+
+        alu_outputs.addr      = next_pc;
+        alu_outputs.cf_info   = cf_info;
+
+        val1_source = is_cap_mode(inputs) ? MODIFY_OFFSET : LITERAL;
+        alu_outputs.val1 = extend (ret_pc);
+        modify_offset_cap = inputs.pcc;
+        modify_offset_off_or_inc = fall_through_pc_inc(inputs);
+        modify_offset_inc_not_set = True;
+        modify_offset_seal_entry = True;
+        alu_outputs = checkValidJump(alu_outputs, True, inputs.pcc, pcc_base, {1,scr_addr_PCC}, pcc_base + next_pc);
+    end else if (inputs.decoded_instr.opcode == op_JALR) begin
+        // Signed version of rs1_val
+        IntXL s_rs1_val = unpack (inputs.rs1_val);
+        IntXL offset    = extend (unpack (inputs.decoded_instr.imm12_I));
+        Addr  next_pc   = pack (s_rs1_val + offset);
+        Addr  ret_pc    = fall_through_pc (inputs);
+
+        WordXL auth_base = pcc_base;
+        Bit#(6) auth_idx = {1,scr_addr_PCC};
+        CapPipe auth_cap = inputs.pcc;
+
+        alu_outputs.val1      = extend (ret_pc);
+
+        modify_offset_cap = inputs.pcc;
+        modify_offset_off_or_inc = fall_through_pc_inc(inputs);
+        modify_offset_inc_not_set = True;
+        modify_offset_seal_entry = True;
+        alu_outputs.pcc     = setKind(maskAddr(cs1_val, signExtend(2'b10)), UNSEALED);
+
+        if (is_cap_mode(inputs)) begin
+            check_cs1_tagged = True;
+            check_cs1_unsealed = True;
+            check_cs1_permit_x = True;
+            check_cs1_unsealed_or_imm_0 = True;
+
+            alu_outputs.control = CONTROL_CAPBRANCH;
+
+            val1_source = MODIFY_OFFSET;
+
+            next_pc   = cs1_offset;
+            auth_base = cs1_base;
+            auth_idx  = {0,inputs.rs1_idx};
+            auth_cap  = cs1_val;
+        end else begin
+            alu_outputs.control = CONTROL_BRANCH;
+
+            val1_source = LITERAL;
+        end
+
+        next_pc [0] = 1'b0;
+        alu_outputs.addr      = next_pc;
+
+        let cf_info   = CF_Info {cf_op       : CF_JALR,
+                                 from_PC     : inputs.pc,
+                                 taken       : True,
+                                 fallthru_PC : ret_pc,
+                                 taken_PC    : next_pc };
+        alu_outputs.cf_info   = cf_info;
+
+        alu_outputs = checkValidJump(alu_outputs, True, auth_cap, auth_base, auth_idx, auth_base + next_pc);
     end else begin
         case (funct3)
         f3_cap_CIncOffsetImmediate: begin
@@ -1952,6 +2026,8 @@ function ALU_Outputs fv_CHERI (ALU_Inputs inputs, WordXL pcc_base, WordXL ddc_ba
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_CCallPerm);
     else if (check_cs1_permit_x           && !getHardPerms(cs1_val).permitExecute)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_XPerm);
+    else if (check_cs1_unsealed_or_imm_0  && (getKind(cs1_val) != UNSEALED && inputs.decoded_instr.imm12_I != 0))
+        alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs1_idx), exc_code_CHERI_Seal);
     else if (check_cs2_no_permit_x        && getHardPerms(cs2_val).permitExecute)
         alu_outputs = fv_CHERI_exc(alu_outputs, zeroExtend(inputs.rs2_idx), exc_code_CHERI_XPerm);
     else if (check_cs2_permit_unseal      && !getHardPerms(cs2_val).permitUnseal)
@@ -1989,11 +2065,14 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
    if (inputs.decoded_instr.opcode == op_BRANCH)
       alu_outputs = fv_BRANCH (inputs, pcc_base);
 
+`ifndef ISA_CHERI
+   // If we are in CHERI, we might need to do a CJAL(R), so moved to fv_CHERI
    else if (inputs.decoded_instr.opcode == op_JAL)
       alu_outputs = fv_JAL (inputs, pcc_base);
 
    else if (inputs.decoded_instr.opcode == op_JALR)
       alu_outputs = fv_JALR (inputs, pcc_base);
+`endif
 
 `ifdef ISA_M
    // OP 'M' ops MUL/ MULH/ MULHSU/ MULHU/ DIV/ DIVU/ REM/ REMU
@@ -2106,7 +2185,10 @@ function ALU_Outputs fv_ALU (ALU_Inputs inputs);
 `endif
 
 `ifdef ISA_CHERI
-   else if (   (inputs.decoded_instr.opcode == op_cap_Manip) || inputs.decoded_instr.opcode == op_AUIPC)
+   else if (   (inputs.decoded_instr.opcode == op_cap_Manip)
+            || (inputs.decoded_instr.opcode == op_AUIPC)
+            || (inputs.decoded_instr.opcode == op_JALR)
+            || (inputs.decoded_instr.opcode == op_JAL))
       alu_outputs = fv_CHERI (inputs, pcc_base, ddc_base);
 `endif
 
