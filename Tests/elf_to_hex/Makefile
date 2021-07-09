@@ -4,7 +4,7 @@
 CC = gcc
 
 elf_to_hex: elf_to_hex.c
-	$(CC) -g  -o elf_to_hex  elf_to_hex.c  -lelf
+	$(CC) -g -fcommon -o elf_to_hex  elf_to_hex.c  -lelf
 
 # ================================================================
 
