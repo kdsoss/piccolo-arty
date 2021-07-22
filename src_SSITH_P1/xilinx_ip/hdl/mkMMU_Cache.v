@@ -764,12 +764,12 @@ module mkMMU_Cache(CLK,
 
   // remaining internal signals
   reg [63 : 0] CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q32,
-	       CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52,
+	       CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51,
 	       CASE_rg_addr_BITS_2_TO_0_0x0_result2526_0x4_re_ETC__q29,
 	       CASE_rg_addr_BITS_2_TO_0_0x0_result3621_0x4_re_ETC__q33,
 	       CASE_rg_addr_BITS_2_TO_0_0x0_result3686_0x4_re_ETC__q34,
 	       CASE_rg_addr_BITS_2_TO_0_0x0_result6922_0x4_re_ETC__q49,
-	       CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q51,
+	       CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q52,
 	       IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d254,
 	       IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d276,
 	       IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d288,
@@ -2304,7 +2304,7 @@ module mkMMU_Cache(CLK,
   assign new_value__h15377 =
 	     (rg_op == 2'd2 && rg_amo_funct7[6:2] == 5'b00011) ?
 	       64'd1 :
-	       CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q51 ;
+	       CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q52 ;
   assign new_value__h5417 =
 	     (rg_op == 2'd2 && rg_amo_funct7[6:2] == 5'b00011) ?
 	       word64__h5203 :
@@ -3051,27 +3051,6 @@ module mkMMU_Cache(CLK,
     endcase
   end
   always@(rg_addr or
-	  result__h23379 or
-	  result__h23406 or result__h23433 or result__h23460)
-  begin
-    case (rg_addr[2:0])
-      3'h0:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
-	      result__h23379;
-      3'h2:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
-	      result__h23406;
-      3'h4:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
-	      result__h23433;
-      3'h6:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
-	      result__h23460;
-      default: IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
-		   64'd0;
-    endcase
-  end
-  always@(rg_addr or
 	  result__h23500 or
 	  result__h23527 or result__h23554 or result__h23581)
   begin
@@ -3125,6 +3104,27 @@ module mkMMU_Cache(CLK,
       3'h7:
 	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d639 =
 	      result__h23335;
+    endcase
+  end
+  always@(rg_addr or
+	  result__h23379 or
+	  result__h23406 or result__h23433 or result__h23460)
+  begin
+    case (rg_addr[2:0])
+      3'h0:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
+	      result__h23379;
+      3'h2:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
+	      result__h23406;
+      3'h4:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
+	      result__h23433;
+      3'h6:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
+	      result__h23460;
+      default: IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d651 =
+		   64'd0;
     endcase
   end
   always@(rg_addr or
@@ -3260,41 +3260,6 @@ module mkMMU_Cache(CLK,
     endcase
   end
   always@(rg_addr or
-	  result__h26431 or
-	  result__h26459 or
-	  result__h26487 or
-	  result__h26515 or
-	  result__h26543 or
-	  result__h26571 or result__h26599 or result__h26627)
-  begin
-    case (rg_addr[2:0])
-      3'h0:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26431;
-      3'h1:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26459;
-      3'h2:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26487;
-      3'h3:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26515;
-      3'h4:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26543;
-      3'h5:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26571;
-      3'h6:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26599;
-      3'h7:
-	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
-	      result__h26627;
-    endcase
-  end
-  always@(rg_addr or
 	  result__h26672 or
 	  result__h26700 or result__h26728 or result__h26756)
   begin
@@ -3348,6 +3313,41 @@ module mkMMU_Cache(CLK,
       3'h7:
 	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_SEX_ETC___d732 =
 	      result__h26386;
+    endcase
+  end
+  always@(rg_addr or
+	  result__h26431 or
+	  result__h26459 or
+	  result__h26487 or
+	  result__h26515 or
+	  result__h26543 or
+	  result__h26571 or result__h26599 or result__h26627)
+  begin
+    case (rg_addr[2:0])
+      3'h0:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26431;
+      3'h1:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26459;
+      3'h2:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26487;
+      3'h3:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26515;
+      3'h4:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26543;
+      3'h5:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26571;
+      3'h6:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26599;
+      3'h7:
+	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_0_C_ETC___d748 =
+	      result__h26627;
     endcase
   end
   always@(rg_addr or result__h26922 or result__h26950)
@@ -3485,25 +3485,16 @@ module mkMMU_Cache(CLK,
       default: _theResult_____2__h25127 = new_st_val__h27110;
     endcase
   end
-  always@(rg_f3 or IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_1_E_ETC___d305)
-  begin
-    case (rg_f3)
-      3'b0, 3'b001, 3'b010, 3'b011, 3'b100, 3'b101, 3'b110:
-	  CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q51 =
-	      IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_1_E_ETC___d305;
-      3'd7: CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q51 = 64'd0;
-    endcase
-  end
   always@(rg_addr or ram_word64_set$DOB or new_st_val__h16499)
   begin
     case (rg_addr[2:0])
       3'h0:
-	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52 =
+	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51 =
 	      { ram_word64_set$DOB[63:32], new_st_val__h16499[31:0] };
       3'h4:
-	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52 =
+	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51 =
 	      { new_st_val__h16499[31:0], ram_word64_set$DOB[31:0] };
-      default: CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52 =
+      default: CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51 =
 		   ram_word64_set$DOB;
     endcase
   end
@@ -3511,7 +3502,7 @@ module mkMMU_Cache(CLK,
 	  ram_word64_set$DOB or
 	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_ram_ETC___d451 or
 	  IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_ram_ETC___d460 or
-	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52 or
+	  CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51 or
 	  new_st_val__h16499)
   begin
     case (rg_f3)
@@ -3523,12 +3514,21 @@ module mkMMU_Cache(CLK,
 	      IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_ram_ETC___d460;
       3'b010:
 	  IF_rg_f3_04_EQ_0b0_05_THEN_IF_rg_addr_9_BITS_2_ETC___d469 =
-	      CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q52;
+	      CASE_rg_addr_BITS_2_TO_0_0x0_ram_word64_setDO_ETC__q51;
       3'b011:
 	  IF_rg_f3_04_EQ_0b0_05_THEN_IF_rg_addr_9_BITS_2_ETC___d469 =
 	      new_st_val__h16499;
       default: IF_rg_f3_04_EQ_0b0_05_THEN_IF_rg_addr_9_BITS_2_ETC___d469 =
 		   ram_word64_set$DOB;
+    endcase
+  end
+  always@(rg_f3 or IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_1_E_ETC___d305)
+  begin
+    case (rg_f3)
+      3'b0, 3'b001, 3'b010, 3'b011, 3'b100, 3'b101, 3'b110:
+	  CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q52 =
+	      IF_rg_addr_9_BITS_2_TO_0_24_EQ_0x0_06_THEN_1_E_ETC___d305;
+      3'd7: CASE_rg_f3_0b0_IF_rg_addr_9_BITS_2_TO_0_24_EQ__ETC__q52 = 64'd0;
     endcase
   end
 
