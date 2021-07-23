@@ -117,6 +117,8 @@ compile:  build_dir  Verilog_RTL tagsparams
 	@echo  "INFO: Generating RTL into Verilog_RTL ..."
 	bsc -u -elab -verilog  $(RTL_GEN_DIRS)  $(BSC_COMPILATION_FLAGS)  $(BSC_PATH)  $(TOPFILE)
 	@echo  "INFO: Generated RTL into Verilog_RTL"
+	cp  Verilog_RTL/*  xilinx_ip/hdl/
+	@echo  "INFO: Copied RTL from  Verilog_RTL/  to  xilinx_ip/hdl/"
 
 # ================================================================
 
