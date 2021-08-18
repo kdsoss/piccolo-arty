@@ -1,9 +1,9 @@
 #!/bin/sh -xe
 
-PROJ=piccolo_rtl
-#PROJ=piccolo_ip
+DESIGN=piccolo_3
 
-BITFILE=$PROJ/$PROJ.runs/impl_1/${PROJ}_wrapper.bit
+BITFILE=bits/${DESIGN}.bit
+#BITFILE=$DESIGN/$DESIGN.runs/impl_1/${DESIGN}_wrapper.bit
 
 export BITFILE
 

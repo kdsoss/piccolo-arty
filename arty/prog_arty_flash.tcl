@@ -16,13 +16,13 @@ create_hw_cfgmem -hw_device [get_hw_devices $DEVICE] -mem_dev [lindex [get_cfgme
 
 puts "Generating MCS for...\n$env(BITFILE)"
 
-write_cfgmem  -format mcs -size 16 -interface SPIx4 -loadbit "up 0x00000000 $env(BITFILE) " -loaddata {up 0x00400000 "bootmem/bootmem.bin" } -checksum -force -file "piccolo_kds.mcs"
+write_cfgmem  -format mcs -size 16 -interface SPIx4 -loadbit "up 0x00000000 $env(BITFILE) " -loaddata "up 0x00400000 $env(MEMFILE) " -checksum -force -file "tmp.mcs"
 
 puts "Programming MCS...\n"
 
 set_property PROGRAM.ADDRESS_RANGE  {use_file} [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
-set_property PROGRAM.FILES [list "piccolo_kds.mcs" ] [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
-set_property PROGRAM.PRM_FILE {piccolo_kds.prm} [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
+set_property PROGRAM.FILES [list "tmp.mcs" ] [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
+set_property PROGRAM.PRM_FILE {tmp.prm} [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
 set_property PROGRAM.UNUSED_PIN_TERMINATION {pull-none} [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
 set_property PROGRAM.BLANK_CHECK  0 [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
 set_property PROGRAM.ERASE  1 [ get_property PROGRAM.HW_CFGMEM [lindex [get_hw_devices $DEVICE] 0]]
