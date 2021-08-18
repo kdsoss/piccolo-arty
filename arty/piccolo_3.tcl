@@ -1,6 +1,6 @@
 
 ################################################################
-# This is a generated script based on design: design_2
+# This is a generated script based on design: piccolo_mem
 #
 # Though there are limitations about the generated script,
 # the main purpose of this utility is to make learning
@@ -35,7 +35,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 ################################################################
 
 # To test this script, run the following commands from Vivado Tcl console:
-# source design_2_script.tcl
+# source piccolo_mem_script.tcl
 
 
 # The design that will be created by this Tcl script contains the following 
@@ -57,7 +57,7 @@ if { $list_projs eq "" } {
 
 # CHANGE DESIGN NAME HERE
 variable design_name
-set design_name piccolo_rtl
+set design_name piccolo_3
 
 # If you do not already have an existing IP Integrator design open,
 # you can create a design using the following command:
@@ -131,6 +131,9 @@ set bCheckIPsPassed 1
 set bCheckIPs 1
 if { $bCheckIPs == 1 } {
    set list_check_ips "\ 
+xilinx.com:ip:axi_bram_ctrl:4.1\
+xilinx.com:ip:blk_mem_gen:8.4\
+xilinx.com:ip:axi_quad_spi:3.2\
 xilinx.com:ip:smartconnect:1.0\
 xilinx.com:ip:axi_uart16550:2.0\
 xilinx.com:ip:c_counter_binary:12.0\
@@ -230,6 +233,7 @@ proc create_root_design { parentCell } {
 
   # Create interface ports
   set ddr3_sdram [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:ddrx_rtl:1.0 ddr3_sdram ]
+  set qspi_flash [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:spi_rtl:1.0 qspi_flash ]
   set usb_uart [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:uart_rtl:1.0 usb_uart ]
 
   # Create ports
@@ -247,11 +251,37 @@ proc create_root_design { parentCell } {
    CONFIG.POLARITY {ACTIVE_LOW} \
  ] $sys_reset
 
+  # Create instance: axi_bram_ctrl_0, and set properties
+  set axi_bram_ctrl_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_bram_ctrl:4.1 axi_bram_ctrl_0 ]
+  set_property -dict [ list \
+   CONFIG.SINGLE_PORT_BRAM {1} \
+ ] $axi_bram_ctrl_0
+
+  # Create instance: axi_bram_ctrl_0_bram, and set properties
+  set axi_bram_ctrl_0_bram [ create_bd_cell -type ip -vlnv xilinx.com:ip:blk_mem_gen:8.4 axi_bram_ctrl_0_bram ]
+  set_property -dict [ list \
+   CONFIG.Coe_File {../../../../../../../bootrom/bootrom.coe} \
+   CONFIG.Load_Init_File {true} \
+   CONFIG.Memory_Type {Single_Port_ROM} \
+   CONFIG.Port_A_Write_Rate {0} \
+   CONFIG.Use_Byte_Write_Enable {false} \
+ ] $axi_bram_ctrl_0_bram
+
+  # Create instance: axi_quad_spi_flash, and set properties
+  set axi_quad_spi_flash [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_quad_spi:3.2 axi_quad_spi_flash ]
+  set_property -dict [ list \
+   CONFIG.C_SPI_MEMORY {3} \
+   CONFIG.C_TYPE_OF_AXI4_INTERFACE {1} \
+   CONFIG.C_XIP_MODE {1} \
+   CONFIG.QSPI_BOARD_INTERFACE {qspi_flash} \
+   CONFIG.USE_BOARD_FLOW {true} \
+ ] $axi_quad_spi_flash
+
   # Create instance: axi_smc, and set properties
   set axi_smc [ create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_smc ]
   set_property -dict [ list \
    CONFIG.NUM_CLKS {2} \
-   CONFIG.NUM_MI {3} \
+   CONFIG.NUM_MI {5} \
    CONFIG.NUM_SI {2} \
  ] $axi_smc
 
@@ -376,8 +406,13 @@ proc create_root_design { parentCell } {
  ] $xlslice_0
 
   # Create interface connections
+  connect_bd_intf_net -intf_net axi_bram_ctrl_0_BRAM_PORTA [get_bd_intf_pins axi_bram_ctrl_0/BRAM_PORTA] [get_bd_intf_pins axi_bram_ctrl_0_bram/BRAM_PORTA]
+  connect_bd_intf_net -intf_net axi_quad_spi_0_SPI_0 [get_bd_intf_ports qspi_flash] [get_bd_intf_pins axi_quad_spi_flash/SPI_0]
   connect_bd_intf_net -intf_net axi_smc_M00_AXI [get_bd_intf_pins axi_smc/M00_AXI] [get_bd_intf_pins mig_7series_0/S_AXI]
   connect_bd_intf_net -intf_net axi_smc_M01_AXI [get_bd_intf_pins axi_smc/M01_AXI] [get_bd_intf_pins axi_uart16550_0/S_AXI]
+  connect_bd_intf_net -intf_net axi_smc_M02_AXI [get_bd_intf_pins axi_bram_ctrl_0/S_AXI] [get_bd_intf_pins axi_smc/M02_AXI]
+  connect_bd_intf_net -intf_net axi_smc_M03_AXI [get_bd_intf_pins axi_quad_spi_flash/AXI_LITE] [get_bd_intf_pins axi_smc/M03_AXI]
+  connect_bd_intf_net -intf_net axi_smc_M04_AXI [get_bd_intf_pins axi_quad_spi_flash/AXI_FULL] [get_bd_intf_pins axi_smc/M04_AXI]
   connect_bd_intf_net -intf_net axi_uart16550_0_UART [get_bd_intf_ports usb_uart] [get_bd_intf_pins axi_uart16550_0/UART]
   connect_bd_intf_net -intf_net mig_7series_0_DDR3 [get_bd_intf_ports ddr3_sdram] [get_bd_intf_pins mig_7series_0/DDR3]
   connect_bd_intf_net -intf_net mkP1_Core_0_master0 [get_bd_intf_pins axi_smc/S00_AXI] [get_bd_intf_pins mkP1_Core_0/master0]
@@ -388,22 +423,21 @@ proc create_root_design { parentCell } {
   connect_bd_net -net c_counter_binary_0_Q [get_bd_pins c_counter_binary_0/Q] [get_bd_pins xlslice_0/Din]
   connect_bd_net -net c_counter_binary_1_Q [get_bd_ports LED2] [get_bd_pins c_counter_binary_1/Q]
   connect_bd_net -net c_counter_binary_2_Q [get_bd_ports LED1] [get_bd_pins c_counter_binary_2/Q]
-  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins axi_smc/aclk1] [get_bd_pins axi_uart16550_0/s_axi_aclk] [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins mkP1_Core_0/CLK] [get_bd_pins rst_clk_wiz_0_25M/slowest_sync_clk] [get_bd_pins xilinx_jtag_0/clk]
+  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins axi_quad_spi_flash/ext_spi_clk] [get_bd_pins axi_quad_spi_flash/s_axi4_aclk] [get_bd_pins axi_quad_spi_flash/s_axi_aclk] [get_bd_pins axi_smc/aclk1] [get_bd_pins axi_uart16550_0/s_axi_aclk] [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins mkP1_Core_0/CLK] [get_bd_pins rst_clk_wiz_0_25M/slowest_sync_clk] [get_bd_pins xilinx_jtag_0/clk]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins mig_7series_0/sys_clk_i]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins mig_7series_0/clk_ref_i]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_pins rst_clk_wiz_0_25M/dcm_locked]
   connect_bd_net -net mig_7series_0_mmcm_locked [get_bd_pins mig_7series_0/mmcm_locked] [get_bd_pins rst_mig_7series_0_83M/dcm_locked]
-  connect_bd_net -net mig_7series_0_ui_clk [get_bd_pins axi_smc/aclk] [get_bd_pins mig_7series_0/ui_clk] [get_bd_pins rst_mig_7series_0_83M/slowest_sync_clk]
+  connect_bd_net -net mig_7series_0_ui_clk [get_bd_pins axi_bram_ctrl_0/s_axi_aclk] [get_bd_pins axi_smc/aclk] [get_bd_pins mig_7series_0/ui_clk] [get_bd_pins rst_mig_7series_0_83M/slowest_sync_clk]
   connect_bd_net -net mig_7series_0_ui_clk_sync_rst [get_bd_pins mig_7series_0/ui_clk_sync_rst] [get_bd_pins rst_mig_7series_0_83M/ext_reset_in]
   connect_bd_net -net mkP1_Core_0_jtag_tdo [get_bd_pins mkP1_Core_0/jtag_tdo] [get_bd_pins xilinx_jtag_0/tdo]
   connect_bd_net -net reset_1 [get_bd_ports LED0] [get_bd_ports sys_reset] [get_bd_pins clk_wiz_0/resetn] [get_bd_pins mig_7series_0/sys_rst] [get_bd_pins rst_clk_wiz_0_25M/ext_reset_in]
   connect_bd_net -net rst_clk_wiz_0_25M_mb_reset [get_bd_pins rst_clk_wiz_0_25M/mb_reset] [get_bd_pins util_vector_logic_0/Op1]
-  connect_bd_net -net rst_clk_wiz_0_25M_peripheral_aresetn [get_bd_pins axi_smc/aresetn] [get_bd_pins axi_uart16550_0/s_axi_aresetn] [get_bd_pins rst_clk_wiz_0_25M/peripheral_aresetn] [get_bd_pins util_vector_logic_1/Op1]
-  connect_bd_net -net rst_mig_7series_0_83M_peripheral_aresetn [get_bd_pins mig_7series_0/aresetn] [get_bd_pins rst_mig_7series_0_83M/peripheral_aresetn]
+  connect_bd_net -net rst_clk_wiz_0_25M_peripheral_aresetn [get_bd_pins axi_quad_spi_flash/s_axi4_aresetn] [get_bd_pins axi_quad_spi_flash/s_axi_aresetn] [get_bd_pins axi_smc/aresetn] [get_bd_pins axi_uart16550_0/s_axi_aresetn] [get_bd_pins rst_clk_wiz_0_25M/peripheral_aresetn] [get_bd_pins util_vector_logic_1/Op1]
+  connect_bd_net -net rst_mig_7series_0_83M_peripheral_aresetn [get_bd_pins axi_bram_ctrl_0/s_axi_aresetn] [get_bd_pins mig_7series_0/aresetn] [get_bd_pins rst_mig_7series_0_83M/peripheral_aresetn]
   connect_bd_net -net sys_clock_1 [get_bd_ports sys_clock] [get_bd_pins c_counter_binary_0/CLK] [get_bd_pins clk_wiz_0/clk_in1]
   connect_bd_net -net util_vector_logic_0_Res [get_bd_pins c_counter_binary_1/CLK] [get_bd_pins mkP1_Core_0/RST_N] [get_bd_pins util_vector_logic_0/Res] [get_bd_pins xilinx_jtag_0/rst_n]
   connect_bd_net -net util_vector_logic_1_Res [get_bd_pins c_counter_binary_2/CLK] [get_bd_pins util_vector_logic_1/Res]
-  connect_bd_net -net xilinx_jtag_0_reset [get_bd_pins rst_clk_wiz_0_25M/mb_debug_sys_rst] [get_bd_pins xilinx_jtag_0/reset]
   connect_bd_net -net xilinx_jtag_0_tck [get_bd_pins mkP1_Core_0/jtag_tclk] [get_bd_pins xilinx_jtag_0/tck]
   connect_bd_net -net xilinx_jtag_0_tdi [get_bd_pins mkP1_Core_0/jtag_tdi] [get_bd_pins xilinx_jtag_0/tdi]
   connect_bd_net -net xilinx_jtag_0_tms [get_bd_pins mkP1_Core_0/jtag_tms] [get_bd_pins xilinx_jtag_0/tms]
@@ -411,6 +445,12 @@ proc create_root_design { parentCell } {
   connect_bd_net -net xlslice_0_Dout [get_bd_ports LED3] [get_bd_pins xlslice_0/Dout]
 
   # Create address segments
+  create_bd_addr_seg -range 0x00001000 -offset 0x70000000 [get_bd_addr_spaces mkP1_Core_0/master0] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0] SEG_axi_bram_ctrl_0_Mem0
+  create_bd_addr_seg -range 0x00001000 -offset 0x70000000 [get_bd_addr_spaces mkP1_Core_0/master1] [get_bd_addr_segs axi_bram_ctrl_0/S_AXI/Mem0] SEG_axi_bram_ctrl_0_Mem0
+  create_bd_addr_seg -range 0x01000000 -offset 0x40000000 [get_bd_addr_spaces mkP1_Core_0/master0] [get_bd_addr_segs axi_quad_spi_flash/aximm/MEM0] SEG_axi_quad_spi_0_MEM0
+  create_bd_addr_seg -range 0x01000000 -offset 0x40000000 [get_bd_addr_spaces mkP1_Core_0/master1] [get_bd_addr_segs axi_quad_spi_flash/aximm/MEM0] SEG_axi_quad_spi_0_MEM0
+  create_bd_addr_seg -range 0x00001000 -offset 0x62400000 [get_bd_addr_spaces mkP1_Core_0/master0] [get_bd_addr_segs axi_quad_spi_flash/AXI_LITE/Reg] SEG_axi_quad_spi_flash_Reg
+  create_bd_addr_seg -range 0x00001000 -offset 0x62400000 [get_bd_addr_spaces mkP1_Core_0/master1] [get_bd_addr_segs axi_quad_spi_flash/AXI_LITE/Reg] SEG_axi_quad_spi_flash_Reg
   create_bd_addr_seg -range 0x00001000 -offset 0x62300000 [get_bd_addr_spaces mkP1_Core_0/master0] [get_bd_addr_segs axi_uart16550_0/S_AXI/Reg] SEG_axi_uart16550_0_Reg
   create_bd_addr_seg -range 0x00001000 -offset 0x62300000 [get_bd_addr_spaces mkP1_Core_0/master1] [get_bd_addr_segs axi_uart16550_0/S_AXI/Reg] SEG_axi_uart16550_0_Reg
   create_bd_addr_seg -range 0x10000000 -offset 0xC0000000 [get_bd_addr_spaces mkP1_Core_0/master0] [get_bd_addr_segs mig_7series_0/memmap/memaddr] SEG_mig_7series_0_memaddr
