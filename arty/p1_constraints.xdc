@@ -13,4 +13,8 @@
 #set_clock_groups -asynchronous -group tck_internal -group {default_250mhz_clk1_clk_p mmcm_clkout0 mmcm_clkout1 tck}
 
 set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
-#set_property BITSTREAM.CONFIG.CONFIGRATE 3 [current_design]
+set_property BITSTREAM.CONFIG.CONFIGRATE 33 [current_design]
+set_property CONFIG_MODE SPIx4 [current_design]
+
+# configuration memory device:
+# s25fl127s-spi-x1_x2_x4
