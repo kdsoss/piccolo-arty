@@ -1,6 +1,6 @@
 #!/bin/sh -xe
 
-DESIGN=piccolo_3
+DESIGN=piccolo_4
 
 BITFILE=bits/${DESIGN}.bit
 #BITFILE=$DESIGN/$DESIGN.runs/impl_1/${DESIGN}_wrapper.bit
