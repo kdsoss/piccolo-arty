@@ -9,8 +9,6 @@ MEMFILE=bits/bootmem.bin
 
 export BITFILE MEMFILE
 
-echo $BITFILE $MEMFILE
-
 vivado -nojournal -notrace -nolog -source ./prog_arty_flash.tcl -mode batch
 
 rm *.jou *.log

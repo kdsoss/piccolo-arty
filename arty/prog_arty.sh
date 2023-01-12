@@ -7,8 +7,6 @@ BITFILE=bits/${DESIGN}.bit
 
 export BITFILE
 
-echo $BITFILE
-
 vivado -nojournal -notrace -nolog -source ./prog_arty.tcl -mode batch
 
 rm *.jou *.log
