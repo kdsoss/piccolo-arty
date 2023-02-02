@@ -1,15 +1,11 @@
 
 module xilinx_jtag(
 		   input  clk,
-		   input  rst_n,
 
-		   output reset,
 		   output tck,
 		   output tdi,
 		   output tms,
-		   input  tdo,
-		   output sel1,
-		   output sel2
+		   input  tdo
 		   );
 
    wire 		  tck_internal;
@@ -25,10 +21,10 @@ module xilinx_jtag(
 	     )
    bscane2_user3(
 		 .DRCK (),
-		 .RESET (reset),
+		 .RESET (),
 		 .RUNTEST (),
 		 .CAPTURE (),
-		 .SEL (sel1),
+		 .SEL (),
 		 .SHIFT (),
 		 .TCK (tck_internal),
 		 .TDI (tdi),
@@ -46,7 +42,7 @@ module xilinx_jtag(
 		 .RESET (),
 		 .RUNTEST (),
 		 .CAPTURE (),
-		 .SEL (sel2),
+		 .SEL (),
 		 .SHIFT (),
 		 .TCK (),
 		 .TDI (),
