@@ -1,4 +1,5 @@
-#!/usr/local/bin/python
+#!/usr/bin/python3
+
 import codecs
 codecs.getencoder('hex')(b'foo')[0]
 

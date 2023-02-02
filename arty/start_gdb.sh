@@ -1,6 +1,6 @@
 #!/bin/bash
 
 gdb=gdb-multiarch
-elf=LiteOS.elf
+elf=bootmem/liteos.elf
 
-$gdb $elf -ex "target remote localhost:3333" -ex "load"
+$gdb $elf -ex "target extended-remote localhost:3333" -ex "load"

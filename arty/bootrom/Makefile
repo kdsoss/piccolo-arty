@@ -7,7 +7,7 @@ all: bootrom.elf bootrom.coe
 
 %.coe: %.bin
 	hexdump -e '16/4 "%02x " "\n"' $*.bin > $*.hex
-	python genCoe.py > $@
+	python3 genCoe.py > $@
 
 %.bin: %.elf
 	$(OBJCOPY) -O binary $< $@

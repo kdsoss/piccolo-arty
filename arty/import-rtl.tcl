@@ -1,7 +1,7 @@
 #
 
 # this is where to create the project. change to other folder if needed
-set PROJ piccolo_5
+set PROJ piccolo_6
 
 set FPGA [file dirname [file normalize [info script]]]
 
